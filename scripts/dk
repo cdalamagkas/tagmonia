@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Run a command inside the Tagmony dev container, e.g. `scripts/dk deno task test`.
+# The repo is bind-mounted; the Deno cache lives in a named volume.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+image="tagmony-dev:latest"
+if [[ "${DK_REBUILD:-}" == 1 ]] || ! docker image inspect "$image" >/dev/null 2>&1; then
+  docker build -q -t "$image" -f "$here/docker/dev.Dockerfile" "$here/docker" >/dev/null
+fi
+tty=(); [[ -t 0 && -t 1 ]] && tty=(-it)
+exec docker run --rm "${tty[@]}" \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp -e DENO_DIR=/cache/deno \
+  -v tagmony-deno-dir:/cache \
+  -v "$here:/app" -w /app \
+  ${DK_PORTS:+-p "$DK_PORTS"} \
+  "$image" "$@"

@@ -1,0 +1,62 @@
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/SpaceGrotesk-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: var(--tm-font);
+  font-weight: var(--tm-weight-value);
+  background: var(--tm-mist);
+  color: var(--tm-navy);
+}
+.tm-header {
+  background: var(--tm-navy);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+}
+.tm-header img {
+  height: 28px;
+}
+main {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+.tm-card {
+  background: var(--tm-paper);
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius-card);
+  padding: 20px 24px;
+}
+.tm-card h1 {
+  font-weight: var(--tm-weight-name);
+  font-size: 1.25rem;
+  margin: 0 0 12px;
+}
+.tm-muted {
+  color: var(--tm-slate);
+}
+.tm-check {
+  display: flex;
+  gap: 8px;
+  font-weight: var(--tm-weight-label);
+}

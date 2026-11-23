@@ -1,0 +1,13 @@
+.git
+**/.git
+node_modules
+web/dist
+dist
+dev
+config
+tests/fixtures/audio
+brand
+docs
+*.zip
+.env
+.env.*

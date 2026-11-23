@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      # Same toolchain image as local development (scripts/dk); nothing is installed on the runner.
+      - name: Build dev image
+        run: docker build -t tagmony-dev:latest -f docker/dev.Dockerfile docker
+      - name: Generate audio fixtures
+        run: scripts/dk scripts/gen_fixtures.sh
+      - name: Format check
+        run: scripts/dk deno fmt --check
+      - name: Lint
+        run: scripts/dk deno task lint
+      - name: Type check
+        run: scripts/dk deno task check
+      - name: Test
+        run: scripts/dk deno task test
+      - name: Build SPA
+        run: scripts/dk sh -c "deno task web:install && deno run -A npm:vite@7.3.7 build web"
+
+  image:
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build production image
+        run: docker build -t tagmony:ci .

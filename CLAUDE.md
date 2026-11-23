@@ -2,7 +2,7 @@
 
 Tagmony is a self-hosted web app that identifies music files, merges metadata from several providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-**`ARCHITECTURE.md` is the source of truth.** Read the sections relevant to your task before writing code. If the code needs to diverge from it, update `ARCHITECTURE.md` in the same change and add a row to its Decision log (§17). Do not silently deviate.
+**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the source of truth.** Read the sections relevant to your task before writing code. If the code needs to diverge from it, update `ARCHITECTURE.md` in the same change and add a row to its Decision log (§17). Do not silently deviate.
 
 ## How to work
 
@@ -24,6 +24,8 @@ deno task build   # build SPA + server bundle
 ```
 
 Run `deno task fmt`, `deno task lint` and `deno task test` before considering any task done.
+
+**Never install tools or libraries on the host.** Run every command in the dev container: `scripts/dk deno task test` (D13). Generate audio fixtures first with `scripts/dk scripts/gen_fixtures.sh`.
 
 ## Stack (summary)
 

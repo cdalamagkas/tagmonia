@@ -1,0 +1,18 @@
+/* Tagmony design tokens */
+:root {
+  --tm-navy: #12233D; /* Score navy: primary, text, icon background */
+  --tm-navy-2: #1C3357; /* Raised navy: inputs and panels on navy */
+  --tm-orange: #E8743B; /* Resolve orange: accent, the resolved note, primary action */
+  --tm-slate: #4A5A70; /* Secondary text on light */
+  --tm-mist: #F5F7FA; /* App background */
+  --tm-rule: #DDE3EA; /* Dividers and borders */
+  --tm-paper: #FFFFFF; /* Cards */
+  --tm-on-navy-muted: #B8C4D6; /* Secondary text on navy */
+
+  --tm-font: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --tm-weight-name: 700; /* names, headings, "tag" in the wordmark */
+  --tm-weight-label: 500; /* labels, nav */
+  --tm-weight-value: 400; /* values, body, "mony" in the wordmark */
+  --tm-radius: 8px;
+  --tm-radius-card: 12px;
+}

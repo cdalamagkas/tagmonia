@@ -1,0 +1,3 @@
+[submodule "vendor/harmony"]
+	path = vendor/harmony
+	url = https://github.com/kellnerd/harmony
