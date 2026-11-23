@@ -70,7 +70,10 @@ export interface Picture {
    * so backups restore them exactly; new pictures Tagmony writes are JPEG/PNG (D11).
    */
   mime: string;
+  /** Empty when read with `pictureData: false`; `size` still reports the stored length. */
   data: Uint8Array;
+  /** Byte length of the stored image; set on read. */
+  size?: number;
   description?: string;
 }
 
@@ -106,9 +109,14 @@ export interface TagChange {
   pictures?: Picture[];
 }
 
+export interface ReadOptions {
+  /** Default true. False returns picture metadata (type, mime, size) without the image bytes. */
+  pictureData?: boolean;
+}
+
 export interface TagIO {
   /** Absolute path; callers resolve and confine paths to the music root first. */
-  read(path: string): Promise<ReadResult>;
+  read(path: string, options?: ReadOptions): Promise<ReadResult>;
   /** Must be atomic (temp file in the same dir, fsync, rename) and never re-encode audio. */
   write(path: string, change: TagChange): Promise<void>;
   /** Releases resources (child processes, wasm instances). */

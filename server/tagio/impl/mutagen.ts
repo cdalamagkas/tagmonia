@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { atomicModify } from "../atomic.ts";
 import { FIELD_MAPPINGS } from "../mapping.ts";
 import { readResultWireSchema } from "../schema.ts";
-import { type ReadResult, type TagChange, type TagIO, TagIOError } from "../types.ts";
+import { type ReadOptions, type ReadResult, type TagChange, type TagIO, TagIOError } from "../types.ts";
 
 const SIDECAR = fileURLToPath(new URL("./mutagen_sidecar.py", import.meta.url));
 
@@ -45,9 +45,9 @@ export class MutagenTagIO implements TagIO {
     this.#opts = opts;
   }
 
-  read(path: string): Promise<ReadResult> {
+  read(path: string, options: ReadOptions = {}): Promise<ReadResult> {
     return this.#enqueue(async () => {
-      const raw = await this.#call({ op: "read", path });
+      const raw = await this.#call({ op: "read", path, pictureData: options.pictureData !== false });
       const parsed = readResultWireSchema.safeParse(raw);
       if (!parsed.success) throw new TagIOError(`invalid sidecar response: ${parsed.error.message}`, path);
       return parsed.data as ReadResult;

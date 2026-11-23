@@ -9,7 +9,7 @@ This process edits the file path it is given *in place*. Atomicity (temp copy,
 fsync, rename) is the caller's job (server/tagio/atomic.ts): it hands us a temp
 copy, never the original.
 
-Requests:  {"id": n, "op": "read", "path": str}
+Requests:  {"id": n, "op": "read", "path": str, "pictureData"?: bool}
            {"id": n, "op": "write", "path": str, "change": {set, remove, pictures?}}
 Responses: {"id": n, "ok": true, "result": ...} | {"id": n, "ok": false, "error": str}
 """
@@ -31,6 +31,8 @@ MAPPING = []
 PIC_TYPES = {3: "front", 4: "back"}
 PIC_CODES = {"front": 3, "back": 4, "other": 0}
 FAULT = os.environ.get("TAGMONY_TAGIO_FAULT", "")
+# Per-request: the scanner only needs picture metadata, not megabytes of base64 per file.
+READ_PICTURE_DATA = True
 
 
 class UserError(Exception):
@@ -83,7 +85,8 @@ def b64(data):
 
 
 def out_picture(ptype, mime, data, desc):
-    return {"type": PIC_TYPES.get(ptype, "other"), "mime": mime, "data": b64(data), "description": desc or ""}
+    return {"type": PIC_TYPES.get(ptype, "other"), "mime": mime, "data": b64(data) if READ_PICTURE_DATA else "",
+            "size": len(data), "description": desc or ""}
 
 
 def shape(m, values):
@@ -422,7 +425,16 @@ def mp4_write(f, change, current):
 READERS = {"flac": vorbis_read, "ogg": vorbis_read, "opus": vorbis_read, "mp3": id3_read, "m4a": mp4_read}
 
 
-def op_read(path):
+def op_read(path, picture_data=True):
+    global READ_PICTURE_DATA
+    READ_PICTURE_DATA = picture_data
+    try:
+        return _read(path)
+    finally:
+        READ_PICTURE_DATA = True
+
+
+def _read(path):
     f, fmt = open_file(path)
     tags, pics, raw = READERS[fmt](f)
     info = f.info
@@ -476,7 +488,7 @@ def main():
             elif not MAPPING:
                 raise UserError("sidecar not initialised")
             elif op == "read":
-                result = op_read(msg["path"])
+                result = op_read(msg["path"], msg.get("pictureData", True) is not False)
             elif op == "write":
                 result = op_write(msg["path"], msg["change"])
             else:

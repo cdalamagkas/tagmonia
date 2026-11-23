@@ -15,3 +15,5 @@ export async function createTagIO(impl: TagIOImpl = "mutagen"): Promise<TagIO> {
 
 export * from "./types.ts";
 export { storableTags, supportsField, verifyChange } from "./verify.ts";
+export { sniffFormat } from "./sniff.ts";
+export { isTagmonyTempFile } from "./atomic.ts";

@@ -95,6 +95,7 @@ export class TaglibWasmTagIO implements TagIO {
         type: PIC_IN[String(pic.type)] ?? "other",
         mime: pic.mimeType,
         data: pic.data,
+        size: pic.data.length,
         description: pic.description ?? "",
       })),
       audio: {
