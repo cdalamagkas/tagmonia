@@ -1,4 +1,4 @@
-# Tagmony — Architecture
+# Tagmonia — Architecture
 
 > **Tags in harmony.** A self-hosted web app that identifies music files, gathers metadata from several providers, merges it with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
@@ -53,7 +53,7 @@ This document is the source of truth for design decisions. When implementation r
 - Playing music or replacing Navidrome or Jellyfin.
 - Downloading music from any source.
 - Fully automatic, unattended submission to MusicBrainz. Submission always goes through the user's own browser session.
-- Multi-tenant SaaS hosting. Tagmony is a single-household app; multiple local users are a later feature.
+- Multi-tenant SaaS hosting. Tagmonia is a single-household app; multiple local users are a later feature.
 - Editing video files, podcasts or audiobooks.
 
 ### Supported audio formats (v1)
@@ -94,7 +94,7 @@ This document is the source of truth for design decisions. When implementation r
 ```mermaid
 flowchart LR
   UI[Web UI<br/>Preact SPA] -->|HTTPS JSON API| API[API server<br/>Hono on Deno]
-  API --> DB[(SQLite<br/>/config/tagmony.db)]
+  API --> DB[(SQLite<br/>/config/tagmonia.db)]
   API --> Q[Job queue<br/>persistent, in-process]
   Q --> SCAN[Scanner]
   Q --> ID[Identifier]
@@ -130,7 +130,7 @@ Key properties:
 | Runtime | **Deno 2** (TypeScript) | Same runtime as Harmony, whose provider, merge and seeding code we reuse; single language across UI and server; `deno compile` and good Docker story |
 | HTTP framework | **Hono** | Small, typed, runs on Deno, easy middleware for auth and CSRF |
 | Frontend | **Preact + Vite**, TypeScript, built to static files served by the API | Small bundle; no SSR needed for a self-hosted tool |
-| Database | **SQLite** in WAL mode, file at `/config/tagmony.db` | Zero-ops for homelab users; one writer is enough |
+| Database | **SQLite** in WAL mode, file at `/config/tagmonia.db` | Zero-ops for homelab users; one writer is enough |
 | Migrations | Plain numbered SQL files in `server/db/migrations`, applied at startup | Transparent and reviewable |
 | Metadata aggregation | **Harmony** (MIT, `kellnerd/harmony`) providers, harmonized types, merge and seeding modules | Avoid re-implementing a dozen providers and the MusicBrainz seeding format |
 | Fingerprinting | **Chromaprint `fpcalc`** binary + AcoustID web API | Standard, used by Picard and beets |
@@ -154,14 +154,14 @@ Harmony is TypeScript; most modules use web standards and run outside its Fresh 
 3. Do not import Harmony's `server/` (Fresh) code.
 4. Keep Harmony's MIT license notice in `THIRD_PARTY_NOTICES.md` and in the built image.
 5. Upstream bug fixes to Harmony when possible instead of patching the vendored copy. If a local patch is unavoidable, keep it as a `.patch` file applied at build time and list it in the decision log.
-6. **Phase 0 must verify** that the listed modules import cleanly under Deno without the Fresh server and that the provider credentials they need can be supplied from Tagmony's config. If not, record the gap and adapt.
+6. **Phase 0 must verify** that the listed modules import cleanly under Deno without the Fresh server and that the provider credentials they need can be supplied from Tagmonia's config. If not, record the gap and adapt.
 
 ---
 
 ## 5. Repository layout
 
 ```text
-tagmony/
+tagmonia/
 ├── docs/
 │   └── ARCHITECTURE.md        # this file
 ├── CLAUDE.md                  # agent instructions (root so Claude Code loads it automatically)
@@ -206,7 +206,7 @@ tagmony/
 │   ├── providers/
 │   │   ├── harmony_adapter.ts
 │   │   ├── ratelimit.ts       # per-provider token buckets
-│   │   ├── youtube.ts         # Tagmony-owned provider (see §9.5)
+│   │   ├── youtube.ts         # Tagmonia-owned provider (see §9.5)
 │   │   └── registry.ts
 │   ├── merge/                 # proposal building, policy, locks
 │   ├── tagio/
@@ -340,7 +340,7 @@ export interface CanonicalTags {
 
 export interface Picture {
   type: "front" | "back" | "other";
-  mime: string;                        // any image/* read from files; Tagmony writes JPEG/PNG (D11)
+  mime: string;                        // any image/* read from files; Tagmonia writes JPEG/PNG (D11)
   data: Uint8Array;
   description?: string;
 }
@@ -439,7 +439,7 @@ Matching produces an explicit mapping from file to (medium, position). Mapping u
 
 ### 9.1 Interface
 
-Tagmony wraps every provider (Harmony-backed or its own) behind one interface:
+Tagmonia wraps every provider (Harmony-backed or its own) behind one interface:
 
 ```ts
 // server/providers/types.ts (sketch)
@@ -460,7 +460,7 @@ export interface Provider {
 }
 ```
 
-`HarmonizedRelease` is Harmony's harmonized release type, re-exported through the adapter so the rest of Tagmony does not depend on Harmony's file layout.
+`HarmonizedRelease` is Harmony's harmonized release type, re-exported through the adapter so the rest of Tagmonia does not depend on Harmony's file layout.
 
 ### 9.2 Provider tiers
 
@@ -476,7 +476,7 @@ Commercial APIs change without notice (Spotify has removed endpoints that Harmon
 ### 9.3 Rate limiting and politeness
 
 - One **token bucket per provider**, configured in `settings.json`. Defaults must be conservative and documented with the date they were checked.
-- **MusicBrainz:** at most 1 request per second on average, and every request sends a meaningful `User-Agent`, `Tagmony/<version> ( https://github.com/cdalamagkas/tagmony )` (`server/version.ts`, D18). Allow pointing the base URL at a local MusicBrainz mirror for large libraries.
+- **MusicBrainz:** at most 1 request per second on average, and every request sends a meaningful `User-Agent`, `Tagmonia/<version> ( https://github.com/cdalamagkas/tagmonia )` (`server/version.ts`, D18). Allow pointing the base URL at a local MusicBrainz mirror for large libraries.
 - Retries: exponential backoff with jitter on 429/503; respect `Retry-After`.
 - All provider calls go through the snapshot cache (§9.4) first.
 
@@ -484,15 +484,15 @@ Commercial APIs change without notice (Spotify has removed endpoints that Harmon
 
 ### 9.4 Snapshot cache
 
-Harmony's base provider caches responses as snapshots keyed by request URL and timestamp. Tagmony keeps this behaviour, with storage under `/config/snaps/`:
+Harmony's base provider caches responses as snapshots keyed by request URL and timestamp. Tagmonia keeps this behaviour, with storage under `/config/snaps/`:
 
 - Default TTL: 30 days for release lookups, 1 day for searches.
 - A proposal stores the snapshot IDs it was built from, so the review UI and the MusicBrainz edit note can show exactly what each provider returned.
 - `Settings → Cache` shows size and offers purge by provider or age.
 
-### 9.5 YouTube provider (Tagmony-owned)
+### 9.5 YouTube provider (Tagmonia-owned)
 
-Harmony has no merged YouTube Music provider, so Tagmony implements a minimal one.
+Harmony has no merged YouTube Music provider, so Tagmonia implements a minimal one.
 
 - **Official YouTube Data API only.** No unofficial or internal YouTube Music APIs in the default build, because of terms-of-service risk and breakage.
 - **Input:** a video or playlist URL pasted by the user. Avoid `search.list`, which has a small separate daily quota by default; `videos.list` and `playlistItems.list` are cheap.
@@ -658,14 +658,14 @@ Additional cases in the suite: a write changes nothing except the requested fiel
 
 ## 12. MusicBrainz submission (seeding)
 
-MusicBrainz has no API for creating releases. The supported route is **seeding the release editor**: a POST of form fields to `https://musicbrainz.org/release/add`, which the user reviews and submits from their own logged-in account. Tagmony never sees MusicBrainz credentials, and a person reviews every submission.
+MusicBrainz has no API for creating releases. The supported route is **seeding the release editor**: a POST of form fields to `https://musicbrainz.org/release/add`, which the user reviews and submits from their own logged-in account. Tagmonia never sees MusicBrainz credentials, and a person reviews every submission.
 
 ### 12.1 Flow
 
 ```mermaid
 sequenceDiagram
   participant U as User (browser)
-  participant T as Tagmony API
+  participant T as Tagmonia API
   participant MB as musicbrainz.org
   U->>T: "Create on MusicBrainz" for proposal P
   T->>T: Duplicate check (barcode, title+artist, external URLs -> MBID)
@@ -686,8 +686,8 @@ sequenceDiagram
 ### 12.2 Details
 
 - **Seed building:** reuse Harmony's seeding module on the merged release. It also knows which data can only go into the annotation.
-- **Edit note:** list every provider URL used, the Tagmony version, and a link format that identifies the snapshot timestamp. Keep it factual; MusicBrainz editors rely on edit notes.
-- **redirect_uri:** `https://<tagmony-public-url>/mb/callback?submission=<id>`. MusicBrainz appends `release_mbid`. If the user has no public URL configured, the callback still works because it is opened by the user's own browser on the same network.
+- **Edit note:** list every provider URL used, the Tagmonia version, and a link format that identifies the snapshot timestamp. Keep it factual; MusicBrainz editors rely on edit notes.
+- **redirect_uri:** `https://<tagmonia-public-url>/mb/callback?submission=<id>`. MusicBrainz appends `release_mbid`. If the user has no public URL configured, the callback still works because it is opened by the user's own browser on the same network.
 - **Callback security:** the `submission` id must belong to the logged-in user and be in state `seeded`; the `release_mbid` is verified by fetching it from the MusicBrainz API before anything is written.
 - **Cover art:** cannot be seeded. After the callback, offer a link to the release's "Add cover art" page and show the best image found by providers with its source, so the user can upload it.
 - **ISRCs:** offer the follow-up step for ISRC submission (Harmony also links to this). Do not automate it in v1.
@@ -713,28 +713,28 @@ Debounce: at most one rescan request per server per minute, so a large batch doe
 
 ## 14. Security
 
-Tagmony has **read-write access to the user's entire music library** and stores third-party API credentials. Treat it as a sensitive service even on a home network.
+Tagmonia has **read-write access to the user's entire music library** and stores third-party API credentials. Treat it as a sensitive service even on a home network.
 
 ### 14.1 Authentication
 
-- **Authentication is mandatory.** On first start, the UI requires creating an admin account (or the admin password is supplied via `TAGMONY_ADMIN_PASSWORD_FILE`). There is no "auth disabled" mode; for reverse-proxy setups use OIDC or trusted-header mode below.
+- **Authentication is mandatory.** On first start, the UI requires creating an admin account (or the admin password is supplied via `TAGMONIA_ADMIN_PASSWORD_FILE`). There is no "auth disabled" mode; for reverse-proxy setups use OIDC or trusted-header mode below.
 - Passwords hashed with **Argon2id** via `hash-wasm` (D20): 19 MiB, t=2, p=1 (OWASP minimum); minimum length 10.
 - The UI's auth probe `GET /api/auth/session` is public alongside login and setup; it returns only whether setup is required, and the user and CSRF token of the caller's own session (D23).
 - Login rate limiting per IP and per account, with exponential delay.
-- **Sessions:** random 256-bit IDs; the database stores only their SHA-256. Cookie `HttpOnly`, `SameSite=Lax`, `Secure` when `TAGMONY_PUBLIC_URL` is https. Idle timeout (default 7 days) and absolute lifetime (default 30 days) set in `settings.json` → `auth`.
+- **Sessions:** random 256-bit IDs; the database stores only their SHA-256. Cookie `HttpOnly`, `SameSite=Lax`, `Secure` when `TAGMONIA_PUBLIC_URL` is https. Idle timeout (default 7 days) and absolute lifetime (default 30 days) set in `settings.json` → `auth`.
 - **Optional OIDC** (Authorization Code + PKCE) for users who run an identity provider, with a configurable group/role claim for admin access.
 - **Optional trusted-header mode** for users behind an authenticating reverse proxy: disabled by default, only accepted from configured proxy IPs.
 
 ### 14.2 Request security
 
 - **CSRF:** synchronizer token for all state-changing API calls, plus `Origin`/`Referer` checks.
-- **Content Security Policy:** `default-src 'self'`; images also allowed from configured cover-art hosts or proxied through Tagmony (preferred, so the browser never talks to third parties directly except for the MusicBrainz seeding tab).
+- **Content Security Policy:** `default-src 'self'`; images also allowed from configured cover-art hosts or proxied through Tagmonia (preferred, so the browser never talks to third parties directly except for the MusicBrainz seeding tab).
 - The seeding form POST to `musicbrainz.org` is the one intentional cross-origin navigation; it opens in a new tab with `rel="noopener noreferrer"`.
 - Security headers: `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `frame-ancestors 'none'`.
 
 ### 14.3 Data protection
 
-- Provider tokens and music-server credentials encrypted at rest with a key derived from `TAGMONY_SECRET_KEY` (or a key file in `/config` generated on first start, permissions `0600`).
+- Provider tokens and music-server credentials encrypted at rest with a key derived from `TAGMONIA_SECRET_KEY` (or a key file in `/config` generated on first start, permissions `0600`).
 - Secrets never returned by the API after being saved; the UI shows "set" / "not set".
 - Logs never contain tokens, passwords, cookies or full provider URLs with credentials. Add a log redaction test.
 
@@ -743,7 +743,7 @@ Tagmony has **read-write access to the user's entire music library** and stores 
 - Every path from the database or API is resolved with `realpath` and must stay inside the music root. Reject symlinks that point outside it unless explicitly allowed.
 - The container runs as a **non-root** user (`PUID`/`PGID` supported, as is common in homelab images).
 - Writes use the atomic procedure in §11.1; free-space check before a batch.
-- A global **read-only mode** switch for trying Tagmony safely on an existing library.
+- A global **read-only mode** switch for trying Tagmonia safely on an existing library.
 
 ### 14.5 Outbound requests
 
@@ -769,14 +769,14 @@ Tagmony has **read-write access to the user's entire music library** and stores 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `TAGMONY_MUSIC_DIR` | `/music` | Library root |
-| `TAGMONY_CONFIG_DIR` | `/config` | Database, settings, snapshots, keys |
-| `TAGMONY_PORT` | `8080` | HTTP port |
-| `TAGMONY_PUBLIC_URL` | unset | Used for the MusicBrainz `redirect_uri` and secure cookies |
-| `TAGMONY_ADMIN_PASSWORD_FILE` | unset | Bootstrap admin password from a Docker secret |
-| `TAGMONY_SECRET_KEY` | generated | Encryption key for stored credentials |
-| `TAGMONY_READ_ONLY` | `false` | Never write to the library |
-| `TAGMONY_LOG_LEVEL` | `info` | |
+| `TAGMONIA_MUSIC_DIR` | `/music` | Library root |
+| `TAGMONIA_CONFIG_DIR` | `/config` | Database, settings, snapshots, keys |
+| `TAGMONIA_PORT` | `8080` | HTTP port |
+| `TAGMONIA_PUBLIC_URL` | unset | Used for the MusicBrainz `redirect_uri` and secure cookies |
+| `TAGMONIA_ADMIN_PASSWORD_FILE` | unset | Bootstrap admin password from a Docker secret |
+| `TAGMONIA_SECRET_KEY` | generated | Encryption key for stored credentials |
+| `TAGMONIA_READ_ONLY` | `false` | Never write to the library |
+| `TAGMONIA_LOG_LEVEL` | `info` | |
 | `PUID` / `PGID` | `1000` | Run-as user |
 
 Everything else (providers, thresholds, precedence, integrations) is managed in the UI and stored in `/config/settings.json`, validated against a schema at startup.
@@ -785,21 +785,21 @@ Everything else (providers, thresholds, precedence, integrations) is managed in 
 
 ```yaml
 services:
-  tagmony:
-    image: ghcr.io/<owner>/tagmony:latest
-    container_name: tagmony
+  tagmonia:
+    image: ghcr.io/<owner>/tagmonia:latest
+    container_name: tagmonia
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       - PUID=1000
       - PGID=1000
-      - TAGMONY_PUBLIC_URL=https://tagmony.home.example
+      - TAGMONIA_PUBLIC_URL=https://tagmonia.home.example
     volumes:
       - /path/to/music:/music
-      - tagmony-config:/config
+      - tagmonia-config:/config
 volumes:
-  tagmony-config:
+  tagmonia-config:
 ```
 
 ---
@@ -871,24 +871,24 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 | # | Date | Decision | Alternatives | Reason |
 |---|---|---|---|---|
-| D1 | 2026-11-22 | Name: **Tagmony** | Tutti, Trichord, Tagchord, others | Chosen by maintainer; logo is four strands resolving into one note |
+| D1 | 2026-11-22 | Name: **Tagmony** (superseded by D30) | Tutti, Trichord, Tagchord, others | Chosen by maintainer; logo is four strands resolving into one note |
 | D2 | 2026-11-22 | Deno + TypeScript backend | Python, Go, Rust | Reuse Harmony (MIT, TypeScript) providers, merge and seeding; one language for UI and server |
 | D3 | 2026-11-22 | Tag I/O behind `TagIO`, implementation decided by conformance spike | Commit to a library up front | Tag-writing correctness (M4A, OGG pictures, multi-value) is the main technical risk |
-| D4 | 2026-11-22 | MusicBrainz submission via release-editor seeding in the user's browser | Server-side automation | No release-creation API exists; keeps credentials out of Tagmony; human review per edit |
+| D4 | 2026-11-22 | MusicBrainz submission via release-editor seeding in the user's browser | Server-side automation | No release-creation API exists; keeps credentials out of Tagmonia; human review per edit |
 | D5 | 2026-11-22 | YouTube as opt-in, evidence-only provider via the official Data API | Unofficial YouTube Music API | Terms-of-service risk and fragility; YouTube data lacks barcodes |
 | D6 | 2026-11-22 | Authentication mandatory | Optional auth | App has write access to the whole library |
 | D7 | 2026-11-23 | **TagIO = Python mutagen sidecar** (§11.4 option B) | taglib-wasm 2.4.1 / TagLib 2.3.2 (option A) | A failed 15/46 conformance steps because TagLib's PropertyMap rewrites tags it was not asked to touch. Every write dropped Vorbis `TOTALTRACKS`/`TOTALDISCS`, added a spurious ID3 `COMM:ID3v1 Comment` frame, and added an MP4 `----:…:ACOUSTID_ID` atom next to Picard's `Acoustid Id`. It also upper-cased new `TXXX` descriptions and `TMCL` roles, joined performer names with commas, and wrote `WORK` to `TIT1`. The fixes would mean bypassing the PropertyMap, and the wrapper's raw MP4 API is single-valued. mutagen passes everything and is the library Picard itself uses. A's reads all passed, so it stays a candidate for a fast read-only scanner. |
 | D8 | 2026-11-23 | Canonical model: removed `musicbrainz_releasetrackid`; `musicbrainz_trackid` is the release-track MBID. `albumartists` is mapped to `TXXX:ALBUMARTISTS` / `ALBUMARTISTS` / `----:com.apple.iTunes:ALBUMARTISTS` | Keep both names | In Picard, `musicbrainz_trackid` already *is* the release-track MBID, so the extra field was a duplicate. `albumartists` is not in Picard's table; the chosen keys follow the `ARTISTS` convention that Navidrome and Jellyfin read. |
 | D9 | 2026-11-23 | Tags Picard's table lists as n/a for MP4: `originaldate` → `----:com.apple.iTunes:originaldate`; `performer` is not stored in MP4. Vorbis writes both `TRACKTOTAL`/`TOTALTRACKS` and `DISCTOTAL`/`TOTALDISCS`; ID3 `work` → `TXXX:WORK` | Invent MP4 keys; write `TIT1` | Matches what Picard actually writes. Its `formats/mp4.py` stores unmapped tags as freeform atoms named after the internal name and skips `performer:*`. Its Vorbis writer emits both total keys, and `TXXX:WORK` is its default. |
 | D10 | 2026-11-23 | MP4 covers read back as type "front" with no description | Store type in a custom atom | `covr` has no type or description field; this is Picard's behaviour as well. |
-| D11 | 2026-11-23 | `Picture.mime` accepts any `image/*` | JPEG/PNG only | Files in the wild carry GIF/BMP covers, and backups must restore them exactly. New pictures Tagmony writes are JPEG/PNG; MP4 accepts only those two. |
+| D11 | 2026-11-23 | `Picture.mime` accepts any `image/*` | JPEG/PNG only | Files in the wild carry GIF/BMP covers, and backups must restore them exactly. New pictures Tagmonia writes are JPEG/PNG; MP4 accepts only those two. |
 | D12 | 2026-11-23 | Harmony integration rules | — | Harmony is a Deno workspace member; its modules import cleanly outside Fresh, apart from a harmless "lock" warning. Never import `lookup.ts` or `providers/mod.ts`: at import time they build a global registry with Harmony's User-Agent and write `snaps.db` to the current directory. The adapter builds its own `ProviderRegistry`. Provider credentials are read from `Deno.env` when a provider module loads, so the adapter sets them first and imports dynamically; changing credentials needs a restart. Discogs uses a consumer key and secret. `musicbrainz/api_client.ts` hard-codes Harmony's User-Agent, which must be resolved in Phase 2 before any MusicBrainz request. Bandcamp and Beatport scrape HTML, so they were excluded pending D16. |
 | D13 | 2026-11-23 | All development and test tooling runs in Docker (`docker/dev.Dockerfile`, `scripts/dk`); CI uses the same image | Install Deno, ffmpeg and mutagen on the host | Maintainer requirement; local runs and CI stay identical. |
 | D14 | 2026-11-23 | The image runs the server from source with `deno run --cached-only`; `deno task build` = type check + SPA build | `deno compile` | The Python sidecar must exist on the real filesystem, which a compiled binary's embedded files do not provide. |
 | D15 | 2026-11-23 | `ARCHITECTURE.md` lives in `docs/`; `CLAUDE.md` lives in the repository root. `deno fmt` excludes both | Both in `docs/` | The maintainer moved the docs to `docs/`, then asked for `CLAUDE.md` where Claude Code loads it automatically (the root). fmt would otherwise reflow and re-align their Markdown tables. |
 | D16 | 2026-11-23 | Bandcamp and Beatport approved as **opt-in** providers (exception to CLAUDE.md safety rule 6) | Drop them | Maintainer decision. Neither offers an official API, and both are useful for releases missing from MusicBrainz (Phase 5). They are never on by default, use only Harmony's fixed hosts and the same rate limiting, and must degrade to "unavailable" when page markup changes. The adapter marks them in `OPT_IN_PROVIDERS`. |
-| D17 | 2026-11-23 | Tagmony is licensed **GPL-3.0** | MIT, AGPL-3.0 | Maintainer decision. Compatible with mutagen (GPL-2.0-or-later, D7) and Harmony (MIT). |
-| D18 | 2026-11-23 | User-Agent contact = project URL `https://github.com/cdalamagkas/tagmony` | Email address | MusicBrainz accepts a URL or an email as the contact; the repository URL avoids publishing a personal address. |
+| D17 | 2026-11-23 | Tagmonia is licensed **GPL-3.0** | MIT, AGPL-3.0 | Maintainer decision. Compatible with mutagen (GPL-2.0-or-later, D7) and Harmony (MIT). |
+| D18 | 2026-11-23 | User-Agent contact = project URL `https://github.com/cdalamagkas/tagmonia` | Email address | MusicBrainz accepts a URL or an email as the contact; the repository URL avoids publishing a personal address. |
 | D19 | 2026-11-23 | SQLite through Deno's built-in `node:sqlite` | `jsr:@db/sqlite` (FFI), `npm:better-sqlite3` (native add-on) | No dependency, no native binary or FFI download at runtime, works on amd64 and arm64. Supports WAL, JSON functions and `RETURNING` (SQLite 3.53). The database file is created `0600`. |
 | D20 | 2026-11-23 | Argon2id via `npm:hash-wasm` 4.12.0 | `@node-rs/argon2` (native), Python `argon2-cffi` in the sidecar | Pure WebAssembly, MIT, no dependencies. 4.13.0 was 16 days old, so the year-old 4.12.0 is pinned. |
 | D21 | 2026-11-23 | The scanner never follows symlinks; it counts and reports them | Follow links that stay inside the root | A link inside the root points at files the walk reaches anyway, and one leading outside is rejected by §14.4. An explicit opt-in for outside targets can come later. |
@@ -900,6 +900,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D27 | 2026-11-23 | Genre policy default: MusicBrainz genres | Off; Discogs styles | Maintainer choice (§18 Q3). |
 | D28 | 2026-11-23 | Deep classical support in v1 (§6.3): composer, arranger, performers by instrument, conductor, work hierarchy and movement fields | Basic credits only; defer | Maintainer choice (§18 Q4). Uses Picard's own tag names (`movement`, `movementnumber`, `movementtotal`, `showmovement`, `arranger`, `composersort`), so no custom tags are needed. |
 | D29 | 2026-11-23 | v1 is single-user (one admin) | Roles (admin, reviewer) | Maintainer choice (§18 Q5); confirms D25. |
+| D30 | 2026-11-23 | Renamed to **Tagmonia** ("tag" + αρμονία, Greek for harmony): app name, `TAGMONIA_*` variables, cookie `tagmonia_session`, database `tagmonia.db`, repository `cdalamagkas/tagmonia` | Keep Tagmony | Maintainer choice: a meaningful root and no "tag money" reading when spoken. Done before any release, so nothing depends on the old names. The wordmark was regenerated from the brand fonts; the mark is unchanged. |
 
 ---
 

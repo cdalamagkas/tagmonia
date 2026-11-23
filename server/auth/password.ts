@@ -39,7 +39,7 @@ let dummy: Promise<string> | undefined;
 
 /** Burns the same time as a real check, so unknown usernames are not revealed by timing. */
 export async function verifyAgainstDummy(password: string): Promise<false> {
-  dummy ??= hashPassword("tagmony-dummy-password");
+  dummy ??= hashPassword("tagmonia-dummy-password");
   await verifyPassword(password, await dummy);
   return false;
 }

@@ -7,7 +7,7 @@
  */
 import { globToRegExp } from "@std/path/glob-to-regexp";
 import { join } from "node:path";
-import { type AudioFormat, isTagmonyTempFile } from "../tagio/mod.ts";
+import { type AudioFormat, isTagmoniaTempFile } from "../tagio/mod.ts";
 
 export const AUDIO_EXTENSIONS: Readonly<Record<string, AudioFormat>> = {
   flac: "flac",
@@ -85,7 +85,7 @@ export async function* walkLibrary(
         subdirs.push(rel);
         continue;
       }
-      if (!e.isFile || isTagmonyTempFile(e.name)) continue;
+      if (!e.isFile || isTagmoniaTempFile(e.name)) continue;
       const format = extensionFormat(e.name);
       if (!format) continue;
       if (ignored(rel)) {

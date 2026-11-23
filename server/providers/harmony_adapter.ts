@@ -16,7 +16,7 @@ import { createReleaseSeed } from "../../vendor/harmony/musicbrainz/seeding.ts";
 import type { MetadataProvider, MetadataProviderConstructor } from "../../vendor/harmony/providers/base.ts";
 import type { HarmonyRelease, MergedHarmonyRelease, ReleaseOptions } from "../../vendor/harmony/harmonizer/types.ts";
 
-/** Harmony's harmonized release, re-exported so the rest of Tagmony is independent of Harmony's layout. */
+/** Harmony's harmonized release, re-exported so the rest of Tagmonia is independent of Harmony's layout. */
 export type HarmonizedRelease = HarmonyRelease;
 export type MergedRelease = MergedHarmonyRelease;
 export type HarmonyReleaseOptions = ReleaseOptions;
@@ -139,14 +139,14 @@ export function mergeProviderReleases(
 }
 
 export interface SeedOptions {
-  /** Tagmony project URL, cited in the edit note. */
+  /** Tagmonia project URL, cited in the edit note. */
   projectUrl: URL;
   /** Where MusicBrainz sends the browser after submission (§12.2). */
   redirectUrl?: URL;
 }
 
 /**
- * Release-editor seed form fields (§12). Phase 5 adds Tagmony's edit note on top.
+ * Release-editor seed form fields (§12). Phase 5 adds Tagmonia's edit note on top.
  * The result is only ever POSTed by the user's browser, never by the server.
  */
 export function buildReleaseSeed(release: HarmonizedRelease, opts: SeedOptions): Record<string, string> {

@@ -1,8 +1,8 @@
-# Tagmony brand identity
+# Tagmonia brand identity
 
-![Tagmony logo](preview-logo.png)
+![Tagmonia logo](preview-logo.png)
 
-**Tags in harmony.** Tagmony identifies music files, gathers metadata from several providers, and resolves them into one correct set of tags.
+**Tags in harmony.** Tagmonia identifies music files, gathers metadata from several providers, and resolves them into one correct set of tags.
 
 ## The mark
 
@@ -21,24 +21,24 @@ Four strands converge into a single orange note. The strands are the metadata pr
 
 | Need | File |
 |---|---|
-| App header, README banner, website | `svg/tagmony-logo-horizontal.svg` (light backgrounds) or `svg/tagmony-logo-horizontal-white.svg` (dark backgrounds) |
-| GitHub social preview | `png/tagmony-social-preview.png` (navy, recommended) or `png/tagmony-social-preview-light.png`, both 1280 × 640 |
-| Slides, documents | `png/tagmony-logo-horizontal-on-light@2x.png` or `png/tagmony-logo-horizontal-on-navy@2x.png` |
-| Square layouts, splash screens | `svg/tagmony-logo-stacked-tagline.svg` |
-| Mark alone (avatar, watermark) | `svg/tagmony-mark.svg`, `svg/tagmony-mark-white.svg` |
-| One-color printing or embossing | `svg/tagmony-mark-mono-navy.svg` |
+| App header, README banner, website | `svg/tagmonia-logo-horizontal.svg` (light backgrounds) or `svg/tagmonia-logo-horizontal-white.svg` (dark backgrounds) |
+| GitHub social preview | `png/tagmonia-social-preview.png` (navy, recommended) or `png/tagmonia-social-preview-light.png`, both 1280 × 640 |
+| Slides, documents | `png/tagmonia-logo-horizontal-on-light@2x.png` or `png/tagmonia-logo-horizontal-on-navy@2x.png` |
+| Square layouts, splash screens | `svg/tagmonia-logo-stacked-tagline.svg` |
+| Mark alone (avatar, watermark) | `svg/tagmonia-mark.svg`, `svg/tagmonia-mark-white.svg` |
+| One-color printing or embossing | `svg/tagmonia-mark-mono-navy.svg` |
 | Browser tab | `svg/favicon.svg` + `png/favicon.ico` |
-| Home screen / PWA | `png/apple-touch-icon-180.png`, `png/tagmony-app-icon-192.png`, `png/tagmony-app-icon-512.png`, `png/tagmony-app-icon-maskable-512.png` |
-| Docker Hub / GHCR avatar | `png/tagmony-app-icon-512.png` |
+| Home screen / PWA | `png/apple-touch-icon-180.png`, `png/tagmonia-app-icon-192.png`, `png/tagmonia-app-icon-512.png`, `png/tagmonia-app-icon-maskable-512.png` |
+| Docker Hub / GHCR avatar | `png/tagmonia-app-icon-512.png` |
 
 ## GitHub social preview
 
-In the repository, open **Settings → General → Social preview**, choose **Edit → Upload an image**, and upload `png/tagmony-social-preview.png`. The image is 1280 × 640 px and well under GitHub's 1 MB limit. All content sits in the central area, so nothing important is lost when sites crop the image. Note that social previews of private repositories are only visible to people with access to the repository.
+In the repository, open **Settings → General → Social preview**, choose **Edit → Upload an image**, and upload `png/tagmonia-social-preview.png`. The image is 1280 × 640 px and well under GitHub's 1 MB limit. All content sits in the central area, so nothing important is lost when sites crop the image. Note that social previews of private repositories are only visible to people with access to the repository.
 
 ## Wordmark
 
-- Always lowercase: **tag**mony. In running text, write the name as "Tagmony".
-- "tag" in Space Grotesk Bold, "mony" in Space Grotesk Regular, set as one word with slightly tight tracking.
+- Always lowercase: **tag**monia. In running text, write the name as "Tagmonia". The name joins "tag" and the Greek αρμονία (harmony).
+- "tag" in Space Grotesk Bold, "monia" in Space Grotesk Regular, set as one word with tracking of −0.034 em.
 - Do not retype the wordmark; use the outlined SVGs.
 
 ## Colors
@@ -83,7 +83,7 @@ The mark simplifies as it gets smaller so it stays legible: four strands at 96 p
 
 ## Design source
 
-The concepts and the original artboards live on the Tagmony canvas in Claude: <https://claude.ai/artifact/NAjzh86d7CxvoJwSoaWBhM>. The files in this package are the production masters.
+The concepts and the original artboards (made under the earlier name "Tagmony") live on a canvas in Claude: <https://claude.ai/artifact/NAjzh86d7CxvoJwSoaWBhM>. The files in this package are the production masters. For the rename (D30), the wordmark outlines were regenerated from `fonts/` with the same size, weights and tracking; the mark is unchanged.
 
 ## Licenses
 

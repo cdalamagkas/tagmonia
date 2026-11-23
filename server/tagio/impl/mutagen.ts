@@ -12,7 +12,7 @@ const SIDECAR = fileURLToPath(new URL("./mutagen_sidecar.py", import.meta.url));
 
 export interface MutagenTagIOOptions {
   python?: string;
-  /** Test hook passed to the sidecar as TAGMONY_TAGIO_FAULT. */
+  /** Test hook passed to the sidecar as TAGMONIA_TAGIO_FAULT. */
   fault?: "crash-mid-write";
 }
 
@@ -85,7 +85,7 @@ export class MutagenTagIO implements TagIO {
   #start(): Promise<void> {
     if (this.#ready) return this.#ready;
     const env: Record<string, string> = { PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" };
-    if (this.#opts.fault) env.TAGMONY_TAGIO_FAULT = this.#opts.fault;
+    if (this.#opts.fault) env.TAGMONIA_TAGIO_FAULT = this.#opts.fault;
     const proc = new Deno.Command(this.#opts.python ?? "python3", {
       // -I: isolated mode, so nothing next to the music files can shadow stdlib modules.
       args: ["-I", SIDECAR],

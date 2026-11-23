@@ -1,6 +1,6 @@
-# CLAUDE.md — Tagmony
+# CLAUDE.md — Tagmonia
 
-Tagmony is a self-hosted web app that identifies music files, merges metadata from several providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
+Tagmonia is a self-hosted web app that identifies music files, merges metadata from several providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the source of truth.** Read the sections relevant to your task before writing code. If the code needs to diverge from it, update `ARCHITECTURE.md` in the same change and add a row to its Decision log (§17). Do not silently deviate.
 
@@ -30,7 +30,7 @@ Run `deno task fmt`, `deno task lint` and `deno task test` before considering an
 ## Stack (summary)
 
 - Deno 2 + TypeScript (strict). Hono for HTTP. Preact + Vite for the SPA in `web/`.
-- SQLite (WAL) at `/config/tagmony.db`; numbered SQL migrations in `server/db/migrations/`.
+- SQLite (WAL) at `/config/tagmonia.db`; numbered SQL migrations in `server/db/migrations/`.
 - Harmony vendored as a git submodule at `vendor/harmony`, **pinned to a commit**.
 - Tag I/O only through the `TagIO` interface in `server/tagio/`.
 - `fpcalc` (Chromaprint) for fingerprints.
@@ -59,7 +59,7 @@ Run `deno task fmt`, `deno task lint` and `deno task test` before considering an
 1. **Never write to a real music library during development or tests.** Tests operate on copies of fixtures in a temporary directory.
 2. All tag writes are atomic (temp file, fsync, rename), take a backup first, and verify by re-reading (§11.3).
 3. Every filesystem path is resolved and checked to stay inside the music root (§14.4).
-4. **MusicBrainz:** at most 1 request per second on average, always with the Tagmony `User-Agent`. Never submit edits automatically; submission is only via release-editor seeding in the user's browser (§12).
+4. **MusicBrainz:** at most 1 request per second on average, always with the Tagmonia `User-Agent`. Never submit edits automatically; submission is only via release-editor seeding in the user's browser (§12).
 5. Providers call only their fixed API hosts; user-supplied URLs are matched against a host allowlist before any request (§14.5).
 6. Use only official APIs for providers. No unofficial YouTube Music or scraping-based providers unless the Decision log approves it.
 7. Never log or return secrets (tokens, passwords, cookies). Stored credentials are encrypted at rest (§14.3).

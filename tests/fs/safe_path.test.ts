@@ -9,8 +9,8 @@ Deno.test("relative paths with .., absolute paths or NUL are rejected lexically"
 });
 
 Deno.test("resolveInRoot follows symlinks and refuses targets outside the root (§14.4)", async () => {
-  const root = await Deno.realPath(await Deno.makeTempDir({ prefix: "tagmony-root-" }));
-  const outside = await Deno.realPath(await Deno.makeTempDir({ prefix: "tagmony-outside-" }));
+  const root = await Deno.realPath(await Deno.makeTempDir({ prefix: "tagmonia-root-" }));
+  const outside = await Deno.realPath(await Deno.makeTempDir({ prefix: "tagmonia-outside-" }));
   try {
     await Deno.mkdir(`${root}/A`);
     await Deno.writeTextFile(`${root}/A/in.txt`, "x");

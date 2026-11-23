@@ -1,6 +1,6 @@
 /**
  * Login throttling per IP and per account with exponential delay (ARCHITECTURE.md §14.1).
- * In memory: Tagmony is a single process, and a restart resetting counters is acceptable.
+ * In memory: Tagmonia is a single process, and a restart resetting counters is acceptable.
  */
 
 export interface ThrottleOptions {

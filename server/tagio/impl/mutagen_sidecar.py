@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tagmony TagIO sidecar (ARCHITECTURE.md §11.4, option B; Decision log D7).
+"""Tagmonia TagIO sidecar (ARCHITECTURE.md §11.4, option B; Decision log D7).
 
 Speaks newline-delimited JSON on stdin/stdout. The first message must be
 {"op": "init", "mapping": [...]} carrying server/tagio/mapping.ts, so the field
@@ -30,7 +30,7 @@ from mutagen.oggvorbis import OggVorbis
 MAPPING = []
 PIC_TYPES = {3: "front", 4: "back"}
 PIC_CODES = {"front": 3, "back": 4, "other": 0}
-FAULT = os.environ.get("TAGMONY_TAGIO_FAULT", "")
+FAULT = os.environ.get("TAGMONIA_TAGIO_FAULT", "")
 # Per-request: the scanner only needs picture metadata, not megabytes of base64 per file.
 READ_PICTURE_DATA = True
 

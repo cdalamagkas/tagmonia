@@ -30,7 +30,7 @@ export function AuthPage({ mode, onDone }: { mode: "setup" | "login"; onDone: (s
         <h1>{mode === "setup" ? "Create the admin account" : "Sign in"}</h1>
         {mode === "setup" && (
           <p class="tm-muted">
-            Tagmony can change every file in your library, so it always requires a password. This account is created
+            Tagmonia can change every file in your library, so it always requires a password. This account is created
             once, on first start.
           </p>
         )}

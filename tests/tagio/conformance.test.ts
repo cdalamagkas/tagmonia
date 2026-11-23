@@ -3,7 +3,7 @@
  * formats for the production implementation. Do not weaken or skip a case to
  * make a change pass (CLAUDE.md); fix the implementation or record a decision.
  *
- * Run against another implementation with TAGMONY_TAGIO_IMPL=taglib-wasm.
+ * Run against another implementation with TAGMONIA_TAGIO_IMPL=taglib-wasm.
  */
 import { assert, assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import { FIELD_MAPPINGS, MP4_FREEFORM } from "../../server/tagio/mapping.ts";

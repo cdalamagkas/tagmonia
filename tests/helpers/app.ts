@@ -9,7 +9,7 @@ import { type Logger, nullLogger } from "../../server/log.ts";
 import { DEFAULT_SETTINGS } from "../../server/settings.ts";
 import { CSRF_HEADER } from "../../shared/types.ts";
 
-export const ORIGIN = "http://tagmony.test";
+export const ORIGIN = "http://tagmonia.test";
 export const PASSWORD = "correct horse battery";
 
 export async function memoryDb(): Promise<Db> {
@@ -36,10 +36,10 @@ export interface TestApp {
 export async function makeTestApp(
   opts: { env?: Record<string, string>; config?: Partial<Config>; logger?: Logger; now?: () => number } = {},
 ): Promise<TestApp> {
-  const musicDir = await Deno.makeTempDir({ prefix: "tagmony-music-" });
-  const configDir = await Deno.makeTempDir({ prefix: "tagmony-config-" });
+  const musicDir = await Deno.makeTempDir({ prefix: "tagmonia-music-" });
+  const configDir = await Deno.makeTempDir({ prefix: "tagmonia-config-" });
   const config = {
-    ...loadConfig({ TAGMONY_MUSIC_DIR: musicDir, TAGMONY_CONFIG_DIR: configDir, ...opts.env }),
+    ...loadConfig({ TAGMONIA_MUSIC_DIR: musicDir, TAGMONIA_CONFIG_DIR: configDir, ...opts.env }),
     ...opts.config,
   };
   const db = await memoryDb();

@@ -5,7 +5,7 @@
  * (https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html), an
  * extract of which is committed at tests/fixtures/picard_tag_map.tsv and
  * checked against this table by tests/tagio/mapping.test.ts. Rows with
- * `picard: null` are Tagmony additions; see the Decision log (D8-D10).
+ * `picard: null` are Tagmonia additions; see the Decision log (D8-D10).
  */
 import type { CanonicalField } from "./types.ts";
 
@@ -225,7 +225,7 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
     vorbis: ["MUSICBRAINZ_ALBUMARTISTID"],
     mp4: ff("MusicBrainz Album Artist Id"),
   },
-  // Provider IDs: Tagmony custom tags (§11.2).
+  // Provider IDs: Tagmonia custom tags (§11.2).
   {
     field: "discogs_release_id",
     kind: "text",

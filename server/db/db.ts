@@ -53,8 +53,8 @@ export function migrate(db: Db, migrations: Migration[]): number[] {
   );
   const newest = Math.max(0, ...done);
   if (migrations.length < newest) {
-    // Refuse to run an older Tagmony on a database a newer one has migrated.
-    throw new Error(`database schema v${newest} is newer than this version of Tagmony supports`);
+    // Refuse to run an older Tagmonia on a database a newer one has migrated.
+    throw new Error(`database schema v${newest} is newer than this version of Tagmonia supports`);
   }
   const applied: number[] = [];
   for (const m of migrations) {

@@ -1,5 +1,5 @@
 /**
- * TagIO: the only boundary through which Tagmony reads or writes audio tags
+ * TagIO: the only boundary through which Tagmonia reads or writes audio tags
  * (ARCHITECTURE.md §6.2, §11.1). Field names follow Picard's internal tag names.
  */
 
@@ -67,7 +67,7 @@ export interface Picture {
   type: PictureType;
   /**
    * Usually image/jpeg or image/png. Other image types found in files are kept
-   * so backups restore them exactly; new pictures Tagmony writes are JPEG/PNG (D11).
+   * so backups restore them exactly; new pictures Tagmonia writes are JPEG/PNG (D11).
    */
   mime: string;
   /** Empty when read with `pictureData: false`; `size` still reports the stored length. */

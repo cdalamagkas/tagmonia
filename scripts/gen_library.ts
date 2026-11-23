@@ -20,7 +20,7 @@ const { values } = parseArgs({
 const out = values.out!;
 const albums = Number(values.albums);
 const tracksPer = Number(values.tracks);
-const MARKER = ".tagmony-generated";
+const MARKER = ".tagmonia-generated";
 const FORMATS = ["flac", "mp3", "m4a", "ogg", "opus"] as const;
 const FIXTURES = join(import.meta.dirname!, "../tests/fixtures/audio");
 

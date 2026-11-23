@@ -1,6 +1,6 @@
 # Third-party notices
 
-Tagmony includes or distributes the following third-party software. Versions are pinned in
+Tagmonia includes or distributes the following third-party software. Versions are pinned in
 `deno.json`, `deno.lock`, `.gitmodules` (Harmony commit) and the Docker base image.
 
 ## Bundled source
@@ -8,7 +8,7 @@ Tagmony includes or distributes the following third-party software. Versions are
 ### Harmony — MIT
 
 Vendored as a git submodule at `vendor/harmony`, pinned to commit
-`094d904c3cbc15392d8042d8e6924e2478e8669d`. Tagmony uses its provider, harmonizer
+`094d904c3cbc15392d8042d8e6924e2478e8669d`. Tagmonia uses its provider, harmonizer
 and MusicBrainz seeding modules through `server/providers/harmony_adapter.ts`.
 Recorded API responses in `tests/fixtures/snaps/api.deezer.com/` come from Harmony's `testdata/`.
 
@@ -42,17 +42,17 @@ Self-hosted in `web/public/fonts/`; the license text ships alongside as `web/pub
 
 ## Runtime dependencies in the Docker image
 
-| Component                                            | License                                 | Use                                                                 |
-| ---------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
-| Deno                                                 | MIT                                     | Runtime (base image `denoland/deno`)                                |
-| Hono                                                 | MIT                                     | HTTP framework                                                      |
-| Zod                                                  | MIT                                     | Runtime schema validation                                           |
-| hash-wasm                                            | MIT                                     | Argon2id password hashing (D20)                                     |
-| Deno standard library (`@std/path`)                  | MIT                                     | Glob matching for scanner ignore patterns                           |
-| Preact                                               | MIT                                     | Web UI (bundled into `web/dist`)                                    |
-| mutagen (Debian `python3-mutagen`)                   | GPL-2.0-or-later                        | Tag reading/writing via the TagIO sidecar (Tagmony is GPL-3.0, D17) |
-| Python 3 (Debian `python3`)                          | PSF-2.0                                 | Runs the TagIO sidecar                                              |
-| Chromaprint `fpcalc` (Debian `libchromaprint-tools`) | LGPL-2.1-or-later (binary links FFmpeg) | Audio fingerprints                                                  |
+| Component                                            | License                                 | Use                                                                  |
+| ---------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
+| Deno                                                 | MIT                                     | Runtime (base image `denoland/deno`)                                 |
+| Hono                                                 | MIT                                     | HTTP framework                                                       |
+| Zod                                                  | MIT                                     | Runtime schema validation                                            |
+| hash-wasm                                            | MIT                                     | Argon2id password hashing (D20)                                      |
+| Deno standard library (`@std/path`)                  | MIT                                     | Glob matching for scanner ignore patterns                            |
+| Preact                                               | MIT                                     | Web UI (bundled into `web/dist`)                                     |
+| mutagen (Debian `python3-mutagen`)                   | GPL-2.0-or-later                        | Tag reading/writing via the TagIO sidecar (Tagmonia is GPL-3.0, D17) |
+| Python 3 (Debian `python3`)                          | PSF-2.0                                 | Runs the TagIO sidecar                                               |
+| Chromaprint `fpcalc` (Debian `libchromaprint-tools`) | LGPL-2.1-or-later (binary links FFmpeg) | Audio fingerprints                                                   |
 
 Debian packages carry their full license texts under `/usr/share/doc/<package>/copyright`
 in the image; corresponding source is available from Debian.

@@ -53,7 +53,7 @@ export function App() {
     <>
       <header class="tm-header">
         <a href="/" onClick={onLinkClick} class="tm-home">
-          <img src="/tagmony-logo-horizontal-white.svg" alt="Tagmony" />
+          <img src="/tagmonia-logo-horizontal-white.svg" alt="Tagmonia" />
         </a>
         {auth?.user && (
           <nav class="tm-nav">

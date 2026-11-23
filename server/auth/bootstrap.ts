@@ -1,4 +1,4 @@
-/** Bootstrap admin from TAGMONY_ADMIN_PASSWORD_FILE (a Docker secret), §14.1. */
+/** Bootstrap admin from TAGMONIA_ADMIN_PASSWORD_FILE (a Docker secret), §14.1. */
 import type { Db } from "../db/db.ts";
 import { countUsers, createFirstAdmin } from "../db/repo/users.ts";
 import type { Logger } from "../log.ts";
@@ -12,9 +12,9 @@ export async function bootstrapAdmin(db: Db, passwordFile: string | undefined, l
   // Trailing newlines come from `echo pw > file`; other whitespace is part of the password.
   const password = (await Deno.readTextFile(passwordFile)).replace(/[\r\n]+$/, "");
   if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new Error(`TAGMONY_ADMIN_PASSWORD_FILE: password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    throw new Error(`TAGMONIA_ADMIN_PASSWORD_FILE: password must be at least ${MIN_PASSWORD_LENGTH} characters`);
   }
   const user = createFirstAdmin(db, BOOTSTRAP_USERNAME, await hashPassword(password), Date.now());
-  if (user) logger.info("admin user created from TAGMONY_ADMIN_PASSWORD_FILE", { user: user.username });
+  if (user) logger.info("admin user created from TAGMONIA_ADMIN_PASSWORD_FILE", { user: user.username });
   return !!user;
 }

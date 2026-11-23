@@ -7,16 +7,16 @@ import { z } from "zod";
 const bool = z.enum(["true", "false", "1", "0"]).transform((v) => v === "true" || v === "1");
 
 const envSchema = z.object({
-  TAGMONY_MUSIC_DIR: z.string().min(1).default("/music"),
-  TAGMONY_CONFIG_DIR: z.string().min(1).default("/config"),
-  TAGMONY_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-  TAGMONY_PUBLIC_URL: z.url({ protocol: /^https?$/ }).optional(),
-  TAGMONY_ADMIN_PASSWORD_FILE: z.string().min(1).optional(),
-  TAGMONY_SECRET_KEY: z.string().min(32).optional(),
-  TAGMONY_READ_ONLY: bool.default(false),
-  TAGMONY_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  TAGMONIA_MUSIC_DIR: z.string().min(1).default("/music"),
+  TAGMONIA_CONFIG_DIR: z.string().min(1).default("/config"),
+  TAGMONIA_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
+  TAGMONIA_PUBLIC_URL: z.url({ protocol: /^https?$/ }).optional(),
+  TAGMONIA_ADMIN_PASSWORD_FILE: z.string().min(1).optional(),
+  TAGMONIA_SECRET_KEY: z.string().min(32).optional(),
+  TAGMONIA_READ_ONLY: bool.default(false),
+  TAGMONIA_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   /** Directory of the built SPA; unset in dev, where Vite serves it. */
-  TAGMONY_WEB_DIR: z.string().min(1).optional(),
+  TAGMONIA_WEB_DIR: z.string().min(1).optional(),
 });
 
 export interface Config {
@@ -41,14 +41,14 @@ export function loadConfig(env: Record<string, string | undefined> = Deno.env.to
   }
   const e = parsed.data;
   return {
-    musicDir: e.TAGMONY_MUSIC_DIR,
-    configDir: e.TAGMONY_CONFIG_DIR,
-    port: e.TAGMONY_PORT,
-    publicUrl: e.TAGMONY_PUBLIC_URL,
-    adminPasswordFile: e.TAGMONY_ADMIN_PASSWORD_FILE,
-    secretKey: e.TAGMONY_SECRET_KEY,
-    readOnly: e.TAGMONY_READ_ONLY,
-    logLevel: e.TAGMONY_LOG_LEVEL,
-    webDir: e.TAGMONY_WEB_DIR,
+    musicDir: e.TAGMONIA_MUSIC_DIR,
+    configDir: e.TAGMONIA_CONFIG_DIR,
+    port: e.TAGMONIA_PORT,
+    publicUrl: e.TAGMONIA_PUBLIC_URL,
+    adminPasswordFile: e.TAGMONIA_ADMIN_PASSWORD_FILE,
+    secretKey: e.TAGMONIA_SECRET_KEY,
+    readOnly: e.TAGMONIA_READ_ONLY,
+    logLevel: e.TAGMONIA_LOG_LEVEL,
+    webDir: e.TAGMONIA_WEB_DIR,
   };
 }
