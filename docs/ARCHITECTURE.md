@@ -346,6 +346,30 @@ export interface Picture {
 }
 ```
 
+### 6.3 Classical music (D28)
+
+Classical support is in scope for v1 and goes beyond basic credits. Every field below has a Picard mapping (`tests/fixtures/picard_tag_map.tsv`), so files stay readable by Picard, Navidrome and Jellyfin.
+
+**Canonical fields added to §6.2** (track-level):
+
+| Field | Source in MusicBrainz | Notes |
+|---|---|---|
+| `composer`, `composersort` | Work → composer relationship | Sort name from the artist entity |
+| `lyricist` | Work → lyricist/librettist relationships | |
+| `arranger` | Recording or work → arranger/orchestrator relationships | Multi |
+| `conductor` | Recording → conductor relationship | Already in §6.2 |
+| `performer` | Recording → performer/instrument/vocal relationships | Role keys as Picard writes them, e.g. `piano`, `soprano vocals`, `orchestra`, `choir`, `chorus master` |
+| `work`, `musicbrainz_workid` | Recording → performance → work; top-level parent work for `work` | `work` is the whole piece (e.g. "Symphony No. 5 in C minor, Op. 67") |
+| `movement`, `movementnumber`, `movementtotal` | The performed work's position among the parent work's parts (part-of relationship and its order) | Only set when the parent work has ordered parts |
+| `showmovement` | Derived | `1` when movement fields are set, so players that support it show work + movement |
+
+**Rules**
+
+- Fetch release data with recording-level and work-level relationships and the parent works, so one release lookup plus parent-work lookups is enough; every request goes through the MusicBrainz rate limiter and the snapshot cache.
+- Never rewrite `title`: the MusicBrainz track title stays as is. Work and movement live in their own fields.
+- Classical track titles vary a lot between releases, so identification relies more on durations, track count and fingerprints for these releases (§8.1 weights are tuned on fixtures that include classical releases).
+- The review UI groups classical credits (work, movement, composer, performers, conductor) so they can be checked at a glance.
+
 ---
 
 ## 7. Library scanning
@@ -513,7 +537,7 @@ Default policy, configurable per field in settings:
 | Release date | MusicBrainz → Deezer → iTunes → Discogs | Streaming stores often have precise day-level dates when MB has only a year |
 | Original date | MusicBrainz (release group first release) | |
 | Label, catalog number, barcode, country, media | MusicBrainz → Discogs | Discogs is strongest for physical pressings |
-| Genre | Configurable: MusicBrainz genres, Discogs genres/styles, or none | Genre is subjective; default off to avoid surprises |
+| Genre | **MusicBrainz genres** by default (D27): release-group and release genres merged by vote count, up to 5, written to `genre`. Configurable: Discogs genres/styles, or none | Maintainer choice; MusicBrainz genres are a curated list, not free-form tags |
 | Cover art | Cover Art Archive → largest available from other providers | Show resolution and source in the UI |
 | ISRC | MusicBrainz → Deezer → Spotify | |
 | Provider IDs | Each provider for its own ID | |
@@ -809,12 +833,14 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 - MusicBrainz provider with rate limiting and snapshots; AcoustID + `fpcalc`.
 - Identification order (§8), scoring, edition picker, track mapping.
+- Classical fields (§6.3) in the canonical model, `mapping.ts` and the conformance suite; release lookups fetch the relationships they need.
+- Labelled fixture set in `tests/identify/` from recorded responses, including classical, multi-disc, compilation and untagged releases.
 
-**Done when:** labelled identification fixtures reach the target accuracy agreed in the decision log; edition picker shows real alternatives.
+**Done when:** the labelled fixtures meet the D26 target; the edition picker shows real alternatives.
 
 ### Phase 3 — Review and write
 
-- Proposal building, provenance, precedence, locks (§10).
+- Proposal building, provenance, precedence, locks (§10), including classical credits (§6.3) and MusicBrainz genres (D27).
 - Review UI with per-field diff, source chips, conflict resolution.
 - Write procedure with backups, verification and undo (§11.3); Navidrome and Jellyfin rescan (§13).
 
@@ -870,16 +896,20 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D23 | 2026-11-23 | Request security: Origin/Referer check on every state-changing `/api` request, including login and setup; a synchronizer CSRF token per session in `X-CSRF-Token`; `GET /api/auth/session` is public | Double-submit cookie | The Origin check blocks login CSRF before any session exists. The public probe tells the UI whether to show setup or login, and returns a CSRF token only to its own session. |
 | D24 | 2026-11-23 | `TagIO.read` takes `{ pictureData: false }`; `Picture.size` reports the stored length | A separate scanner-only method | Real libraries embed covers of several MB per file; sending them as base64 to every scan would be gigabytes of wasted transfer. |
 | D25 | 2026-11-23 | Phase 1 has one user (the first admin); the schema has `is_admin` for later roles | Build roles now | §18 Q5 is still open; nothing in Phase 1 needs a second user. |
+| D26 | 2026-11-23 | Phase 2 accuracy target on the labelled fixture set (at least 50 releases): **no wrong release at or above `auto_threshold`**; correct release ranked first in ≥ 90% of cases; correct release among the candidates shown in ≥ 98% | A single top-1 figure (e.g. ≥ 95%) | Maintainer had no preference, so this was proposed. A wrong confident match is what damages a library; a correct release ranked second only costs a click in review. Revisit after Phase 2 with real data. |
+| D27 | 2026-11-23 | Genre policy default: MusicBrainz genres | Off; Discogs styles | Maintainer choice (§18 Q3). |
+| D28 | 2026-11-23 | Deep classical support in v1 (§6.3): composer, arranger, performers by instrument, conductor, work hierarchy and movement fields | Basic credits only; defer | Maintainer choice (§18 Q4). Uses Picard's own tag names (`movement`, `movementnumber`, `movementtotal`, `showmovement`, `arranger`, `composersort`), so no custom tags are needed. |
+| D29 | 2026-11-23 | v1 is single-user (one admin) | Roles (admin, reviewer) | Maintainer choice (§18 Q5); confirms D25. |
 
 ---
 
 ## 18. Open questions
 
 1. ~~**License**~~ — resolved: GPL-3.0 (D17).
-2. **Identification accuracy target** for Phase 2 (e.g. ≥ 95% top-1 on the labelled fixture set).
-3. **Genre policy** default: off, MusicBrainz genres, or Discogs styles.
-4. **Classical support depth** in v1: work/composer/performer credits from MusicBrainz relationships, or defer to a later phase.
-5. **Multiple users** with roles (admin, reviewer) — needed in v1 or later?
+2. ~~**Identification accuracy target**~~ — resolved (D26, proposed; revisit after Phase 2).
+3. ~~**Genre policy**~~ — resolved: MusicBrainz genres (D27).
+4. ~~**Classical support depth**~~ — resolved: deep support in v1 (D28, §6.3).
+5. ~~**Multiple users**~~ — resolved: single user in v1 (D29).
 6. **Local MusicBrainz mirror** support documented as a first-class option for very large libraries?
 7. ~~**Bandcamp and Beatport**~~ — resolved: opt-in (D16).
 8. ~~**Public repository URL**~~ — resolved (D18).
