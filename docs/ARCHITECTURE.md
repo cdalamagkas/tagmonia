@@ -175,17 +175,24 @@ tagmony/
 │   └── dev.Dockerfile         # dev/test toolchain image (D13)
 ├── scripts/
 │   ├── dk                     # run a command in the dev container
-│   └── gen_fixtures.sh        # generate tests/fixtures/audio
+│   ├── gen_fixtures.sh        # generate tests/fixtures/audio
+│   └── gen_library.ts         # synthetic library in dev/music for scale checks
 ├── vendor/
 │   └── harmony/               # git submodule, pinned commit
 ├── server/
 │   ├── main.ts                # boot: config, migrations, queue, HTTP
-│   ├── config.ts              # env + /config/settings.json, validated
+│   ├── config.ts              # env, validated
+│   ├── settings.ts            # /config/settings.json, validated
+│   ├── log.ts                 # structured logging with secret redaction (§14.3)
+│   ├── auth/                  # Argon2id passwords, sessions, login throttle, admin bootstrap
+│   ├── fs/
+│   │   └── safe_path.ts       # music-root confinement (§14.4)
 │   ├── http/
 │   │   ├── app.ts             # Hono app, middleware order
 │   │   ├── auth.ts            # sessions, login, CSRF
 │   │   └── routes/            # one file per resource
 │   ├── db/
+│   │   ├── db.ts              # node:sqlite, WAL, migration runner (D19)
 │   │   ├── migrations/        # 0001_init.sql, ...
 │   │   └── repo/              # typed data-access functions
 │   ├── jobs/
@@ -194,7 +201,7 @@ tagmony/
 │   │   ├── identify.ts
 │   │   ├── enrich.ts
 │   │   └── write.ts
-│   ├── scanner/               # filesystem walk, grouping
+│   ├── scanner/               # walk.ts, group.ts, scan.ts (§7)
 │   ├── identify/              # candidate search, scoring, fingerprint
 │   ├── providers/
 │   │   ├── harmony_adapter.ts
@@ -208,6 +215,7 @@ tagmony/
 │   │   ├── atomic.ts          # temp copy, fsync, rename (§11.1)
 │   │   ├── verify.ts          # round-trip verification (§11.3)
 │   │   ├── schema.ts          # runtime validation of sidecar output
+│   │   ├── sniff.ts           # magic-byte format check (§7)
 │   │   └── impl/
 │   │       ├── mutagen.ts           # production TagIO: client for the sidecar (D7)
 │   │       ├── mutagen_sidecar.py   # Python/mutagen process, NDJSON over stdio
@@ -260,8 +268,8 @@ erDiagram
 
 | Entity | Purpose | Key columns |
 |---|---|---|
-| `library_file` | One audio file on disk | `id`, `path` (relative to music root), `size`, `mtime`, `format`, `duration_ms`, `fingerprint`, `acoustid_id`, `current_tags` (JSON), `scanned_at` |
-| `candidate` | A group of files believed to form one release (usually a folder) | `id`, `folder`, `file_ids`, `hint_artist`, `hint_album`, `hint_track_count`, `status` |
+| `library_file` | One audio file on disk | `id`, `path` (relative to music root), `size`, `mtime`, `format`, `duration_ms`, `fingerprint`, `acoustid_id`, `current_tags` (JSON), `pictures` (JSON metadata, no bytes), `read_error`, `candidate_id`, `scanned_at` |
+| `candidate` | A group of files believed to form one release (usually a folder) | `id`, `group_key` (stable across rescans), `folder`, `hint_artist`, `hint_album`, `hint_mbid`, `hint_track_count`, `content_hash`, `status`; member files point to it via `library_file.candidate_id` |
 | `match` | A scored MusicBrainz release for a candidate | `candidate_id`, `release_mbid`, `score`, `method` (`existing_mbid`, `text`, `fingerprint`, `barcode`, `manual`), `track_mapping` (JSON) |
 | `proposal` | Merged metadata for one candidate + chosen match | `id`, `candidate_id`, `release_mbid` (nullable for not-in-MB), `state` (`draft`, `needs_review`, `approved`, `written`, `discarded`), `created_at` |
 | `field_proposal` | One canonical field, release- or track-level | `proposal_id`, `scope` (`release` or track position), `field`, `current_value`, `proposed_value`, `decision` (`auto`, `accepted`, `edited`, `kept_current`), `locked` |
@@ -346,14 +354,16 @@ export interface Picture {
 
 **Steps**
 
-1. Walk the tree, skipping hidden directories, `@eaDir` (Synology), `#recycle`, and configured ignore globs.
+1. Walk the tree, skipping hidden entries, `@eaDir` (Synology), `#recycle`, configured ignore globs (`settings.json` → `scanner.ignore`) and all symlinks (D21).
 2. For each audio file (by extension and magic bytes), compare `size` + `mtime` with the database. Unchanged files are skipped.
 3. Read tags and technical properties through `TagIO.read`. Store the canonical tags as `current_tags`.
 4. **Grouping into candidates:**
-   - Primary: files in the same folder that share `album` + `albumartist` (or `musicbrainz_albumid` when present).
+   - Primary: files in the same folder that share `album` + `albumartist` (or `musicbrainz_albumid` when present). The track artist is not part of the key, so compilations stay together (D22).
    - Multi-disc folders (`CD1`, `Disc 2`, ...) under one parent are merged into one candidate when album tags agree.
    - A folder with mixed albums is split by album tag; files with no album tag stay a "loose files" candidate for fingerprinting.
-5. Enqueue `identify` jobs for new or changed candidates.
+5. Enqueue `identify` jobs for new or changed candidates. Until Phase 2 adds the identifier, the scan result lists them (`candidatesTouched`) and their `status` is `new` or `changed`.
+
+Scanning only reads the library (it runs in read-only mode too). Unreadable files are kept with a `read_error`, so the UI can show them.
 
 **Watch mode (W7):** use `Deno.watchFs` on an optional inbox folder; debounce events for 30 s after the last change before scanning, so partial copies are not processed. Polling fallback every N minutes for network filesystems where inotify does not work (SMB/NFS mounts are common on NAS setups).
 
@@ -528,7 +538,8 @@ When no MusicBrainz release matches (W6), the proposal is built from the other p
 ```ts
 // server/tagio/types.ts (sketch)
 export interface TagIO {
-  read(path: string): Promise<{ tags: CanonicalTags; pictures: Picture[]; audio: AudioProps; raw: RawTagDump }>;
+  // pictureData: false returns picture type/mime/size without the bytes (the scanner's case, D24)
+  read(path: string, options?: { pictureData?: boolean }): Promise<{ tags: CanonicalTags; pictures: Picture[]; audio: AudioProps; raw: RawTagDump }>;
   write(path: string, change: TagChange): Promise<void>;
 }
 
@@ -683,9 +694,10 @@ Tagmony has **read-write access to the user's entire music library** and stores 
 ### 14.1 Authentication
 
 - **Authentication is mandatory.** On first start, the UI requires creating an admin account (or the admin password is supplied via `TAGMONY_ADMIN_PASSWORD_FILE`). There is no "auth disabled" mode; for reverse-proxy setups use OIDC or trusted-header mode below.
-- Passwords hashed with **Argon2id** (library chosen in Phase 0; parameters in config, sensible defaults).
+- Passwords hashed with **Argon2id** via `hash-wasm` (D20): 19 MiB, t=2, p=1 (OWASP minimum); minimum length 10.
+- The UI's auth probe `GET /api/auth/session` is public alongside login and setup; it returns only whether setup is required, and the user and CSRF token of the caller's own session (D23).
 - Login rate limiting per IP and per account, with exponential delay.
-- **Sessions:** random 256-bit IDs stored server-side; cookie `HttpOnly`, `SameSite=Lax`, `Secure` when served over HTTPS; idle timeout and absolute lifetime configurable.
+- **Sessions:** random 256-bit IDs; the database stores only their SHA-256. Cookie `HttpOnly`, `SameSite=Lax`, `Secure` when `TAGMONY_PUBLIC_URL` is https. Idle timeout (default 7 days) and absolute lifetime (default 30 days) set in `settings.json` → `auth`.
 - **Optional OIDC** (Authorization Code + PKCE) for users who run an identity provider, with a configurable group/role claim for admin access.
 - **Optional trusted-header mode** for users behind an authenticating reverse proxy: disabled by default, only accepted from configured proxy IPs.
 
@@ -791,6 +803,8 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Done when:** a library of a few hundred albums scans, shows correctly grouped releases and current tags; login required everywhere.
 
+**Status:** done 2026-11-23. A synthetic library of 300 albums / 3305 files (`scripts/gen_library.ts`, including two-disc sets and compilations) scans in about 9 s, and an unchanged rescan in about 0.6 s. Releases, multi-disc merging and current tags were checked in the API and in a browser. `tests/http/auth.test.ts` walks every registered route and checks that each one requires a session. Findings: D19–D25.
+
 ### Phase 2 — Identify with MusicBrainz
 
 - MusicBrainz provider with rate limiting and snapshots; AcoustID + `fpcalc`.
@@ -849,6 +863,13 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D16 | 2026-11-23 | Bandcamp and Beatport approved as **opt-in** providers (exception to CLAUDE.md safety rule 6) | Drop them | Maintainer decision. Neither offers an official API, and both are useful for releases missing from MusicBrainz (Phase 5). They are never on by default, use only Harmony's fixed hosts and the same rate limiting, and must degrade to "unavailable" when page markup changes. The adapter marks them in `OPT_IN_PROVIDERS`. |
 | D17 | 2026-11-23 | Tagmony is licensed **GPL-3.0** | MIT, AGPL-3.0 | Maintainer decision. Compatible with mutagen (GPL-2.0-or-later, D7) and Harmony (MIT). |
 | D18 | 2026-11-23 | User-Agent contact = project URL `https://github.com/cdalamagkas/tagmony` | Email address | MusicBrainz accepts a URL or an email as the contact; the repository URL avoids publishing a personal address. |
+| D19 | 2026-11-23 | SQLite through Deno's built-in `node:sqlite` | `jsr:@db/sqlite` (FFI), `npm:better-sqlite3` (native add-on) | No dependency, no native binary or FFI download at runtime, works on amd64 and arm64. Supports WAL, JSON functions and `RETURNING` (SQLite 3.53). The database file is created `0600`. |
+| D20 | 2026-11-23 | Argon2id via `npm:hash-wasm` 4.12.0 | `@node-rs/argon2` (native), Python `argon2-cffi` in the sidecar | Pure WebAssembly, MIT, no dependencies. 4.13.0 was 16 days old, so the year-old 4.12.0 is pinned. |
+| D21 | 2026-11-23 | The scanner never follows symlinks; it counts and reports them | Follow links that stay inside the root | A link inside the root points at files the walk reaches anyway, and one leading outside is rejected by §14.4. An explicit opt-in for outside targets can come later. |
+| D22 | 2026-11-23 | Grouping details: album key = MBID, else normalised `albumartist` + `album`; disc folders match `cd`/`disc`/`disk`/`disco`/`disque` + number; a unit = a folder plus its disc subfolders; files without an album tag form one loose candidate per folder; candidate identity = `[unit folder, album key]` | Track artist in the key | The track artist would split compilations. A stable `group_key` keeps candidate ids across rescans for later proposals. |
+| D23 | 2026-11-23 | Request security: Origin/Referer check on every state-changing `/api` request, including login and setup; a synchronizer CSRF token per session in `X-CSRF-Token`; `GET /api/auth/session` is public | Double-submit cookie | The Origin check blocks login CSRF before any session exists. The public probe tells the UI whether to show setup or login, and returns a CSRF token only to its own session. |
+| D24 | 2026-11-23 | `TagIO.read` takes `{ pictureData: false }`; `Picture.size` reports the stored length | A separate scanner-only method | Real libraries embed covers of several MB per file; sending them as base64 to every scan would be gigabytes of wasted transfer. |
+| D25 | 2026-11-23 | Phase 1 has one user (the first admin); the schema has `is_admin` for later roles | Build roles now | §18 Q5 is still open; nothing in Phase 1 needs a second user. |
 
 ---
 
