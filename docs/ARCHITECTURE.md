@@ -6,7 +6,7 @@
 |---|---|
 | Status | Draft 1, design baseline for implementation |
 | Audience | Maintainer, and the Claude Code agent implementing it |
-| Last updated | 2026-11-22 |
+| Last updated | 2026-11-23 (Phase 0 findings: D7–D15) |
 
 This document is the source of truth for design decisions. When implementation reveals that a decision is wrong, update this file in the same pull request as the code change, and record the change in [§17 Decision log](#17-decision-log).
 
@@ -162,13 +162,20 @@ Harmony is TypeScript; most modules use web standards and run outside its Fresh 
 
 ```text
 tagmony/
-├── ARCHITECTURE.md            # this file
-├── CLAUDE.md                  # agent instructions (conventions, commands)
+├── docs/
+│   └── ARCHITECTURE.md        # this file
+├── CLAUDE.md                  # agent instructions (root so Claude Code loads it automatically)
+├── LICENSE                    # GPL-3.0 (D17)
 ├── README.md
 ├── THIRD_PARTY_NOTICES.md
 ├── deno.json                  # tasks, imports, compiler options
 ├── Dockerfile
 ├── docker-compose.example.yml
+├── docker/
+│   └── dev.Dockerfile         # dev/test toolchain image (D13)
+├── scripts/
+│   ├── dk                     # run a command in the dev container
+│   └── gen_fixtures.sh        # generate tests/fixtures/audio
 ├── vendor/
 │   └── harmony/               # git submodule, pinned commit
 ├── server/
@@ -198,7 +205,13 @@ tagmony/
 │   ├── tagio/
 │   │   ├── types.ts           # TagIO interface, canonical tag model
 │   │   ├── mapping.ts         # canonical field -> per-format keys
-│   │   └── impl/              # chosen implementation(s)
+│   │   ├── atomic.ts          # temp copy, fsync, rename (§11.1)
+│   │   ├── verify.ts          # round-trip verification (§11.3)
+│   │   ├── schema.ts          # runtime validation of sidecar output
+│   │   └── impl/
+│   │       ├── mutagen.ts           # production TagIO: client for the sidecar (D7)
+│   │       ├── mutagen_sidecar.py   # Python/mutagen process, NDJSON over stdio
+│   │       └── taglib_wasm.ts       # spike implementation, kept for re-evaluation
 │   ├── musicbrainz/
 │   │   ├── seed.ts            # wraps Harmony seeding, adds edit note
 │   │   └── callback.ts        # redirect_uri handler
@@ -215,9 +228,13 @@ tagmony/
 │   └── types.ts               # API DTOs shared by server and web
 └── tests/
     ├── fixtures/
-    │   ├── audio/             # generated test files (see §11.5)
+    │   ├── audio/             # generated test files (see §11.5), gitignored
+    │   ├── generate_audio.py  # reference writer (ffmpeg + mutagen)
+    │   ├── fixture_tags.json  # canonical tags the fixtures carry
+    │   ├── picard_tag_map.tsv # extract of Picard's tag mapping table
     │   └── snaps/             # recorded provider responses
-    ├── tagio/                 # conformance suite
+    ├── helpers/               # replaying fetch, shared test utilities
+    ├── tagio/                 # conformance suite, raw inspector
     ├── merge/
     ├── identify/
     └── e2e/
@@ -281,7 +298,7 @@ export interface CanonicalTags {
   performer?: Record<string, Multi>;   // role -> names
   work?: string;
   musicbrainz_recordingid?: string;
-  musicbrainz_trackid?: string;        // release track MBID
+  musicbrainz_trackid?: string;        // release-track MBID (Picard's name; see D8)
   musicbrainz_artistid?: Multi;
   musicbrainz_workid?: Multi;
   acoustid_id?: string;
@@ -306,7 +323,6 @@ export interface CanonicalTags {
   musicbrainz_albumid?: string;
   musicbrainz_releasegroupid?: string;
   musicbrainz_albumartistid?: Multi;
-  musicbrainz_releasetrackid?: string;
 
   // provider IDs (custom tags, see §11.2)
   discogs_release_id?: string;
@@ -316,7 +332,7 @@ export interface CanonicalTags {
 
 export interface Picture {
   type: "front" | "back" | "other";
-  mime: "image/jpeg" | "image/png";
+  mime: string;                        // any image/* read from files; Tagmony writes JPEG/PNG (D11)
   data: Uint8Array;
   description?: string;
 }
@@ -417,8 +433,8 @@ export interface Provider {
 | Tier | Providers | Default | Credentials |
 |---|---|---|---|
 | Core | MusicBrainz, Cover Art Archive, AcoustID | On | AcoustID application API key (free, user-supplied) |
-| Enrichment | Discogs, Deezer, iTunes | On (Discogs only if a token is set) | Discogs personal access token |
-| Optional | Bandcamp, Beatport, Tidal, Spotify | Off | Per provider; Spotify and Tidal need app credentials |
+| Enrichment | Discogs, Deezer, iTunes | On (Discogs only if credentials are set) | Discogs consumer key + secret (what Harmony's provider uses, D12) |
+| Optional | Bandcamp, Beatport, Tidal, Spotify | Off | Per provider; Spotify and Tidal need app credentials. Bandcamp and Beatport have no official API; Harmony reads their public pages, so they are opt-in only and never on by default (D16) |
 | Optional, evidence only | YouTube | Off | YouTube Data API key |
 
 Commercial APIs change without notice (Spotify has removed endpoints that Harmony relied on). Every optional provider must degrade to "unavailable" without breaking a lookup.
@@ -426,7 +442,7 @@ Commercial APIs change without notice (Spotify has removed endpoints that Harmon
 ### 9.3 Rate limiting and politeness
 
 - One **token bucket per provider**, configured in `settings.json`. Defaults must be conservative and documented with the date they were checked.
-- **MusicBrainz:** at most 1 request per second on average, and every request sends a meaningful `User-Agent`, e.g. `Tagmony/0.1.0 ( https://github.com/<owner>/tagmony )`. Allow pointing the base URL at a local MusicBrainz mirror for large libraries.
+- **MusicBrainz:** at most 1 request per second on average, and every request sends a meaningful `User-Agent`, `Tagmony/<version> ( https://github.com/cdalamagkas/tagmony )` (`server/version.ts`, D18). Allow pointing the base URL at a local MusicBrainz mirror for large libraries.
 - Retries: exponential backoff with jitter on 429/503; respect `Retry-After`.
 - All provider calls go through the snapshot cache (§9.4) first.
 
@@ -536,15 +552,20 @@ Follow MusicBrainz Picard's tag mapping table as the authoritative reference (li
 | `artists` | `TXXX:ARTISTS` (multi) | `ARTISTS` (repeated) | `----:com.apple.iTunes:ARTISTS` (one atom, multiple values) |
 | `albumartist` | `TPE2` | `ALBUMARTIST` | `aART` |
 | `album` | `TALB` | `ALBUM` | `©alb` |
-| `tracknumber` / `totaltracks` | `TRCK` (`n/total`) | `TRACKNUMBER`, `TRACKTOTAL` | `trkn` |
-| `discnumber` / `totaldiscs` | `TPOS` | `DISCNUMBER`, `DISCTOTAL` | `disk` |
+| `tracknumber` / `totaltracks` | `TRCK` (`n/total`) | `TRACKNUMBER`, `TRACKTOTAL` **and** `TOTALTRACKS` | `trkn` |
+| `discnumber` / `totaldiscs` | `TPOS` | `DISCNUMBER`, `DISCTOTAL` **and** `TOTALDISCS` | `disk` |
 | `isrc` | `TSRC` | `ISRC` | `----:com.apple.iTunes:ISRC` |
 | `musicbrainz_albumid` | `TXXX:MusicBrainz Album Id` | `MUSICBRAINZ_ALBUMID` | `----:com.apple.iTunes:MusicBrainz Album Id` |
 | `musicbrainz_recordingid` | `UFID:http://musicbrainz.org` | `MUSICBRAINZ_TRACKID` | `----:com.apple.iTunes:MusicBrainz Track Id` |
+| `musicbrainz_trackid` (release track) | `TXXX:MusicBrainz Release Track Id` | `MUSICBRAINZ_RELEASETRACKID` | `----:com.apple.iTunes:MusicBrainz Release Track Id` |
+| `work` | `TXXX:WORK` | `WORK` | `©wrk` |
+| `originaldate` | `TDOR` | `ORIGINALDATE` | `----:com.apple.iTunes:originaldate` (D9) |
+| `performer` | `TMCL` (role, name pairs) | `PERFORMER=Name (role)` | not stored, as in Picard (D9) |
+| `albumartists` | `TXXX:ALBUMARTISTS` | `ALBUMARTISTS` | `----:com.apple.iTunes:ALBUMARTISTS` (not in Picard's table, D8) |
 | front cover | `APIC` type 3 | FLAC: `PICTURE` block; OGG/Opus: `METADATA_BLOCK_PICTURE` | `covr` |
 | provider IDs | `TXXX:DISCOGS_RELEASE_ID`, ... | `DISCOGS_RELEASE_ID`, ... | `----:com.apple.iTunes:DISCOGS_RELEASE_ID`, ... |
 
-> Note that Picard's naming is historical: Vorbis `MUSICBRAINZ_TRACKID` holds the **recording** MBID, while `MUSICBRAINZ_RELEASETRACKID` holds the release-track MBID. Verify every row against the Picard documentation during Phase 0 and treat the conformance tests as the final word.
+> Note that Picard's naming is historical: Vorbis `MUSICBRAINZ_TRACKID` holds the **recording** MBID, while `MUSICBRAINZ_RELEASETRACKID` holds the release-track MBID. Every row was verified against the Picard documentation in Phase 0 (2026-11-23): `tests/tagio/mapping.test.ts` checks `mapping.ts` against an extract of Picard's table (`tests/fixtures/picard_tag_map.tsv`), and the conformance tests are the final word. MP4 `covr` has no picture-type field, so MP4 covers always read back as front covers (D10).
 
 **Multi-value rules**
 
@@ -576,6 +597,8 @@ Phase 0 evaluates candidate implementations against the conformance suite (§11.
 
 **Decision rule:** choose the first option that passes 100% of the conformance suite on all five formats. If A fails any test that matters for Navidrome/Jellyfin and the failure cannot be fixed quickly, choose B. Record the result in the decision log. Reading for the scanner may use a faster read-only library if it passes the read half of the suite.
 
+**Result (Phase 0, 2026-11-23): option B, the mutagen sidecar (D7).** taglib-wasm 2.4.1 (TagLib 2.3.2) read every fixture correctly but failed 15 of 46 conformance steps on writes; mutagen passed all 46 plus the crash test. The sidecar is a long-lived `python3 -I` process speaking newline-delimited JSON on stdio. It receives `mapping.ts` at start-up, so the mapping has one source of truth, and only ever edits a temp copy; `atomic.ts` does the copy, fsync, mode/owner restore and rename.
+
 ### 11.5 Conformance test suite
 
 Fixtures in `tests/fixtures/audio/` are **generated**, not committed binaries from real music:
@@ -592,7 +615,9 @@ Required test cases:
 5. Unknown and custom tags already in the file are preserved after a write.
 6. Unicode: Greek, Japanese, combining characters, emoji in titles.
 7. Atomicity: a simulated crash mid-write leaves the original file intact.
-8. Optional integration test: run Navidrome in Docker against the fixtures and assert via its API that multi-artist tracks show all artists.
+8. Optional integration test: run Navidrome in Docker against the fixtures and assert via its API that multi-artist tracks show all artists. *(Deferred to Phase 3, whose "Done when" already requires a real Navidrome check.)*
+
+Additional cases in the suite: a write changes nothing except the requested fields (raw before/after diff), field removal, `tracknumber` updates keep `totaltracks`, file mode is preserved, and ID3v2.3 is read without splitting `/`-joined values.
 
 ---
 
@@ -756,6 +781,8 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Done when:** the conformance suite passes for the chosen TagIO implementation on all five formats; Harmony lookup by URL works from a Deno test.
 
+**Status:** done 2026-11-23. Conformance passes for the mutagen sidecar on all five formats; the Harmony URL lookup, merge and seeding run in `tests/providers/harmony_adapter.test.ts` against recorded responses. Findings: D7–D15.
+
 ### Phase 1 — Scan and read
 
 - SQLite schema and migrations; job queue.
@@ -810,18 +837,31 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D4 | 2026-11-22 | MusicBrainz submission via release-editor seeding in the user's browser | Server-side automation | No release-creation API exists; keeps credentials out of Tagmony; human review per edit |
 | D5 | 2026-11-22 | YouTube as opt-in, evidence-only provider via the official Data API | Unofficial YouTube Music API | Terms-of-service risk and fragility; YouTube data lacks barcodes |
 | D6 | 2026-11-22 | Authentication mandatory | Optional auth | App has write access to the whole library |
-| | | *(TagIO choice, provider limits, scoring targets, etc. to be added)* | | |
+| D7 | 2026-11-23 | **TagIO = Python mutagen sidecar** (§11.4 option B) | taglib-wasm 2.4.1 / TagLib 2.3.2 (option A) | A failed 15/46 conformance steps because TagLib's PropertyMap rewrites tags it was not asked to touch. Every write dropped Vorbis `TOTALTRACKS`/`TOTALDISCS`, added a spurious ID3 `COMM:ID3v1 Comment` frame, and added an MP4 `----:…:ACOUSTID_ID` atom next to Picard's `Acoustid Id`. It also upper-cased new `TXXX` descriptions and `TMCL` roles, joined performer names with commas, and wrote `WORK` to `TIT1`. The fixes would mean bypassing the PropertyMap, and the wrapper's raw MP4 API is single-valued. mutagen passes everything and is the library Picard itself uses. A's reads all passed, so it stays a candidate for a fast read-only scanner. |
+| D8 | 2026-11-23 | Canonical model: removed `musicbrainz_releasetrackid`; `musicbrainz_trackid` is the release-track MBID. `albumartists` is mapped to `TXXX:ALBUMARTISTS` / `ALBUMARTISTS` / `----:com.apple.iTunes:ALBUMARTISTS` | Keep both names | In Picard, `musicbrainz_trackid` already *is* the release-track MBID, so the extra field was a duplicate. `albumartists` is not in Picard's table; the chosen keys follow the `ARTISTS` convention that Navidrome and Jellyfin read. |
+| D9 | 2026-11-23 | Tags Picard's table lists as n/a for MP4: `originaldate` → `----:com.apple.iTunes:originaldate`; `performer` is not stored in MP4. Vorbis writes both `TRACKTOTAL`/`TOTALTRACKS` and `DISCTOTAL`/`TOTALDISCS`; ID3 `work` → `TXXX:WORK` | Invent MP4 keys; write `TIT1` | Matches what Picard actually writes. Its `formats/mp4.py` stores unmapped tags as freeform atoms named after the internal name and skips `performer:*`. Its Vorbis writer emits both total keys, and `TXXX:WORK` is its default. |
+| D10 | 2026-11-23 | MP4 covers read back as type "front" with no description | Store type in a custom atom | `covr` has no type or description field; this is Picard's behaviour as well. |
+| D11 | 2026-11-23 | `Picture.mime` accepts any `image/*` | JPEG/PNG only | Files in the wild carry GIF/BMP covers, and backups must restore them exactly. New pictures Tagmony writes are JPEG/PNG; MP4 accepts only those two. |
+| D12 | 2026-11-23 | Harmony integration rules | — | Harmony is a Deno workspace member; its modules import cleanly outside Fresh, apart from a harmless "lock" warning. Never import `lookup.ts` or `providers/mod.ts`: at import time they build a global registry with Harmony's User-Agent and write `snaps.db` to the current directory. The adapter builds its own `ProviderRegistry`. Provider credentials are read from `Deno.env` when a provider module loads, so the adapter sets them first and imports dynamically; changing credentials needs a restart. Discogs uses a consumer key and secret. `musicbrainz/api_client.ts` hard-codes Harmony's User-Agent, which must be resolved in Phase 2 before any MusicBrainz request. Bandcamp and Beatport scrape HTML, so they were excluded pending D16. |
+| D13 | 2026-11-23 | All development and test tooling runs in Docker (`docker/dev.Dockerfile`, `scripts/dk`); CI uses the same image | Install Deno, ffmpeg and mutagen on the host | Maintainer requirement; local runs and CI stay identical. |
+| D14 | 2026-11-23 | The image runs the server from source with `deno run --cached-only`; `deno task build` = type check + SPA build | `deno compile` | The Python sidecar must exist on the real filesystem, which a compiled binary's embedded files do not provide. |
+| D15 | 2026-11-23 | `ARCHITECTURE.md` lives in `docs/`; `CLAUDE.md` lives in the repository root. `deno fmt` excludes both | Both in `docs/` | The maintainer moved the docs to `docs/`, then asked for `CLAUDE.md` where Claude Code loads it automatically (the root). fmt would otherwise reflow and re-align their Markdown tables. |
+| D16 | 2026-11-23 | Bandcamp and Beatport approved as **opt-in** providers (exception to CLAUDE.md safety rule 6) | Drop them | Maintainer decision. Neither offers an official API, and both are useful for releases missing from MusicBrainz (Phase 5). They are never on by default, use only Harmony's fixed hosts and the same rate limiting, and must degrade to "unavailable" when page markup changes. The adapter marks them in `OPT_IN_PROVIDERS`. |
+| D17 | 2026-11-23 | Tagmony is licensed **GPL-3.0** | MIT, AGPL-3.0 | Maintainer decision. Compatible with mutagen (GPL-2.0-or-later, D7) and Harmony (MIT). |
+| D18 | 2026-11-23 | User-Agent contact = project URL `https://github.com/cdalamagkas/tagmony` | Email address | MusicBrainz accepts a URL or an email as the contact; the repository URL avoids publishing a personal address. |
 
 ---
 
 ## 18. Open questions
 
-1. **License** for Tagmony itself (MIT, GPL-3.0, AGPL-3.0). Harmony's MIT license is compatible with any of them; AGPL would require source availability for anyone hosting a modified version for others.
+1. ~~**License**~~ — resolved: GPL-3.0 (D17).
 2. **Identification accuracy target** for Phase 2 (e.g. ≥ 95% top-1 on the labelled fixture set).
 3. **Genre policy** default: off, MusicBrainz genres, or Discogs styles.
 4. **Classical support depth** in v1: work/composer/performer credits from MusicBrainz relationships, or defer to a later phase.
 5. **Multiple users** with roles (admin, reviewer) — needed in v1 or later?
 6. **Local MusicBrainz mirror** support documented as a first-class option for very large libraries?
+7. ~~**Bandcamp and Beatport**~~ — resolved: opt-in (D16).
+8. ~~**Public repository URL**~~ — resolved (D18).
 
 ---
 
