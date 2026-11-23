@@ -18,9 +18,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV DENO_DIR=/deno-dir \
-    TAGMONY_WEB_DIR=/app/web/dist \
-    TAGMONY_MUSIC_DIR=/music \
-    TAGMONY_CONFIG_DIR=/config
+    TAGMONIA_WEB_DIR=/app/web/dist \
+    TAGMONIA_MUSIC_DIR=/music \
+    TAGMONIA_CONFIG_DIR=/config
 COPY --from=build /deno-dir /deno-dir
 COPY --from=build /app/deno.json /app/deno.lock ./
 COPY --from=build /app/vendor/harmony ./vendor/harmony

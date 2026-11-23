@@ -12,7 +12,7 @@ export const FIXTURE_TAGS: CanonicalTags = JSON.parse(
   await Deno.readTextFile(join(here, "../fixtures/fixture_tags.json")),
 );
 
-export const IMPL = (Deno.env.get("TAGMONY_TAGIO_IMPL") ?? "mutagen") as TagIOImpl;
+export const IMPL = (Deno.env.get("TAGMONIA_TAGIO_IMPL") ?? "mutagen") as TagIOImpl;
 
 export function newTagIO(): Promise<TagIO> {
   return createTagIO(IMPL);
@@ -29,7 +29,7 @@ export async function fixturesPresent(): Promise<boolean> {
 
 /** Tests only ever touch copies in a fresh temp dir (CLAUDE.md safety rule 1). */
 export async function copyFixture(name: string): Promise<{ path: string; dir: string }> {
-  const dir = await Deno.makeTempDir({ prefix: "tagmony-tagio-" });
+  const dir = await Deno.makeTempDir({ prefix: "tagmonia-tagio-" });
   const path = join(dir, name);
   await Deno.copyFile(join(AUDIO_DIR, name), path);
   return { path, dir };

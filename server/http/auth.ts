@@ -23,7 +23,7 @@ import type { Db } from "../db/db.ts";
 import { countUsers, createFirstAdmin, findUserByName } from "../db/repo/users.ts";
 import type { Logger } from "../log.ts";
 
-export const SESSION_COOKIE = "tagmony_session";
+export const SESSION_COOKIE = "tagmonia_session";
 
 /** Reachable without a session: the auth state probe, login and first-run setup. */
 export const PUBLIC_API: ReadonlySet<string> = new Set([
@@ -39,7 +39,7 @@ export interface AuthDeps {
   sessions: SessionStore;
   throttle: LoginThrottle;
   logger: Logger;
-  /** From TAGMONY_PUBLIC_URL: decides the cookie's Secure flag and the allowed Origin. */
+  /** From TAGMONIA_PUBLIC_URL: decides the cookie's Secure flag and the allowed Origin. */
   publicUrl?: string;
   sessionMaxMs: number;
 }

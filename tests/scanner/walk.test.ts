@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { compileIgnore, walkLibrary, type WalkStats } from "../../server/scanner/walk.ts";
 
 async function tree(files: string[]): Promise<string> {
-  const root = await Deno.realPath(await Deno.makeTempDir({ prefix: "tagmony-walk-" }));
+  const root = await Deno.realPath(await Deno.makeTempDir({ prefix: "tagmonia-walk-" }));
   for (const f of files) {
     const dir = f.slice(0, f.lastIndexOf("/"));
     if (dir) await Deno.mkdir(`${root}/${dir}`, { recursive: true });
@@ -18,7 +18,7 @@ Deno.test("walk finds audio by extension and skips hidden, NAS, temp and ignored
     "A/Album/cover.jpg",
     "A/Album/notes.txt",
     "A/Album/.hidden.flac",
-    "A/Album/.01.flac.tagmony-tmp-1234",
+    "A/Album/.01.flac.tagmonia-tmp-1234",
     ".Trash/x.flac",
     "@eaDir/A/thumb.flac",
     "#recycle/old.mp3",
@@ -27,7 +27,7 @@ Deno.test("walk finds audio by extension and skips hidden, NAS, temp and ignored
     "B/Keep/x.m4a",
     "B/Keep/y.oga",
   ]);
-  const outside = await Deno.makeTempDir({ prefix: "tagmony-outside-" });
+  const outside = await Deno.makeTempDir({ prefix: "tagmonia-outside-" });
   await Deno.writeTextFile(`${outside}/evil.flac`, "x");
   await Deno.symlink(`${outside}/evil.flac`, `${root}/A/Album/03.flac`);
   await Deno.symlink(outside, `${root}/Linked`);

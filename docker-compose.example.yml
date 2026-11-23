@@ -1,18 +1,18 @@
 services:
-  tagmony:
-    #image: ghcr.io/cdalamagkas/tagmony:latest # or `build: .`
+  tagmonia:
+    #image: ghcr.io/cdalamagkas/tagmonia:latest # or `build: .`
     build: .
-    container_name: tagmony
+    container_name: tagmonia
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       - PUID=1000 # honoured from Phase 6; the image currently runs as 1000:1000
       - PGID=1000
-      - TAGMONY_PUBLIC_URL=https://tagmony.home.example
-      - TAGMONY_READ_ONLY=true # recommended for a first try on an existing library
+      - TAGMONIA_PUBLIC_URL=https://tagmonia.home.example
+      - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
     volumes:
       - /mnt/c/Users/Public/Music:/music:ro
-      - tagmony-config:/config
+      - tagmonia-config:/config
 volumes:
-  tagmony-config:
+  tagmonia-config:

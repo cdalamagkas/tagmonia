@@ -17,7 +17,7 @@ jobs:
           submodules: true
       # Same toolchain image as local development (scripts/dk); nothing is installed on the runner.
       - name: Build dev image
-        run: docker build -t tagmony-dev:latest -f docker/dev.Dockerfile docker
+        run: docker build -t tagmonia-dev:latest -f docker/dev.Dockerfile docker
       - name: Generate audio fixtures
         run: scripts/dk scripts/gen_fixtures.sh
       - name: Format check
@@ -39,4 +39,4 @@ jobs:
         with:
           submodules: true
       - name: Build production image
-        run: docker build -t tagmony:ci .
+        run: docker build -t tagmonia:ci .

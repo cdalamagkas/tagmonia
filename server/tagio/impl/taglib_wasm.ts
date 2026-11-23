@@ -2,7 +2,7 @@
  * TagIO spike implementation on taglib-wasm (§11.4 option A).
  *
  * NOT the default. Kept so the conformance suite can be re-run against it
- * (`TAGMONY_TAGIO_IMPL=taglib-wasm deno task test:tagio`) when taglib-wasm
+ * (`TAGMONIA_TAGIO_IMPL=taglib-wasm deno task test:tagio`) when taglib-wasm
  * changes; see Decision log D7 for the failures that ruled it out.
  */
 import { PROPERTIES, TagLib } from "taglib-wasm";

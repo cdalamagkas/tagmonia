@@ -1,6 +1,6 @@
-<p align="center"><img src="brand/svg/tagmony-logo-horizontal.svg" alt="Tagmony" width="360"></p>
+<p align="center"><img src="brand/svg/tagmonia-logo-horizontal.svg" alt="Tagmonia" width="360"></p>
 
-**Tags in harmony.** Tagmony is a self-hosted web app that identifies music files, merges metadata from several
+**Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
 > **Status: Phase 1 (scan and read).** Scans and browses a library read-only; identification and tag writing come next. See the roadmap in
@@ -29,7 +29,7 @@ DK_REBUILD=1 scripts/dk true             # rebuild the dev image
 scripts/dk deno run --allow-read --allow-write --allow-env --allow-run=python3 scripts/gen_library.ts --albums 300
 ```
 
-On first start the UI asks you to create the admin account (or set `TAGMONY_ADMIN_PASSWORD_FILE`).
+On first start the UI asks you to create the admin account (or set `TAGMONIA_ADMIN_PASSWORD_FILE`).
 
 `deno task dev` starts both servers in one container (publish both ports with two `-p` flags if you run it that way).
 
@@ -41,14 +41,14 @@ canonical field on FLAC, OGG Vorbis, Opus, MP3 and M4A against Picard's tag mapp
 independent inspector. To re-run it against the taglib-wasm spike:
 
 ```sh
-scripts/dk sh -c 'TAGMONY_TAGIO_IMPL=taglib-wasm deno task test:tagio'
+scripts/dk sh -c 'TAGMONIA_TAGIO_IMPL=taglib-wasm deno task test:tagio'
 ```
 
 ## Running the image
 
 ```sh
-docker build -t tagmony .
-docker run -p 8080:8080 -v /path/to/music:/music -v tagmony-config:/config tagmony
+docker build -t tagmonia .
+docker run -p 8080:8080 -v /path/to/music:/music -v tagmonia-config:/config tagmonia
 ```
 
 See `docker-compose.example.yml`. Configuration variables are listed in
@@ -76,4 +76,4 @@ Third-party licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 
-Tagmony is licensed under the [GNU General Public License v3.0](LICENSE).
+Tagmonia is licensed under the [GNU General Public License v3.0](LICENSE).

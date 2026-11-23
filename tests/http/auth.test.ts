@@ -72,15 +72,15 @@ Deno.test("concurrent setup requests create exactly one admin", () =>
     assertEquals(countUsers(t.db), 1);
   }));
 
-Deno.test("the session cookie is Secure when TAGMONY_PUBLIC_URL is https", () =>
+Deno.test("the session cookie is Secure when TAGMONIA_PUBLIC_URL is https", () =>
   withApp(async (t) => {
     const res = await t.request("/api/auth/setup", {
       ...json({ username: "admin", password: PASSWORD }),
-      origin: "https://tagmony.example",
+      origin: "https://tagmonia.example",
     });
     assertEquals(res.status, 201);
     assertMatch(res.headers.get("set-cookie")!, /Secure/);
-  }, { env: { TAGMONY_PUBLIC_URL: "https://tagmony.example" } }));
+  }, { env: { TAGMONIA_PUBLIC_URL: "https://tagmonia.example" } }));
 
 Deno.test("login: wrong password and unknown user give the same answer; then throttled with Retry-After", () =>
   withApp(async (t) => {
@@ -136,7 +136,7 @@ Deno.test("cross-origin or origin-less POSTs are refused, including login (login
       method: "POST",
       body,
       origin: null,
-      headers: { referer: "http://tagmony.test/login" },
+      headers: { referer: "http://tagmonia.test/login" },
     });
     assertEquals(viaReferer.status, 200);
   }));
@@ -174,7 +174,7 @@ Deno.test("sessions expire after the idle timeout and the absolute lifetime", as
   db.close();
 });
 
-Deno.test("TAGMONY_ADMIN_PASSWORD_FILE creates 'admin' once and is ignored afterwards", async () => {
+Deno.test("TAGMONIA_ADMIN_PASSWORD_FILE creates 'admin' once and is ignored afterwards", async () => {
   const db = await memoryDb();
   const dir = await Deno.makeTempDir();
   try {

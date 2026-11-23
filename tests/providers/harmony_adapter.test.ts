@@ -8,7 +8,7 @@ import {
 } from "../../server/providers/harmony_adapter.ts";
 import { installReplayFetch } from "../helpers/replay_fetch.ts";
 
-const app = { name: "Tagmony", version: "0.0.0-test", contact: "https://example.invalid/tagmony" };
+const app = { name: "Tagmonia", version: "0.0.0-test", contact: "https://example.invalid/tagmonia" };
 
 Deno.test({
   name: "Harmony lookup by URL works through the adapter (Phase 0 done-when)",
@@ -16,7 +16,7 @@ Deno.test({
   sanitizeOps: false,
   async fn() {
     const replay = installReplayFetch();
-    const snapsDir = await Deno.makeTempDir({ prefix: "tagmony-snaps-" });
+    const snapsDir = await Deno.makeTempDir({ prefix: "tagmonia-snaps-" });
     try {
       const harmony = await createHarmonyRegistry({ app, snapsDir, providers: ["deezer", "itunes"] });
       const release = await harmony.lookupByUrl(new URL("https://www.deezer.com/en/album/629506181"), {
@@ -60,7 +60,7 @@ Deno.test({
     try {
       const harmony = await createHarmonyRegistry({
         app,
-        snapsDir: await Deno.makeTempDir({ prefix: "tagmony-snaps-" }),
+        snapsDir: await Deno.makeTempDir({ prefix: "tagmonia-snaps-" }),
         providers: ["deezer"],
       });
       for (
@@ -93,7 +93,7 @@ Deno.test({
       assertEquals([...OPT_IN_PROVIDERS].sort(), ["bandcamp", "beatport"]);
       const off = await createHarmonyRegistry({
         app,
-        snapsDir: await Deno.makeTempDir({ prefix: "tagmony-snaps-" }),
+        snapsDir: await Deno.makeTempDir({ prefix: "tagmonia-snaps-" }),
         providers: ["deezer"],
       });
       assertEquals(off.providerForUrl(bandcamp), undefined);
@@ -101,7 +101,7 @@ Deno.test({
 
       const on = await createHarmonyRegistry({
         app,
-        snapsDir: await Deno.makeTempDir({ prefix: "tagmony-snaps-" }),
+        snapsDir: await Deno.makeTempDir({ prefix: "tagmonia-snaps-" }),
         providers: ["bandcamp", "beatport"],
       });
       assertEquals(on.providerForUrl(bandcamp), "bandcamp");

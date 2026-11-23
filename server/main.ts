@@ -18,7 +18,7 @@ async function main() {
   const logger = createLogger(config.logLevel);
   await Deno.mkdir(config.configDir, { recursive: true });
   const settings = await loadSettings(config.configDir);
-  const db = await openMigratedDb(join(config.configDir, "tagmony.db"));
+  const db = await openMigratedDb(join(config.configDir, "tagmonia.db"));
   await bootstrapAdmin(db, config.adminPasswordFile, logger);
 
   const tagio = await createTagIO();
@@ -42,7 +42,7 @@ async function main() {
   const server = Deno.serve({
     port: config.port,
     onListen: ({ hostname, port }) =>
-      logger.info(`Tagmony ${VERSION} listening on http://${hostname}:${port}`, { readOnly: config.readOnly }),
+      logger.info(`Tagmonia ${VERSION} listening on http://${hostname}:${port}`, { readOnly: config.readOnly }),
   }, app.fetch);
 
   const shutdown = async () => {

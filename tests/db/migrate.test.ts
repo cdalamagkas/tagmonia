@@ -27,7 +27,7 @@ Deno.test("a failing migration rolls back completely", () => {
   db.close();
 });
 
-Deno.test("refuses a database migrated by a newer Tagmony", async () => {
+Deno.test("refuses a database migrated by a newer Tagmonia", async () => {
   const db = openDb(":memory:");
   const all = await loadMigrations();
   migrate(db, [...all, { version: all.length + 1, name: "future", sql: "SELECT 1" }]);

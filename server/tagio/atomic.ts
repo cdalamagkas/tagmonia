@@ -9,9 +9,9 @@
 import { basename, dirname, join } from "node:path";
 
 /** Suffix the scanner must ignore (server/scanner). */
-export const TEMP_MARKER = ".tagmony-tmp";
+export const TEMP_MARKER = ".tagmonia-tmp";
 
-export function isTagmonyTempFile(name: string): boolean {
+export function isTagmoniaTempFile(name: string): boolean {
   return name.startsWith(".") && name.includes(TEMP_MARKER);
 }
 

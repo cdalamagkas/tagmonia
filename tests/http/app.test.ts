@@ -20,7 +20,7 @@ Deno.test("GET /api/health reports ok with mounted dirs and sets security header
 });
 
 Deno.test("GET /api/health is 503 and leaks no paths when the music root is missing", async () => {
-  const t = await makeTestApp({ config: { musicDir: "/nonexistent/tagmony-music" } });
+  const t = await makeTestApp({ config: { musicDir: "/nonexistent/tagmonia-music" } });
   try {
     const res = await t.request("/api/health");
     assertEquals(res.status, 503);
@@ -48,8 +48,8 @@ Deno.test("config defaults follow ARCHITECTURE.md §15.2", () => {
 
 Deno.test("invalid config names the variable but never echoes its value", () => {
   const secret = "short-secret-value";
-  const err = assertThrows(() => loadConfig({ TAGMONY_SECRET_KEY: secret, TAGMONY_PORT: "99999" }));
+  const err = assertThrows(() => loadConfig({ TAGMONIA_SECRET_KEY: secret, TAGMONIA_PORT: "99999" }));
   const msg = (err as Error).message;
-  assert(msg.includes("TAGMONY_SECRET_KEY") && msg.includes("TAGMONY_PORT"), msg);
+  assert(msg.includes("TAGMONIA_SECRET_KEY") && msg.includes("TAGMONIA_PORT"), msg);
   assert(!msg.includes(secret), msg);
 });

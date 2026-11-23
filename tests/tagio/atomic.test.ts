@@ -1,9 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { join } from "node:path";
-import { atomicModify, isTagmonyTempFile } from "../../server/tagio/atomic.ts";
+import { atomicModify, isTagmoniaTempFile } from "../../server/tagio/atomic.ts";
 
 async function setup(): Promise<{ dir: string; path: string }> {
-  const dir = await Deno.makeTempDir({ prefix: "tagmony-atomic-" });
+  const dir = await Deno.makeTempDir({ prefix: "tagmonia-atomic-" });
   const path = join(dir, "song.flac");
   await Deno.writeTextFile(path, "original");
   return { dir, path };
@@ -52,6 +52,6 @@ Deno.test("temp files are hidden and recognisable so the scanner can skip them",
     seen = tmp.slice(dir.length + 1);
     return Promise.resolve();
   });
-  assertEquals(isTagmonyTempFile(seen), true);
-  assertEquals(isTagmonyTempFile("song.flac"), false);
+  assertEquals(isTagmoniaTempFile(seen), true);
+  assertEquals(isTagmoniaTempFile("song.flac"), false);
 });

@@ -16,7 +16,7 @@ async function isReadableDir(path: string): Promise<boolean> {
 
 async function isWritableDir(path: string): Promise<boolean> {
   try {
-    const probe = await Deno.makeTempFile({ dir: path, prefix: ".tagmony-health-" });
+    const probe = await Deno.makeTempFile({ dir: path, prefix: ".tagmonia-health-" });
     await Deno.remove(probe);
     return true;
   } catch {

@@ -22,7 +22,7 @@ FORMATS = {
     "mp3": ["-c:a", "libmp3lame", "-b:a", "64k"],
     "m4a": ["-c:a", "aac", "-b:a", "64k"],
 }
-UNKNOWN_KEY = "TAGMONY_UNKNOWN_FIELD"
+UNKNOWN_KEY = "TAGMONIA_UNKNOWN_FIELD"
 UNKNOWN_VALUES = ["keep me", "and me"]
 
 
@@ -118,7 +118,7 @@ def write_id3(path, mapping, tags, front, back, version=4):
             id3.add(Frames[fid](encoding=3, text=[f"{n}/{total}" if total else str(n)]))
     id3.add(TXXX(encoding=3, desc=UNKNOWN_KEY, text=UNKNOWN_VALUES))
     id3.add(COMM(encoding=3, lang="eng", desc="", text=["a comment"]))
-    id3.add(PRIV(owner="tagmony-test", data=b"\x00\x01binary\xff"))
+    id3.add(PRIV(owner="tagmonia-test", data=b"\x00\x01binary\xff"))
     id3.add(APIC(encoding=3, mime="image/png", type=3, desc="front", data=front))
     id3.add(APIC(encoding=3, mime="image/jpeg", type=4, desc="back", data=back))
     # v2.3 has no multi-value frames; mutagen joins with '/' like Picard's default.
@@ -144,7 +144,7 @@ def write_mp4(path, mapping, tags, front, back):
         if n:
             f.tags[atom] = [(n, total)]
     f.tags["----:com.apple.iTunes:" + UNKNOWN_KEY] = [MP4FreeForm(v.encode()) for v in UNKNOWN_VALUES]
-    f.tags["----:org.example.tagmony:custom-mean"] = [MP4FreeForm(b"other mean")]
+    f.tags["----:org.example.tagmonia:custom-mean"] = [MP4FreeForm(b"other mean")]
     f.tags["\xa9cmt"] = ["a comment"]
     f.tags["covr"] = [MP4Cover(front, MP4Cover.FORMAT_PNG), MP4Cover(back, MP4Cover.FORMAT_JPEG)]
     f.save()
