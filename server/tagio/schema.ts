@@ -54,6 +54,7 @@ export const pictureWireSchema = z.object({
   // Files in the wild carry GIF/BMP covers too; they must survive a backup/undo cycle.
   mime: z.string().regex(/^image\/[\w.+-]+$/),
   data: base64Bytes,
+  size: z.number().int().nonnegative().optional(),
   description: z.string().optional(),
 });
 

@@ -1,35 +1,68 @@
 import { useEffect, useState } from "preact/hooks";
-import type { HealthResponse } from "../../shared/types.ts";
-import { api } from "./api.ts";
+import type { AuthState } from "../../shared/types.ts";
+import { api, setUnauthorizedHandler } from "./api.ts";
+import { AuthPage } from "./pages/AuthPage.tsx";
+import { LibraryPage } from "./pages/LibraryPage.tsx";
+import { ReleasePage } from "./pages/ReleasePage.tsx";
+import { navigate, onLinkClick, useRoute } from "./router.ts";
 
-/** Phase 0 shell. Library, Review, Providers, Submit and Settings pages arrive in later phases. */
 export function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [auth, setAuth] = useState<AuthState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const route = useRoute();
+
+  const refresh = () => api.session().then((s) => (setAuth(s), setError(null)), (e: Error) => setError(e.message));
 
   useEffect(() => {
-    api.health().then(setHealth, (e: Error) => setError(e.message));
+    setUnauthorizedHandler(refresh);
+    refresh();
   }, []);
+
+  const logout = async () => {
+    await api.logout().catch(() => {});
+    navigate("/");
+    refresh();
+  };
+
+  let body;
+  if (error && !auth) {
+    body = (
+      <main class="tm-narrow">
+        <p class="tm-error">Cannot reach the server: {error}</p>
+      </main>
+    );
+  } else if (!auth) {
+    body = (
+      <main class="tm-narrow">
+        <p class="tm-muted">Loading…</p>
+      </main>
+    );
+  } else if (auth.setupRequired) body = <AuthPage mode="setup" onDone={setAuth} />;
+  else if (!auth.user) body = <AuthPage mode="login" onDone={setAuth} />;
+  else if (route.page === "library") body = <LibraryPage />;
+  else if (route.page === "release") body = <ReleasePage id={route.id} />;
+  else {body = (
+      <main>
+        <p>
+          Page not found. <a href="/" onClick={onLinkClick}>Back to the library</a>
+        </p>
+      </main>
+    );}
 
   return (
     <>
       <header class="tm-header">
-        <img src="/tagmony-logo-horizontal-white.svg" alt="Tagmony" />
+        <a href="/" onClick={onLinkClick} class="tm-home">
+          <img src="/tagmony-logo-horizontal-white.svg" alt="Tagmony" />
+        </a>
+        {auth?.user && (
+          <nav class="tm-nav">
+            <span>{auth.user.username}</span>
+            <button type="button" class="tm-button tm-on-navy" onClick={logout}>Sign out</button>
+          </nav>
+        )}
       </header>
-      <main>
-        <section class="tm-card">
-          <h1>Server status</h1>
-          {error && <p class="tm-muted">Cannot reach the API: {error}</p>}
-          {!health && !error && <p class="tm-muted">Checking…</p>}
-          {health && (
-            <>
-              <p class="tm-muted">Version {health.version}</p>
-              <div class="tm-check">{health.checks.musicRoot ? "✓" : "✗"} Music library mounted</div>
-              <div class="tm-check">{health.checks.configDir ? "✓" : "✗"} Config directory writable</div>
-            </>
-          )}
-        </section>
-      </main>
+      {body}
     </>
   );
 }

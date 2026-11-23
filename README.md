@@ -3,7 +3,7 @@
 **Tags in harmony.** Tagmony is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phase 0 (foundations).** Not usable on a library yet. See the roadmap in
+> **Status: Phase 1 (scan and read).** Scans and browses a library read-only; identification and tag writing come next. See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
 
 - Design and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (source of truth)
@@ -25,7 +25,11 @@ scripts/dk deno task check               # type-check
 DK_PORTS=8080:8080 scripts/dk deno task dev:server   # API on :8080
 DK_PORTS=5173:5173 scripts/dk deno task dev:web      # Vite dev server on :5173 (proxies /api)
 DK_REBUILD=1 scripts/dk true             # rebuild the dev image
+# synthetic 300-album library in dev/music (what dev:server scans); never point it at a real library
+scripts/dk deno run --allow-read --allow-write --allow-env --allow-run=python3 scripts/gen_library.ts --albums 300
 ```
+
+On first start the UI asks you to create the admin account (or set `TAGMONY_ADMIN_PASSWORD_FILE`).
 
 `deno task dev` starts both servers in one container (publish both ports with two `-p` flags if you run it that way).
 
@@ -59,6 +63,9 @@ Every dependency is pinned (`deno.json`, `deno.lock`, the Harmony submodule comm
 | Harmony (submodule)                     | Provider lookups, release merging and MusicBrainz seeding (§4.1)                                  |
 | `hono`                                  | HTTP framework (§4)                                                                               |
 | `zod`                                   | Schema validation of all external input: env, HTTP bodies, sidecar output (CLAUDE.md conventions) |
+| `hash-wasm`                             | Argon2id password hashing, pure WebAssembly (D20)                                                 |
+| `@std/path`                             | Glob matching for the scanner's ignore patterns                                                   |
+| `node:sqlite` (built into Deno)         | Database (D19); not a separate dependency                                                         |
 | `preact`, `vite`, `@preact/preset-vite` | Web UI and its build (§4)                                                                         |
 | `@std/assert`                           | Test assertions                                                                                   |
 | `taglib-wasm`                           | TagIO spike implementation kept so the D7 decision can be re-checked; not used in production      |

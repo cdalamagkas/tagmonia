@@ -47,6 +47,8 @@ Self-hosted in `web/public/fonts/`; the license text ships alongside as `web/pub
 | Deno                                                 | MIT                                     | Runtime (base image `denoland/deno`)                                |
 | Hono                                                 | MIT                                     | HTTP framework                                                      |
 | Zod                                                  | MIT                                     | Runtime schema validation                                           |
+| hash-wasm                                            | MIT                                     | Argon2id password hashing (D20)                                     |
+| Deno standard library (`@std/path`)                  | MIT                                     | Glob matching for scanner ignore patterns                           |
 | Preact                                               | MIT                                     | Web UI (bundled into `web/dist`)                                    |
 | mutagen (Debian `python3-mutagen`)                   | GPL-2.0-or-later                        | Tag reading/writing via the TagIO sidecar (Tagmony is GPL-3.0, D17) |
 | Python 3 (Debian `python3`)                          | PSF-2.0                                 | Runs the TagIO sidecar                                              |
