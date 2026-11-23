@@ -1,0 +1,18 @@
+# generated test fixtures (scripts/gen_fixtures.sh)
+tests/fixtures/audio/
+# build output
+web/dist/
+dist/
+node_modules/
+# local dev data and runtime state
+dev/
+config/
+snaps.db
+*.tagmony-tmp*
+.env
+.env.*
+# python
+__pycache__/
+*.pyc
+# archives dropped into the repo root
+/*.zip
