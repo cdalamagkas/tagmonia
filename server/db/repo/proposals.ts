@@ -14,6 +14,8 @@ export interface StoredFieldProposal {
   field: CanonicalField;
   current: unknown;
   proposed: unknown;
+  /** The user's own value when decision is "edited". */
+  edited: unknown;
   status: FieldStatus;
   decision: Decision;
   locked: boolean;
@@ -109,9 +111,21 @@ export function latestProposal(db: Db, candidateId: number): StoredProposal | un
   const p = db.prepare("SELECT * FROM proposal WHERE candidate_id = ? ORDER BY id DESC LIMIT 1").get(candidateId) as
     | ProposalRow
     | undefined;
-  if (!p) return undefined;
+  return p && loadProposal(db, p);
+}
+
+export function getProposal(db: Db, id: number): StoredProposal | undefined {
+  const p = db.prepare("SELECT * FROM proposal WHERE id = ?").get(id) as ProposalRow | undefined;
+  return p && loadProposal(db, p);
+}
+
+export function setProposalState(db: Db, id: number, state: ProposalState, now: number): void {
+  db.prepare("UPDATE proposal SET state = ?, updated_at = ? WHERE id = ?").run(state, now, id);
+}
+
+function loadProposal(db: Db, p: ProposalRow): StoredProposal {
   const fields = db.prepare(
-    `SELECT id, file_id, field, current_value, proposed_value, status, decision, locked
+    `SELECT id, file_id, field, current_value, proposed_value, edited_value, status, decision, locked
      FROM field_proposal WHERE proposal_id = ? ORDER BY file_id, id`,
   ).all(p.id) as unknown as {
     id: number;
@@ -119,6 +133,7 @@ export function latestProposal(db: Db, candidateId: number): StoredProposal | un
     field: CanonicalField;
     current_value: string | null;
     proposed_value: string;
+    edited_value: string | null;
     status: FieldStatus;
     decision: Decision;
     locked: number;
@@ -161,6 +176,7 @@ export function latestProposal(db: Db, candidateId: number): StoredProposal | un
       field: f.field,
       current: f.current_value === null ? null : JSON.parse(f.current_value),
       proposed: JSON.parse(f.proposed_value),
+      edited: f.edited_value === null ? null : JSON.parse(f.edited_value),
       status: f.status,
       decision: f.decision,
       locked: f.locked === 1,

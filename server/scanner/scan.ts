@@ -41,6 +41,16 @@ async function sha256Hex(s: string): Promise<string> {
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * A candidate's content hash: changes whenever a member file is added, removed
+ * or modified. Shared with the write job, which must leave a hash the next scan
+ * agrees with, or every written release would look "changed" (§11.3).
+ */
+export async function candidateContentHash(files: { path: string; size: number; mtimeMs: number }[]): Promise<string> {
+  const sorted = [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return await sha256Hex(JSON.stringify(sorted.map((f) => [f.path, f.size, f.mtimeMs])));
+}
+
 async function readFile(
   deps: ScanDeps,
   abs: string,
@@ -138,7 +148,9 @@ export async function scanLibrary(deps: ScanDeps): Promise<ScanResult> {
     const byPath = new Map(files.map((f) => [f.path, f]));
     const records: CandidateRecord[] = [];
     for (const g of groups) {
-      const sig = JSON.stringify(g.paths.map((p) => [p, byPath.get(p)!.size, byPath.get(p)!.mtimeMs]));
+      const contentHash = await candidateContentHash(
+        g.paths.map((p) => ({ path: p, size: byPath.get(p)!.size, mtimeMs: byPath.get(p)!.mtimeMs })),
+      );
       records.push({
         key: g.key,
         folder: g.folder,
@@ -146,7 +158,7 @@ export async function scanLibrary(deps: ScanDeps): Promise<ScanResult> {
         hintArtist: g.hintArtist,
         hintAlbum: g.hintAlbum,
         hintMbid: g.hintMbid,
-        contentHash: await sha256Hex(sig),
+        contentHash,
       });
     }
     touched.push(...transaction(db, () => reconcileUnit(db, root, records, now())));

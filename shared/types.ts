@@ -227,6 +227,8 @@ export interface FieldProposalDto {
   field: keyof CanonicalTags;
   current: unknown;
   proposed: unknown;
+  /** The user's own value when decision is "edited". */
+  edited: unknown;
   status: FieldStatus;
   decision: FieldDecision;
   locked: boolean;
@@ -257,4 +259,37 @@ export interface ProposalResponse {
 /** POST …/proposal: build a proposal from this MusicBrainz release. */
 export interface ProposeRequest {
   releaseMbid: string;
+}
+
+// ---- writing and undo (§11.3, Phase 3)
+
+export type WriteBatchStatus = "running" | "done" | "partial" | "failed" | "undone";
+
+export interface WriteFileResultDto {
+  /** Relative to the music root. */
+  path: string;
+  status: "written" | "skipped_stale" | "skipped_changed" | "failed" | "restored";
+  error: string | null;
+}
+
+export interface WriteBatchDto {
+  id: number;
+  kind: "write" | "undo";
+  status: WriteBatchStatus;
+  proposalId: number | null;
+  /** For an undo: the write it reverted. */
+  undoesBatchId: number | null;
+  startedAt: number;
+  finishedAt: number | null;
+  counts: { written: number; skipped: number; failed: number };
+  error: string | null;
+  files: WriteFileResultDto[];
+  /** A finished write whose files can be put back as they were. */
+  undoable: boolean;
+}
+
+/** GET …/history: newest first, with the live write or undo job if any. */
+export interface HistoryResponse {
+  batches: WriteBatchDto[];
+  job: JobDto | null;
 }
