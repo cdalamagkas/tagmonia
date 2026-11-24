@@ -4,8 +4,14 @@
  * sides can use it.
  */
 import type { CanonicalTags } from "../server/tagio/types.ts";
+import type {
+  MatchMethod,
+  ReleaseSummary as EditionSummary,
+  SignalName,
+  TrackMapping,
+} from "../server/identify/types.ts";
 
-export type { CanonicalTags };
+export type { CanonicalTags, EditionSummary, MatchMethod, SignalName, TrackMapping };
 
 export interface HealthResponse {
   status: "ok" | "degraded";
@@ -140,4 +146,64 @@ export interface LibraryFileDto {
 export interface ReleaseDetail {
   release: ReleaseSummary;
   files: LibraryFileDto[];
+}
+
+// ---- identification (§8, Phase 2)
+
+export type CandidateStatus =
+  | "new"
+  | "changed"
+  | "identifying"
+  | "matched"
+  | "needs_review"
+  | "no_match"
+  | "error";
+
+/** A scored MusicBrainz release for a release candidate. */
+export interface MatchDto {
+  rank: number;
+  releaseMbid: string;
+  releaseGroupMbid: string | null;
+  score: number;
+  method: MatchMethod;
+  /** null = no evidence for that signal; it was left out of the score (D36). */
+  signals: Record<SignalName, number | null>;
+  coverage: number;
+  /** Held below the auto threshold for lack of evidence (D36). */
+  capped: boolean;
+  identifierMatch: boolean;
+  /** The files name this release (MBID, barcode or catalog number) (D38). */
+  pinned: boolean;
+  summary: EditionSummary;
+  mapping: TrackMapping;
+}
+
+/** One row of the edition picker (§8.2). */
+export interface EditionDto {
+  releaseMbid: string;
+  summary: EditionSummary;
+  /** Looked up and scored; unexamined editions come from the release group browse (D38). */
+  examined: boolean;
+  score: number | null;
+}
+
+export interface IdentificationDto {
+  status: CandidateStatus;
+  identifiedAt: number | null;
+  error: string | null;
+  /** The files changed since the last identification. */
+  stale: boolean;
+  /** Best first. */
+  matches: MatchDto[];
+  /** Releases of the best match's release group, best first; empty without a match. */
+  editions: EditionDto[];
+  thresholds: { auto: number; review: number };
+  /** The latest identify job for this release, when one is queued or running. */
+  job: JobDto | null;
+}
+
+/** POST /api/library/releases/:id/identify. Without a URL, identification runs automatically (§8). */
+export interface IdentifyRequest {
+  /** §8 order 5: a MusicBrainz release URL (or bare MBID) the user chose. */
+  releaseUrl?: string;
 }

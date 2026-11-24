@@ -5,6 +5,7 @@
  * so it also runs in read-only mode.
  */
 import { z } from "zod";
+import { mbidSchema } from "../providers/musicbrainz/schema.ts";
 import type { Db } from "../db/db.ts";
 import { getRelease, type StoredFile } from "../db/repo/library.ts";
 import { markIdentifying, saveIdentifyError, saveIdentifyResult } from "../db/repo/matches.ts";
@@ -12,11 +13,15 @@ import { identify, type IdentifyConfig, type MbSource } from "../identify/identi
 import type { FingerprintSource } from "../identify/acoustid_source.ts";
 import type { CandidateEvidence } from "../identify/types.ts";
 import type { Logger } from "../log.ts";
-import { type JobQueue, PermanentJobError } from "./queue.ts";
+import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
 
 export const IDENTIFY_JOB = "identify";
 
-const payloadSchema = z.object({ candidateId: z.number().int().positive() });
+const payloadSchema = z.object({
+  candidateId: z.number().int().positive(),
+  /** §8 order 5: a release the user chose. */
+  releaseMbid: mbidSchema.optional(),
+});
 
 export interface IdentifyJobDeps {
   db: Db;
@@ -75,7 +80,7 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
   queue.register(IDENTIFY_JOB, async ({ job, signal }): Promise<IdentifyJobResult | null> => {
     const parsed = payloadSchema.safeParse(job.payload);
     if (!parsed.success) throw new PermanentJobError("invalid identify payload");
-    const { candidateId } = parsed.data;
+    const { candidateId, releaseMbid } = parsed.data;
     const found = getRelease(deps.db, candidateId);
     // Deleted by a rescan since it was queued: nothing to do.
     if (!found) return null;
@@ -93,6 +98,7 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
         deps.config(),
         signal,
         deps.fingerprints ?? undefined,
+        { manualMbid: releaseMbid },
       );
       if (result.fingerprintError) deps.logger.warn("fingerprinting skipped", { error: result.fingerprintError });
       saveIdentifyResult(deps.db, candidateId, contentHash, result, now());
@@ -111,8 +117,16 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
   });
 }
 
-export function enqueueIdentify(queue: JobQueue, candidateIds: number[]): void {
-  for (const id of candidateIds) {
-    queue.enqueue(IDENTIFY_JOB, { candidateId: id }, { dedupeKey: `${IDENTIFY_JOB}:${id}`, maxAttempts: 3 });
-  }
+export function identifyDedupeKey(candidateId: number): string {
+  return `${IDENTIFY_JOB}:${candidateId}`;
+}
+
+/** Returns the jobs, which are the already-live ones for candidates that are queued or running. */
+export function enqueueIdentify(queue: JobQueue, candidateIds: number[], releaseMbid?: string): Job[] {
+  return candidateIds.map((id) =>
+    queue.enqueue(IDENTIFY_JOB, { candidateId: id, ...(releaseMbid ? { releaseMbid } : {}) }, {
+      dedupeKey: identifyDedupeKey(id),
+      maxAttempts: 3,
+    })
+  );
 }

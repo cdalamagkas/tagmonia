@@ -3,6 +3,7 @@ import type { LibrarySummary, ReleaseSummary } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { scanActive, ScanStatus } from "../components/ScanStatus.tsx";
 import { onLinkClick } from "../router.ts";
+import { StatusBadge } from "../components/Identification.tsx";
 
 const PAGE = 50;
 
@@ -126,6 +127,7 @@ export function LibraryPage() {
                     <th>Album artist</th>
                     <th>Album</th>
                     <th class="tm-num">Tracks</th>
+                    <th>Status</th>
                     <th>Format</th>
                     <th class="tm-hide-sm">Folder</th>
                   </tr>
@@ -142,6 +144,9 @@ export function LibraryPage() {
                         {r.mbid && <span class="tm-badge" title={r.mbid}>MBID</span>}
                       </td>
                       <td class="tm-num">{r.trackCount}</td>
+                      <td>
+                        <StatusBadge status={r.status} />
+                      </td>
                       <td>{r.formats.join(", ")}</td>
                       <td class="tm-path tm-hide-sm">{r.folder || "/"}</td>
                     </tr>

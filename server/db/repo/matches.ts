@@ -14,6 +14,7 @@ export interface StoredMatch {
   coverage: number;
   capped: boolean;
   identifierMatch: boolean;
+  pinned: boolean;
   mapping: TrackMapping;
   summary: ReleaseSummary;
   snapshotId: number | null;
@@ -63,7 +64,13 @@ export function saveIdentifyResult(
         m.releaseGroupId,
         m.score,
         m.method,
-        JSON.stringify({ ...m.signals, coverage: m.coverage, capped: m.capped, identifierMatch: m.identifierMatch }),
+        JSON.stringify({
+          ...m.signals,
+          coverage: m.coverage,
+          capped: m.capped,
+          identifierMatch: m.identifierMatch,
+          pinned: !!m.pinned,
+        }),
         JSON.stringify(m.mapping),
         JSON.stringify(m.summary),
         m.snapshotId,
@@ -71,8 +78,9 @@ export function saveIdentifyResult(
       );
     });
     db.prepare(
-      `UPDATE candidate SET status = ?, identified_at = ?, identified_hash = ?, identify_error = NULL WHERE id = ?`,
-    ).run(result.verdict, now, contentHash, candidateId);
+      `UPDATE candidate SET status = ?, identified_at = ?, identified_hash = ?, identify_error = NULL,
+         unexamined_editions = ? WHERE id = ?`,
+    ).run(result.verdict, now, contentHash, JSON.stringify(result.unexaminedEditions), candidateId);
   });
 }
 
@@ -91,7 +99,7 @@ export function matchesFor(db: Db, candidateId: number): StoredMatch[] {
   ).all(candidateId) as unknown as MatchRow[];
   return rows.map((r) => {
     const s = JSON.parse(r.signals);
-    const { coverage, capped, identifierMatch, ...signals } = s;
+    const { coverage, capped, identifierMatch, pinned, ...signals } = s;
     return {
       rank: r.rank,
       releaseMbid: r.release_mbid,
@@ -102,9 +110,41 @@ export function matchesFor(db: Db, candidateId: number): StoredMatch[] {
       coverage,
       capped,
       identifierMatch,
+      pinned: !!pinned,
       mapping: JSON.parse(r.track_mapping),
       summary: JSON.parse(r.summary),
       snapshotId: r.snapshot_id,
     };
   });
+}
+
+export interface IdentificationState {
+  status: string;
+  identifiedAt: number | null;
+  error: string | null;
+  /** Files changed since the last identify run (a rescan updated the content hash). */
+  stale: boolean;
+  unexaminedEditions: { releaseId: string; summary: ReleaseSummary }[];
+}
+
+export function identificationState(db: Db, candidateId: number): IdentificationState | undefined {
+  const r = db.prepare(
+    `SELECT status, identified_at, identify_error, identified_hash, content_hash, unexamined_editions
+     FROM candidate WHERE id = ?`,
+  ).get(candidateId) as {
+    status: string;
+    identified_at: number | null;
+    identify_error: string | null;
+    identified_hash: string | null;
+    content_hash: string;
+    unexamined_editions: string;
+  } | undefined;
+  if (!r) return undefined;
+  return {
+    status: r.status,
+    identifiedAt: r.identified_at,
+    error: r.identify_error,
+    stale: r.identified_hash !== null && r.identified_hash !== r.content_hash,
+    unexaminedEditions: JSON.parse(r.unexamined_editions),
+  };
 }

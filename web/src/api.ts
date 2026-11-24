@@ -5,6 +5,9 @@ import {
   type Credentials,
   CSRF_HEADER,
   type HealthResponse,
+  type IdentificationDto,
+  type IdentifyRequest,
+  type JobDto,
   type LibrarySummary,
   type ReleaseDetail,
   type ReleaseList,
@@ -68,5 +71,8 @@ export const api = {
     ),
   release: (id: number) => request<ReleaseDetail>("GET", `/api/library/releases/${id}`),
   scan: () => request<ScanJobDto>("POST", "/api/library/scan"),
+  identification: (id: number) => request<IdentificationDto>("GET", `/api/library/releases/${id}/identification`),
+  identify: (id: number, body: IdentifyRequest = {}) =>
+    request<JobDto>("POST", `/api/library/releases/${id}/identify`, body),
   cancelJob: (id: number) => request<ScanJobDto>("POST", `/api/jobs/${id}/cancel`),
 };

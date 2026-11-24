@@ -112,6 +112,8 @@ export async function identify(
   signal?: AbortSignal,
   /** Absent when no AcoustID key is configured: order 4 is skipped. */
   fingerprints?: FingerprintSource,
+  /** §8 order 5: the user named a release; it is scored and the automatic search is skipped. */
+  opts: { manualMbid?: string } = {},
 ): Promise<IdentifyResult> {
   let ev = evidence;
   const best = new Map<string, IdentifiedRelease>();
@@ -168,8 +170,9 @@ export async function identify(
     views.set(view.id, { view, snapshotId: got.snapshotId });
     const scored = scoreRelease(ev, view, cfg.scoring);
     const prev = best.get(scored.releaseId);
-    // The files' own MBID (or the release it was merged into) names the edition, as an identifier does.
-    const pinned = scored.identifierMatch || method === "existing_mbid";
+    // The files' own MBID (or the release it was merged into), or the user's own choice, names the
+    // edition as an identifier does.
+    const pinned = scored.identifierMatch || method === "existing_mbid" || method === "manual";
     if (!prev || scored.score > prev.score) {
       best.set(scored.releaseId, { ...scored, pinned, method, snapshotId: got.snapshotId });
     }
@@ -190,6 +193,13 @@ export async function identify(
 
   /** §8 orders 1-4; returns as soon as one is confident. */
   async function run(): Promise<void> {
+    // 5. Manual: the user's choice replaces the automatic order (it is still scored, so a wrong URL shows).
+    if (opts.manualMbid) {
+      result.methodsTried.push("manual");
+      await lookupAndScore(opts.manualMbid, "manual");
+      return;
+    }
+
     // 1. Existing MBID: verify it still exists; MusicBrainz answers a merged MBID with its target.
     if (ev.albumMbid) {
       result.methodsTried.push("existing_mbid");
