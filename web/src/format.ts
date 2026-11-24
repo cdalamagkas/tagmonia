@@ -1,3 +1,5 @@
+import type { CandidateStatus, MatchMethod, SignalName } from "../../shared/types.ts";
+
 export function duration(ms: number | null): string {
   if (ms === null) return "–";
   const s = Math.round(ms / 1000);
@@ -30,4 +32,41 @@ export function tagValue(v: unknown): string {
     );
   }
   return String(v);
+}
+
+/** Label and badge style per release status (§8). */
+export const STATUS: Record<CandidateStatus, { label: string; tone: "" | "ok" | "warn" | "error" }> = {
+  new: { label: "not identified", tone: "" },
+  changed: { label: "changed", tone: "" },
+  identifying: { label: "identifying…", tone: "" },
+  matched: { label: "matched", tone: "ok" },
+  needs_review: { label: "needs review", tone: "warn" },
+  no_match: { label: "no match", tone: "error" },
+  error: { label: "error", tone: "error" },
+};
+
+export function statusOf(s: string): { label: string; tone: "" | "ok" | "warn" | "error" } {
+  return STATUS[s as CandidateStatus] ?? { label: s, tone: "" };
+}
+
+export const SIGNAL_LABELS: Record<SignalName, string> = {
+  trackCount: "Track count",
+  durations: "Durations",
+  titles: "Track titles",
+  album: "Album title",
+  artist: "Artist",
+  fingerprint: "Fingerprints",
+};
+
+export const METHOD_LABELS: Record<MatchMethod, string> = {
+  existing_mbid: "MusicBrainz ID in the tags",
+  barcode: "barcode",
+  catno: "catalog number",
+  text: "text search",
+  fingerprint: "AcoustID fingerprints",
+  manual: "manual",
+};
+
+export function percent(v: number | null): string {
+  return v === null ? "–" : `${Math.round(v * 100)}%`;
 }

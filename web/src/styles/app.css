@@ -222,6 +222,39 @@ a:focus-visible {
   border-color: #f5d9a8;
   background: #fff7e8;
 }
+.tm-badge-ok {
+  color: #1a6b3c;
+  border-color: #b9e2c8;
+  background: #effaf3;
+}
+.tm-badge.tm-inline {
+  margin-left: 0;
+}
+.tm-best td {
+  background: #fff7f1;
+}
+.tm-section-note {
+  margin: 4px 0 12px;
+}
+.tm-manual {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin-top: 16px;
+}
+.tm-manual label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 320px;
+  font-weight: var(--tm-weight-label);
+  font-size: 0.9rem;
+}
+.tm-manual .tm-error {
+  flex-basis: 100%;
+  margin: 0;
+}
 .tm-values {
   margin: 4px 0 0;
   padding-left: 18px;

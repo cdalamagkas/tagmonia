@@ -3,6 +3,7 @@ import type { CanonicalTags, LibraryFileDto, ReleaseDetail } from "../../../shar
 import { api, ApiRequestError } from "../api.ts";
 import { bytes, duration, tagValue } from "../format.ts";
 import { onLinkClick } from "../router.ts";
+import { Identification } from "../components/Identification.tsx";
 
 /** Release-level canonical fields (ARCHITECTURE.md §6.2): written to every track, so they should agree. */
 const RELEASE_FIELDS: (keyof CanonicalTags)[] = [
@@ -128,6 +129,8 @@ export function ReleasePage({ id }: { id: number }) {
           </tbody>
         </table>
       </section>
+
+      <Identification releaseId={release.id} files={files} />
 
       <section class="tm-card">
         <h2>Tracks</h2>

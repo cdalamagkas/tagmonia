@@ -154,6 +154,14 @@ export class JobQueue {
     return r && toJob(r);
   }
 
+  /** The queued or running job holding this dedupe key, if any. */
+  live(dedupeKey: string): Job | undefined {
+    const r = this.#db.prepare(
+      "SELECT * FROM job WHERE dedupe_key = ? AND state IN ('queued', 'running') ORDER BY id DESC LIMIT 1",
+    ).get(dedupeKey) as JobRow | undefined;
+    return r && toJob(r);
+  }
+
   /** Queued jobs are cancelled at once; a running job is asked to stop via its signal. */
   cancel(id: number): Job | undefined {
     const now = this.#opts.now();

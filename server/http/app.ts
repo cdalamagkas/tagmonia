@@ -66,7 +66,15 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
   app.use("/api/*", requireSession(sessions));
   app.use("/api/*", requireCsrf());
   app.route("/api/auth", auth.signedIn);
-  app.route("/api/library", libraryRoutes({ db, queue, readOnly: config.readOnly }));
+  app.route(
+    "/api/library",
+    libraryRoutes({
+      db,
+      queue,
+      readOnly: config.readOnly,
+      thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
+    }),
+  );
   app.route("/api/jobs", jobRoutes(queue));
   app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 
