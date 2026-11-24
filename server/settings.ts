@@ -6,10 +6,26 @@
 import { join } from "node:path";
 import { z } from "zod";
 
+function isPublicMusicBrainz(url: string): boolean {
+  const host = new URL(url).hostname;
+  return host === "musicbrainz.org" || host.endsWith(".musicbrainz.org");
+}
+
 export const settingsSchema = z.object({
   scanner: z.object({
     /** Globs relative to the music root, e.g. "Podcasts/**" or "**\/_Incoming". */
     ignore: z.array(z.string().min(1)).default([]),
+  }).prefault({}),
+  providers: z.object({
+    musicbrainz: z.object({
+      /** A local mirror for large libraries (§9.3); must end at the /ws/2/ root. */
+      baseUrl: z.url({ protocol: /^https?$/ }).default("https://musicbrainz.org/ws/2/"),
+      /** Only a mirror may go faster than the public server's 1 request per second (D32). */
+      requestsPerSecond: z.number().positive().max(50).default(1),
+    }).prefault({}).refine(
+      (mb) => mb.requestsPerSecond <= 1 || !isPublicMusicBrainz(mb.baseUrl),
+      { message: "musicbrainz.org allows at most 1 request per second", path: ["requestsPerSecond"] },
+    ),
   }).prefault({}),
   auth: z.object({
     /** Sessions end after this long without a request. */
