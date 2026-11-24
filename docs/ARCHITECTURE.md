@@ -408,7 +408,7 @@ Identification runs in this order and stops at the first confident result:
 | 1 | Existing MBIDs | Files already have `musicbrainz_albumid` | Verify the release still exists (it may have been merged; follow redirects) |
 | 2 | Barcode / catalog number | Tags contain `barcode` or `catalognumber` | Exact lookup |
 | 3 | Text search | Album + artist + track count available | MusicBrainz release search, then score |
-| 4 | Fingerprint | Text search weak or tags missing | `fpcalc` per file → AcoustID → recordings → releases containing them |
+| 4 | Fingerprint | Text search weak or tags missing, and an AcoustID key is set | `fpcalc` per file → AcoustID → recordings → releases containing them. Releases most files point at are looked up first; releases found earlier are rescored with the fingerprint signal |
 | 5 | Manual | All else fails | User pastes a MusicBrainz, Discogs, Deezer, Bandcamp, ... URL |
 
 ### 8.1 Scoring
@@ -758,6 +758,7 @@ Tagmonia has **read-write access to the user's entire music library** and stores
 
 - Provider tokens and music-server credentials encrypted at rest with a key derived from `TAGMONIA_SECRET_KEY` (or a key file in `/config` generated on first start, permissions `0600`).
 - Secrets never returned by the API after being saved; the UI shows "set" / "not set".
+- Until the providers settings page (Phase 4), the AcoustID key comes from `TAGMONIA_ACOUSTID_KEY` or `TAGMONIA_ACOUSTID_KEY_FILE` and is never stored (D37).
 - Logs never contain tokens, passwords, cookies or full provider URLs with credentials. Add a log redaction test.
 
 ### 14.4 Filesystem safety
@@ -797,6 +798,8 @@ Tagmonia has **read-write access to the user's entire music library** and stores
 | `TAGMONIA_PUBLIC_URL` | unset | Used for the MusicBrainz `redirect_uri` and secure cookies |
 | `TAGMONIA_ADMIN_PASSWORD_FILE` | unset | Bootstrap admin password from a Docker secret |
 | `TAGMONIA_SECRET_KEY` | generated | Encryption key for stored credentials |
+| `TAGMONIA_ACOUSTID_KEY` | unset | AcoustID application key; without it, fingerprint identification is off (D37) |
+| `TAGMONIA_ACOUSTID_KEY_FILE` | unset | The same key read from a file (a Docker secret); set only one of the two |
 | `TAGMONIA_READ_ONLY` | `false` | Never write to the library |
 | `TAGMONIA_LOG_LEVEL` | `info` | |
 | `PUID` / `PGID` | `1000` | Run-as user |
@@ -929,6 +932,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D34 | 2026-11-23 | AcoustID is tested with hand-built responses only in Phase 2 | Record live AcoustID responses | Maintainer choice: no AcoustID key or real-audio fingerprints are available yet. Generated fixture audio matches nothing in AcoustID. A live check comes later. |
 | D35 | 2026-11-24 | Classical tags follow **Picard's code** where its docs table differs: MP4 movement atoms are `©mvi`/`©mvc` (iTunes integer atoms), not `mvi`/`mvc`; `arranger` is one role inside ID3's shared `TIPL` frame and an MP4 freeform `arranger` atom; `MVIN` is packed `n/total` like `TRCK` | Follow the docs table literally | Checked against Picard's `formats/mp4.py` and `formats/id3.py` and mutagen 1.47: a bare `mvi` atom is read by nothing. Writing `arranger` replaces only its own `TIPL` entries, so producer, engineer and mix credits from other taggers survive. `tests/tagio/mapping.test.ts` lists the docs errata explicitly. |
 | D36 | 2026-11-24 | Identification scoring details: signals without evidence are excluded and the remaining weights renormalised; below 60% evidence coverage a score is capped just under `auto_threshold`; the identifier floor needs a track count within one; any runner-up within 0.03 forces review; search hits are pre-ranked and only the top 5 are looked up | Score missing signals as 0; look up every hit | Scoring a missing fingerprint as 0 would cap every pre-fingerprint match at 0.85, below the 0.92 auto threshold. Renormalising alone would let untagged files reach it on durations, which D26 forbids, hence the coverage cap. At 1 request per second, looking up 25 hits costs about 25 s per album; pre-ranking on data the search already returns keeps it near 5 s. All values are settings, to be tuned on the labelled fixtures (part 5). |
+| D37 | 2026-11-24 | AcoustID: key from `TAGMONIA_ACOUSTID_KEY` or `TAGMONIA_ACOUSTID_KEY_FILE` (one of them), read at startup; the encrypted credential store (§14.3) moves to Phase 4 with the providers page. Lookups are form POSTs with `meta=recordings+releaseids`, at most 3 requests per second; the snapshot cache key omits the key and hashes the fingerprint. Fingerprints are cached in `library_file` and cleared when a file changes | Encrypted store now | Maintainer choice: the `_FILE` form keeps the key out of compose files. Checked 2026-11-24: the docs give 3 req/s and prefer POST for long fingerprints; the live API answers an invalid key with HTTP 400 `{"status":"error","error":{"code":4,"message":"invalid API key"}}`; the server source nests release ids at `results[].recordings[].releases[].id`. A rejected key skips fingerprinting for that candidate and is logged; it does not fail identification. `fpcalc` runs from `server/tagio/` (only that module reads audio) and needs `--allow-run=python3,fpcalc`. |
 
 ---
 

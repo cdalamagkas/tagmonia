@@ -17,3 +17,4 @@ export * from "./types.ts";
 export { storableTags, supportsField, verifyChange } from "./verify.ts";
 export { sniffFormat } from "./sniff.ts";
 export { isTagmoniaTempFile } from "./atomic.ts";
+export { type Fingerprint, FingerprintError, fingerprintFile } from "./fingerprint.ts";

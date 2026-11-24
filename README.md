@@ -31,6 +31,8 @@ scripts/dk deno run --allow-read --allow-write --allow-env --allow-run=python3 s
 
 On first start the UI asks you to create the admin account (or set `TAGMONIA_ADMIN_PASSWORD_FILE`).
 
+Fingerprint identification is optional: get a free application key at <https://acoustid.org/new-application> and pass it as `TAGMONIA_ACOUSTID_KEY`, or as a Docker secret with `TAGMONIA_ACOUSTID_KEY_FILE` (see `docker-compose.example.yml`).
+
 `deno task dev` starts both servers in one container (publish both ports with two `-p` flags if you run it that way).
 
 ### TagIO

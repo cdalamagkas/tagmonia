@@ -27,6 +27,12 @@ export const settingsSchema = z.object({
       (mb) => mb.requestsPerSecond <= 1 || !isPublicMusicBrainz(mb.baseUrl),
       { message: "musicbrainz.org allows at most 1 request per second", path: ["requestsPerSecond"] },
     ),
+    acoustid: z.object({
+      /** AcoustID allows at most 3 requests per second (D37). */
+      requestsPerSecond: z.number().positive().max(3).default(3),
+      /** AcoustID matches scoring below this are ignored. */
+      minScore: z.number().min(0).max(1).default(0.5),
+    }).prefault({}),
   }).prefault({}),
   identify: z.object({
     /** §8.1: at or above, a match may be auto-approved (only if the user enables it, Phase 3). */
