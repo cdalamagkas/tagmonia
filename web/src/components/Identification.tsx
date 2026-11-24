@@ -70,7 +70,17 @@ function BestMatch({ m, thresholds }: { m: MatchDto; thresholds: IdentificationD
   );
 }
 
-function Candidates({ matches }: { matches: MatchDto[] }) {
+/** "Use this": builds the proposal from that release (§10); the page shows it in the review panel. */
+function UseButton({ mbid, onChoose }: { mbid: string; onChoose?: (mbid: string) => void }) {
+  if (!onChoose) return null;
+  return (
+    <button type="button" class="tm-button tm-secondary tm-small" onClick={() => onChoose(mbid)}>
+      Use this
+    </button>
+  );
+}
+
+function Candidates({ matches, onChoose }: { matches: MatchDto[]; onChoose?: (mbid: string) => void }) {
   return (
     <div class="tm-table-wrap">
       <table class="tm-table">
@@ -82,6 +92,7 @@ function Candidates({ matches }: { matches: MatchDto[] }) {
             <th>Country</th>
             <th>Date</th>
             <th class="tm-num">Tracks</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -96,6 +107,9 @@ function Candidates({ matches }: { matches: MatchDto[] }) {
               <td>{m.summary.country ?? "–"}</td>
               <td>{m.summary.date ?? "–"}</td>
               <td class="tm-num">{m.summary.trackCount}</td>
+              <td>
+                <UseButton mbid={m.releaseMbid} onChoose={onChoose} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -105,7 +119,9 @@ function Candidates({ matches }: { matches: MatchDto[] }) {
 }
 
 /** §8.2: editions side by side, so a collector can tell their pressing from the others. */
-function EditionPicker({ editions, best }: { editions: EditionDto[]; best: string }) {
+function EditionPicker(
+  { editions, best, onChoose }: { editions: EditionDto[]; best: string; onChoose?: (mbid: string) => void },
+) {
   return (
     <div class="tm-table-wrap">
       <table class="tm-table">
@@ -138,7 +154,8 @@ function EditionPicker({ editions, best }: { editions: EditionDto[]; best: strin
               <td>{e.summary.format || "–"}</td>
               <td class="tm-num">{e.summary.trackCount}</td>
               <td>
-                <MbLink mbid={e.releaseMbid}>MusicBrainz ↗</MbLink>
+                <MbLink mbid={e.releaseMbid}>MusicBrainz ↗</MbLink>{" "}
+                <UseButton mbid={e.releaseMbid} onChoose={onChoose} />
               </td>
             </tr>
           ))}
@@ -203,7 +220,14 @@ function emptyMessage(d: IdentificationDto): string {
   return "No release on MusicBrainz fits these files well enough.";
 }
 
-export function Identification({ releaseId, files }: { releaseId: number; files: LibraryFileDto[] }) {
+export function Identification(
+  { releaseId, files, onChoose }: {
+    releaseId: number;
+    files: LibraryFileDto[];
+    /** Builds a proposal from the chosen release; rejects with the server's message (e.g. busy). */
+    onChoose?: (mbid: string) => Promise<void>;
+  },
+) {
   const [data, setData] = useState<IdentificationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -236,6 +260,13 @@ export function Identification({ releaseId, files }: { releaseId: number; files:
       else setError((e as Error).message);
     }
   };
+
+  const [chooseError, setChooseError] = useState<string | null>(null);
+  const choose = onChoose &&
+    ((mbid: string) => {
+      setChooseError(null);
+      onChoose(mbid).catch((e) => setChooseError((e as Error).message));
+    });
 
   if (error) return <p class="tm-error" role="alert">{error}</p>;
   if (!data) return <p class="tm-muted">Loading…</p>;
@@ -296,14 +327,16 @@ export function Identification({ releaseId, files }: { releaseId: number; files:
               ? "The files name the highlighted release; the album's other editions are listed for comparison."
               : `${data.editions.length} releases of this album fit the files and nothing in them tells the editions apart: compare your copy's country, label, catalog number or barcode.`}
           </p>
-          <EditionPicker editions={data.editions} best={best.releaseMbid} />
+          {chooseError && <p class="tm-error" role="alert">{chooseError}</p>}
+          <EditionPicker editions={data.editions} best={best.releaseMbid} onChoose={choose} />
         </section>
       )}
 
       {others.length > 1 && (
         <section class="tm-card">
           <h2>Candidates</h2>
-          <Candidates matches={others} />
+          {chooseError && data.editions.length <= 1 && <p class="tm-error" role="alert">{chooseError}</p>}
+          <Candidates matches={others} onChoose={choose} />
         </section>
       )}
 

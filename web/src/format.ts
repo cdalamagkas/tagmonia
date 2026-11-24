@@ -1,4 +1,4 @@
-import type { CandidateStatus, MatchMethod, SignalName } from "../../shared/types.ts";
+import type { CandidateStatus, CanonicalTags, MatchMethod, SignalName } from "../../shared/types.ts";
 
 export function duration(ms: number | null): string {
   if (ms === null) return "–";
@@ -70,3 +70,28 @@ export const METHOD_LABELS: Record<MatchMethod, string> = {
 export function percent(v: number | null): string {
   return v === null ? "–" : `${Math.round(v * 100)}%`;
 }
+
+/** Release-level canonical fields (ARCHITECTURE.md §6.2): written to every track, so they should agree. */
+export const RELEASE_FIELDS: (keyof CanonicalTags)[] = [
+  "album",
+  "albumartist",
+  "albumartists",
+  "albumartistsort",
+  "date",
+  "originaldate",
+  "label",
+  "catalognumber",
+  "barcode",
+  "media",
+  "releasecountry",
+  "releasestatus",
+  "releasetype",
+  "script",
+  "language",
+  "genre",
+  "musicbrainz_albumid",
+  "musicbrainz_releasegroupid",
+  "musicbrainz_albumartistid",
+  "discogs_release_id",
+  "deezer_album_id",
+];

@@ -255,6 +255,84 @@ a:focus-visible {
   flex-basis: 100%;
   margin: 0;
 }
+.tm-button.tm-small {
+  padding: 3px 10px;
+  font-size: 0.85rem;
+}
+.tm-small-link {
+  font-size: 0.8rem;
+  color: var(--tm-slate);
+  text-decoration: underline;
+}
+.tm-chip {
+  margin-left: 6px;
+}
+.tm-diff-old {
+  color: var(--tm-slate);
+  text-decoration: line-through;
+}
+.tm-diff-new {
+  font-weight: var(--tm-weight-label);
+}
+.tm-row-quiet td,
+.tm-row-quiet th {
+  color: var(--tm-slate);
+}
+.tm-review th:first-child {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.tm-decide {
+  white-space: nowrap;
+}
+.tm-seg {
+  display: inline-flex;
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius);
+  overflow: hidden;
+}
+.tm-seg button {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 3px 8px;
+  border: 0;
+  border-right: 1px solid var(--tm-rule);
+  background: var(--tm-paper);
+  color: var(--tm-slate);
+  cursor: pointer;
+}
+.tm-seg button:last-child {
+  border-right: 0;
+}
+.tm-seg button.tm-on {
+  background: var(--tm-navy);
+  color: #fff;
+}
+.tm-lock-links {
+  margin-top: 4px;
+}
+.tm-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+.tm-edit textarea,
+.tm-edit input {
+  flex: 1 1 220px;
+  font: inherit;
+}
+.tm-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+.tm-file-review h4 {
+  margin: 16px 0 6px;
+}
 .tm-values {
   margin: 4px 0 0;
   padding-left: 18px;

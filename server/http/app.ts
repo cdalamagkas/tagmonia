@@ -17,6 +17,7 @@ import { type AuthEnv, authRoutes, originGuard, requireCsrf, requireSession } fr
 import { healthRoutes } from "./routes/health.ts";
 import { jobRoutes, libraryRoutes } from "./routes/library.ts";
 import { writeRoutes } from "./routes/writes.ts";
+import { reviewRoutes } from "./routes/review.ts";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy":
@@ -78,6 +79,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
   );
   app.route("/api/jobs", jobRoutes(queue));
   app.route("/api", writeRoutes({ db, queue, readOnly: config.readOnly }));
+  app.route("/api", reviewRoutes({ db }));
   app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 
   if (config.webDir) {

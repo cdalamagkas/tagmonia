@@ -1,34 +1,10 @@
 import { useEffect, useState } from "preact/hooks";
-import type { CanonicalTags, LibraryFileDto, ReleaseDetail } from "../../../shared/types.ts";
+import type { LibraryFileDto, ReleaseDetail } from "../../../shared/types.ts";
 import { api, ApiRequestError } from "../api.ts";
-import { bytes, duration, tagValue } from "../format.ts";
+import { bytes, duration, RELEASE_FIELDS, tagValue } from "../format.ts";
 import { onLinkClick } from "../router.ts";
 import { Identification } from "../components/Identification.tsx";
-
-/** Release-level canonical fields (ARCHITECTURE.md §6.2): written to every track, so they should agree. */
-const RELEASE_FIELDS: (keyof CanonicalTags)[] = [
-  "album",
-  "albumartist",
-  "albumartists",
-  "albumartistsort",
-  "date",
-  "originaldate",
-  "label",
-  "catalognumber",
-  "barcode",
-  "media",
-  "releasecountry",
-  "releasestatus",
-  "releasetype",
-  "script",
-  "language",
-  "genre",
-  "musicbrainz_albumid",
-  "musicbrainz_releasegroupid",
-  "musicbrainz_albumartistid",
-  "discogs_release_id",
-  "deezer_album_id",
-];
+import { Review } from "../components/Review.tsx";
 
 function releaseTags(files: LibraryFileDto[]) {
   return RELEASE_FIELDS.flatMap((field) => {
@@ -73,12 +49,15 @@ export function ReleasePage({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<number | null>(null);
 
-  useEffect(() => {
-    setData(null);
+  const [version, setVersion] = useState(0);
+  const reload = () =>
     api.release(id).then(
       setData,
       (e) => setError(e instanceof ApiRequestError && e.status === 404 ? "This release no longer exists." : e.message),
     );
+  useEffect(() => {
+    setData(null);
+    reload();
   }, [id]);
 
   if (error) {
@@ -130,7 +109,15 @@ export function ReleasePage({ id }: { id: number }) {
         </table>
       </section>
 
-      <Identification releaseId={release.id} files={files} />
+      <Identification
+        releaseId={release.id}
+        files={files}
+        onChoose={async (releaseMbid) => {
+          await api.propose(release.id, { releaseMbid });
+          setVersion((v) => v + 1);
+        }}
+      />
+      <Review releaseId={release.id} files={files} version={version} onFilesChanged={reload} />
 
       <section class="tm-card">
         <h2>Tracks</h2>

@@ -17,7 +17,7 @@ import { enqueueScan, SCAN_JOB } from "../../jobs/scan.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
-import { latestProposal } from "../../db/repo/proposals.ts";
+import { latestProposal, locksFor } from "../../db/repo/proposals.ts";
 import { enqueuePropose, proposeDedupeKey } from "../../jobs/propose.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
@@ -191,7 +191,12 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
           })),
         };
       }
-      const body: ProposalResponse = { proposal, job: job ? toJobDto(job) : null };
+      const body: ProposalResponse = {
+        proposal,
+        job: job ? toJobDto(job) : null,
+        readOnly: deps.readOnly,
+        locks: locksFor(db, id),
+      };
       return c.json(body);
     })
     // Building a proposal only reads stored tags and MusicBrainz; read-only mode allows it.

@@ -254,6 +254,10 @@ export interface ProposalDto {
 export interface ProposalResponse {
   proposal: ProposalDto | null;
   job: JobDto | null;
+  /** Writes are refused in read-only mode; the UI says so instead of offering them. */
+  readOnly: boolean;
+  /** Locks that apply to this release: global, this release's, and its files'. */
+  locks: LockDto[];
 }
 
 /** POST …/proposal: build a proposal from this MusicBrainz release. */
@@ -292,4 +296,31 @@ export interface WriteBatchDto {
 export interface HistoryResponse {
   batches: WriteBatchDto[];
   job: JobDto | null;
+}
+
+// ---- review (§10, Phase 3)
+
+export type LockScope = "file" | "release" | "global_field";
+
+/** A standing "never change this field" rule (§10.3 rule 1). */
+export interface LockDto {
+  id: number;
+  scope: LockScope;
+  /** File id for "file", release (candidate) id for "release", "" for "global_field". */
+  target: string;
+  field: keyof CanonicalTags;
+}
+
+export interface LockRequest {
+  scope: LockScope;
+  target: string;
+  field: keyof CanonicalTags;
+}
+
+/** POST /api/proposals/:id/decisions: one decision for a set of field rows (e.g. a release field on every file). */
+export interface DecisionRequest {
+  fieldIds: number[];
+  decision: FieldDecision;
+  /** Required with "edited": the user's own value, in the field's canonical type. */
+  edited?: unknown;
 }
