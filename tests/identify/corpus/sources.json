@@ -138,6 +138,27 @@
       "damage": "untagged_filenames",
       "edition": 2
     },
+    {
+      "slug": "mendelssohn-trios-partial",
+      "artist": "Trio Wanderer",
+      "album": "Piano Trios",
+      "damage": "partial_second_half",
+      "mbid": "6bb5308c-0b61-4dca-a2c8-28d5ec7546dc"
+    },
+    { "slug": "abbey-road-half", "artist": "The Beatles", "album": "Abbey Road", "damage": "partial_first_half" },
+    { "slug": "dummy-half", "artist": "Portishead", "album": "Dummy", "damage": "partial_second_half" },
+    { "slug": "kind-of-blue-random", "artist": "Miles Davis", "album": "Kind of Blue", "damage": "partial_random" },
+    { "slug": "goldberg-random", "artist": "Glenn Gould", "album": "Goldberg Variations", "damage": "partial_random" },
+    { "slug": "rumours-random", "artist": "Fleetwood Mac", "album": "Rumours", "damage": "partial_random" },
+    {
+      "slug": "the-wall-disc2",
+      "artist": "Pink Floyd",
+      "album": "The Wall",
+      "damage": "partial_second_half",
+      "multiDisc": true
+    },
+    { "slug": "thriller-single", "artist": "Michael Jackson", "album": "Thriller", "damage": "single_track" },
+    { "slug": "back-to-black-single", "artist": "Amy Winehouse", "album": "Back to Black", "damage": "single_track" },
     { "slug": "unknown-1", "artist": "Portishead", "album": "Third", "damage": "unidentifiable" },
     { "slug": "unknown-2", "artist": "Radiohead", "album": "Kid A", "damage": "unidentifiable" },
     { "slug": "unknown-3", "artist": "Björk", "album": "Vespertine", "damage": "unidentifiable" }

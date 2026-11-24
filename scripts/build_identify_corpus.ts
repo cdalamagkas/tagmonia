@@ -32,6 +32,8 @@ interface Source {
   damage: Damage;
   edition?: number;
   multiDisc?: boolean;
+  /** Pin this release directly instead of searching. */
+  mbid?: string;
 }
 
 const CORPUS = new URL("../tests/identify/corpus/", import.meta.url);
@@ -78,6 +80,17 @@ const client = new MusicBrainzClient({
 });
 
 async function resolve(s: Source): Promise<ManifestCase> {
+  if (s.mbid) {
+    const r = (await client.lookupRelease(s.mbid))?.value;
+    if (!r) throw new Error(`${s.slug}: no release ${s.mbid}`);
+    return {
+      slug: s.slug,
+      damage: s.damage,
+      releaseMbid: r.id,
+      releaseGroupMbid: r["release-group"]?.id ?? null,
+      title: r.title,
+    };
+  }
   const hits = (await client.searchReleases({ release: s.album, artist: s.artist }, { limit: 25 })).value
     .filter((h) => similarity(h.title, s.album) >= 0.85)
     .filter((h) => !s.multiDisc || h.media.length >= 2)
