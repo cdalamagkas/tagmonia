@@ -269,8 +269,8 @@ erDiagram
 | Entity | Purpose | Key columns |
 |---|---|---|
 | `library_file` | One audio file on disk | `id`, `path` (relative to music root), `size`, `mtime`, `format`, `duration_ms`, `fingerprint`, `acoustid_id`, `current_tags` (JSON), `pictures` (JSON metadata, no bytes), `read_error`, `candidate_id`, `scanned_at` |
-| `candidate` | A group of files believed to form one release (usually a folder) | `id`, `group_key` (stable across rescans), `folder`, `hint_artist`, `hint_album`, `hint_mbid`, `hint_track_count`, `content_hash`, `status`; member files point to it via `library_file.candidate_id` |
-| `match` | A scored MusicBrainz release for a candidate | `candidate_id`, `release_mbid`, `score`, `method` (`existing_mbid`, `text`, `fingerprint`, `barcode`, `manual`), `track_mapping` (JSON) |
+| `candidate` | A group of files believed to form one release (usually a folder) | `id`, `group_key` (stable across rescans), `folder`, `hint_artist`, `hint_album`, `hint_mbid`, `hint_track_count`, `content_hash`, `status` (`new`, `changed`, `identifying`, `matched`, `needs_review`, `no_match`, `error`), `identified_at`, `identified_hash`, `identify_error`; member files point to it via `library_file.candidate_id` |
+| `match` | A scored MusicBrainz release for a candidate; an identify run replaces the candidate's matches | `candidate_id`, `rank`, `release_mbid`, `release_group_mbid`, `score`, `method` (`existing_mbid`, `barcode`, `catno`, `text`, `fingerprint`, `manual`), `signals` (JSON, per signal), `track_mapping` (JSON), `summary` (JSON, for the edition picker), `snapshot_id` |
 | `proposal` | Merged metadata for one candidate + chosen match | `id`, `candidate_id`, `release_mbid` (nullable for not-in-MB), `state` (`draft`, `needs_review`, `approved`, `written`, `discarded`), `created_at` |
 | `field_proposal` | One canonical field, release- or track-level | `proposal_id`, `scope` (`release` or track position), `field`, `current_value`, `proposed_value`, `decision` (`auto`, `accepted`, `edited`, `kept_current`), `locked` |
 | `field_source` | Provenance for a field value | `field_proposal_id`, `provider`, `value`, `snapshot_id`, `agrees_with_proposed` |
@@ -391,7 +391,7 @@ Classical support is in scope for v1 and goes beyond basic credits. Every field 
    - Primary: files in the same folder that share `album` + `albumartist` (or `musicbrainz_albumid` when present). The track artist is not part of the key, so compilations stay together (D22).
    - Multi-disc folders (`CD1`, `Disc 2`, ...) under one parent are merged into one candidate when album tags agree.
    - A folder with mixed albums is split by album tag; files with no album tag stay a "loose files" candidate for fingerprinting.
-5. Enqueue `identify` jobs for new or changed candidates. Until Phase 2 adds the identifier, the scan result lists them (`candidatesTouched`) and their `status` is `new` or `changed`.
+5. Enqueue an `identify` job (§8) for each new or changed candidate (dedupe key `identify:<id>`, so a candidate is never queued twice).
 
 Scanning only reads the library (it runs in read-only mode too). Unreadable files are kept with a `read_error`, so the UI can show them.
 
@@ -430,6 +430,13 @@ Weights live in config and are tuned using a labelled fixture set in `tests/iden
 - `score ≥ auto_threshold` (default 0.92) → proposal can be auto-approved **only** if the user enabled auto-approve; otherwise `needs_review`.
 - `review_threshold ≤ score < auto_threshold` (default 0.70) → `needs_review`, show top 3 candidates.
 - below `review_threshold` → "no confident match", offer manual search and the W6 flow.
+- A near-tie with any runner-up (within the edition margin, default 0.03) also means `needs_review`, even above `auto_threshold`.
+
+**Missing evidence (D36).** A signal with no evidence (no fingerprint yet, no album tag, untagged titles) is left out, and the weighted mean is taken over the signals that remain, so a well-tagged album without fingerprints can still reach `auto_threshold`. When the signals present carry less than `minCoverage` (default 0.6) of the total weight, the score is held just below `auto_threshold`: a match on durations alone is never unattended. The barcode/catalog-number floor applies only when the track count is within one.
+
+**Lookup budget (D36).** Search hits already carry title, artist credit and track count, so they are pre-ranked on those, and only the best `maxLookupsPerSearch` (default 5) get a full release lookup and a score. Untagged sets are searched by their folder name ("Artist - Album (year)"), which is never used as scoring evidence.
+
+Weights, thresholds and these limits live in `settings.json` under `identify`.
 
 ### 8.2 Edition picking
 
@@ -921,6 +928,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D33 | 2026-11-23 | The labelled identification fixtures (D26) are **synthesised from recorded MusicBrainz releases**: files are generated from the release data with realistic damage (jittered durations, missing or misspelt tags, wrong order, missing bonus tracks, untagged sets) | Export tags from the maintainer's library | Maintainer choice. Reproducible, no audio or personal data committed. A real-library check can be added later. |
 | D34 | 2026-11-23 | AcoustID is tested with hand-built responses only in Phase 2 | Record live AcoustID responses | Maintainer choice: no AcoustID key or real-audio fingerprints are available yet. Generated fixture audio matches nothing in AcoustID. A live check comes later. |
 | D35 | 2026-11-24 | Classical tags follow **Picard's code** where its docs table differs: MP4 movement atoms are `©mvi`/`©mvc` (iTunes integer atoms), not `mvi`/`mvc`; `arranger` is one role inside ID3's shared `TIPL` frame and an MP4 freeform `arranger` atom; `MVIN` is packed `n/total` like `TRCK` | Follow the docs table literally | Checked against Picard's `formats/mp4.py` and `formats/id3.py` and mutagen 1.47: a bare `mvi` atom is read by nothing. Writing `arranger` replaces only its own `TIPL` entries, so producer, engineer and mix credits from other taggers survive. `tests/tagio/mapping.test.ts` lists the docs errata explicitly. |
+| D36 | 2026-11-24 | Identification scoring details: signals without evidence are excluded and the remaining weights renormalised; below 60% evidence coverage a score is capped just under `auto_threshold`; the identifier floor needs a track count within one; any runner-up within 0.03 forces review; search hits are pre-ranked and only the top 5 are looked up | Score missing signals as 0; look up every hit | Scoring a missing fingerprint as 0 would cap every pre-fingerprint match at 0.85, below the 0.92 auto threshold. Renormalising alone would let untagged files reach it on durations, which D26 forbids, hence the coverage cap. At 1 request per second, looking up 25 hits costs about 25 s per album; pre-ranking on data the search already returns keeps it near 5 s. All values are settings, to be tuned on the labelled fixtures (part 5). |
 
 ---
 
