@@ -158,3 +158,15 @@ export type MbTrack = NonNullable<MbMedium["tracks"]>[number];
 export type MbReleaseSearch = z.infer<typeof releaseSearchSchema>;
 export type MbSearchRelease = MbReleaseSearch["releases"][number];
 export type MbBrowseRelease = z.infer<typeof releaseBrowseSchema>["releases"][number];
+
+const genreSchema = z.looseObject({ id: z.string(), name: z.string(), count: z.number().int().default(0) });
+
+/** `release/<mbid>?inc=genres+release-groups`: the nested release group carries its own genres (D40). */
+export const releaseGenresSchema = z.looseObject({
+  id: mbidSchema,
+  genres: z.array(genreSchema).default([]),
+  "release-group": z.looseObject({ genres: z.array(genreSchema).default([]) }).optional(),
+});
+
+export type MbGenre = z.infer<typeof genreSchema>;
+export type MbReleaseGenres = z.infer<typeof releaseGenresSchema>;

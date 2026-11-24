@@ -17,6 +17,10 @@ import { enqueueScan, SCAN_JOB } from "../../jobs/scan.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
+import { latestProposal } from "../../db/repo/proposals.ts";
+import { enqueuePropose, proposeDedupeKey } from "../../jobs/propose.ts";
+import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
+import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
 import type { CandidateStatus } from "../../../shared/types.ts";
 import type { Job, JobQueue } from "../../jobs/queue.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -53,6 +57,7 @@ function toFileDto(f: StoredFile): LibraryFileDto {
 }
 
 const identifyBody = z.object({ releaseUrl: z.string().max(500).optional() }).strict();
+const proposeBody = z.object({ releaseMbid: mbidSchema }).strict();
 
 const listQuery = z.object({
   q: z.string().max(200).optional(),
@@ -152,6 +157,54 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       }
       const [job] = enqueueIdentify(queue, [id], releaseMbid);
       return c.json(toJobDto(job), 202);
+    })
+    .get("/releases/:id{[0-9]+}/proposal", (c) => {
+      const id = Number(c.req.param("id"));
+      const state = identificationState(db, id);
+      if (!state) return c.json({ error: "not found" }, 404);
+      const p = latestProposal(db, id);
+      const { content_hash: hash } = db.prepare("SELECT content_hash FROM candidate WHERE id = ?").get(id) as {
+        content_hash: string;
+      };
+      const job = queue.live(proposeDedupeKey(id));
+      let proposal: ProposalDto | null = null;
+      if (p) {
+        const count = (s: string) => p.fields.filter((f) => f.status === s).length;
+        proposal = {
+          id: p.id,
+          releaseMbid: p.releaseMbid,
+          state: p.state,
+          chosenBy: p.chosenBy,
+          createdAt: p.createdAt,
+          stale: p.basedOnHash !== hash,
+          counts: {
+            changed: count("changed"),
+            added: count("added"),
+            unchanged: count("unchanged"),
+            locked: p.fields.filter((f) => f.locked).length,
+          },
+          unmappedFiles: p.unmappedFiles,
+          // Snapshot ids are internal provenance, not part of the API.
+          fields: p.fields.map((f) => ({
+            ...f,
+            sources: f.sources.map(({ snapshotId: _s, ...s }) => s),
+          })),
+        };
+      }
+      const body: ProposalResponse = { proposal, job: job ? toJobDto(job) : null };
+      return c.json(body);
+    })
+    // Building a proposal only reads stored tags and MusicBrainz; read-only mode allows it.
+    .post("/releases/:id{[0-9]+}/proposal", async (c) => {
+      const id = Number(c.req.param("id"));
+      if (!identificationState(db, id)) return c.json({ error: "not found" }, 404);
+      const body = proposeBody.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: "releaseMbid must be a MusicBrainz release id" }, 400);
+      // Joining a queued automatic proposal would silently drop the user's choice.
+      if (queue.live(proposeDedupeKey(id))) {
+        return c.json({ error: "A proposal is already being built for this release; try again when it finishes" }, 409);
+      }
+      return c.json(toJobDto(enqueuePropose(queue, id, body.data.releaseMbid, "user")), 202);
     })
     // Scanning only reads the library, so it is allowed in read-only mode.
     .post("/scan", (c) => c.json(toJobDto(enqueueScan(queue)) as ScanJobDto, 202));

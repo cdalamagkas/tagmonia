@@ -207,3 +207,54 @@ export interface IdentifyRequest {
   /** §8 order 5: a MusicBrainz release URL (or bare MBID) the user chose. */
   releaseUrl?: string;
 }
+
+// ---- proposals (§10, Phase 3)
+
+export type ProposalState = "draft" | "needs_review" | "approved" | "written" | "discarded";
+export type FieldStatus = "unchanged" | "changed" | "added";
+export type FieldDecision = "auto" | "accepted" | "edited" | "kept_current";
+
+export interface FieldSourceDto {
+  provider: string;
+  value: unknown;
+  agreesWithProposed: boolean;
+}
+
+/** One canonical field of one file: what it holds now and what the sources propose. */
+export interface FieldProposalDto {
+  id: number;
+  fileId: number;
+  field: keyof CanonicalTags;
+  current: unknown;
+  proposed: unknown;
+  status: FieldStatus;
+  decision: FieldDecision;
+  locked: boolean;
+  sources: FieldSourceDto[];
+}
+
+export interface ProposalDto {
+  id: number;
+  releaseMbid: string | null;
+  state: ProposalState;
+  /** "auto" when identification was confident, "user" when picked in the UI. */
+  chosenBy: "auto" | "user";
+  createdAt: number;
+  /** The files changed since the proposal was built. */
+  stale: boolean;
+  counts: { changed: number; added: number; unchanged: number; locked: number };
+  /** Files with no track on the release; they are left untouched. */
+  unmappedFiles: number[];
+  fields: FieldProposalDto[];
+}
+
+/** GET …/proposal: the latest proposal (or null) and the live propose job, if any. */
+export interface ProposalResponse {
+  proposal: ProposalDto | null;
+  job: JobDto | null;
+}
+
+/** POST …/proposal: build a proposal from this MusicBrainz release. */
+export interface ProposeRequest {
+  releaseMbid: string;
+}

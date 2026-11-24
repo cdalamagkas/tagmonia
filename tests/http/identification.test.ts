@@ -134,3 +134,20 @@ Deno.test("a pasted MusicBrainz link queues a manual identification; other links
     // While that job is live, another choice is refused rather than silently dropped.
     assertEquals((await post({ releaseUrl: `https://musicbrainz.org/release/${BEETHOVEN_5}` })).status, 409);
   }));
+
+Deno.test("proposal API: none at first, a user pick queues a job, invalid ids and busy releases refused", () =>
+  withApp(async (t, { cookie, csrf }) => {
+    const id = await seedIdentified(t);
+    const get = async () => await (await t.request(`/api/library/releases/${id}/proposal`, { cookie })).json();
+    assertEquals(await get(), { proposal: null, job: null });
+    const post = (body: unknown) =>
+      t.request(`/api/library/releases/${id}/proposal`, { method: "POST", cookie, csrf, body: JSON.stringify(body) });
+    assertEquals((await post({ releaseMbid: "not-an-mbid" })).status, 400);
+    const res = await post({ releaseMbid: CD });
+    assertEquals(res.status, 202);
+    const job: JobDto = await res.json();
+    assertEquals(t.queue.get(job.id)!.payload, { candidateId: id, releaseMbid: CD, chosenBy: "user" });
+    assertEquals((await get()).job.id, job.id);
+    assertEquals((await post({ releaseMbid: BEETHOVEN_5 })).status, 409);
+    assertEquals((await t.request("/api/library/releases/999/proposal", { cookie })).status, 404);
+  }));

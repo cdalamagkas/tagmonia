@@ -14,6 +14,7 @@ import type { FingerprintSource } from "../identify/acoustid_source.ts";
 import type { CandidateEvidence } from "../identify/types.ts";
 import type { Logger } from "../log.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
+import { autoPropose } from "./propose.ts";
 
 export const IDENTIFY_JOB = "identify";
 
@@ -102,6 +103,8 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
       );
       if (result.fingerprintError) deps.logger.warn("fingerprinting skipped", { error: result.fingerprintError });
       saveIdentifyResult(deps.db, candidateId, contentHash, result, now());
+      // Confident and unambiguous: prepare the proposal so the review is ready (§10).
+      if (result.verdict === "matched") autoPropose(deps.db, queue, candidateId, result.ranked[0].releaseId);
       if (result.skipped.length) deps.logger.warn("releases skipped", { candidateId, skipped: result.skipped });
       return {
         candidateId,

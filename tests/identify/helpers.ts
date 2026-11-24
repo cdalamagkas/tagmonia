@@ -1,13 +1,17 @@
 /** Builders for identification tests, based on recorded MusicBrainz responses (never the live API). */
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Cited, ReleaseQuery } from "../../server/providers/musicbrainz/client.ts";
 import { MusicBrainzResponseError } from "../../server/providers/musicbrainz/client.ts";
 import {
   type MbBrowseRelease,
   type MbRelease,
+  type MbReleaseGenres,
   type MbSearchRelease,
+  type MbWork,
   releaseSchema,
   releaseSearchSchema,
+  workSchema,
 } from "../../server/providers/musicbrainz/schema.ts";
 import type { MbSource } from "../../server/identify/identify.ts";
 import type { CandidateEvidence, FileEvidence } from "../../server/identify/types.ts";
@@ -85,6 +89,23 @@ export class FakeMb implements MbSource {
   readonly merged = new Map<string, string>();
   readonly truncated = new Set<string>();
   search: (q: ReleaseQuery) => MbRelease[] = () => [];
+  /** Genre lookups by release id (§10.3). */
+  readonly genres = new Map<string, MbReleaseGenres>();
+  /** Work lookups by id (parent works, §6.3). */
+  readonly works = new Map<string, MbWork>();
+
+  lookupReleaseGenres(mbid: string): Promise<Cited<MbReleaseGenres> | null> {
+    this.calls.push(`genres ${mbid}`);
+    const g = this.genres.get(mbid);
+    return Promise.resolve(g ? { value: g, snapshotId: 4 } : null);
+  }
+
+  lookupWork(mbid: string): Promise<Cited<MbWork> | null> {
+    this.calls.push(`work ${mbid}`);
+    const w = this.works.get(mbid);
+    return Promise.resolve(w ? { value: w, snapshotId: 5 } : null);
+  }
+
   /** Release-group browse; unset = the source does not support browsing. */
   browse?: (releaseGroupId: string) => MbRelease[];
 
@@ -142,4 +163,18 @@ export function evidenceFor(release: MbRelease, extra: Partial<CandidateEvidence
     albumArtist: "Beethoven; Berlin Philharmonic Orchestra, Herbert von Karajan",
     ...extra,
   };
+}
+
+/** The recorded parent work of the Beethoven 5 movements (Symphony no. 5, 4 ordered parts). */
+export const SYMPHONY_5 = "d03bff61-26fc-301b-98ac-4d8e85771cbc";
+
+export async function loadWork(mbid: string): Promise<MbWork> {
+  const dir = new URL("../fixtures/snaps/musicbrainz.org/ws/2/work/", import.meta.url);
+  for await (const e of Deno.readDir(dir)) {
+    if (e.name.startsWith(mbid)) {
+      // join, not new URL(): the file name holds percent-escapes that a URL would decode.
+      return workSchema.parse(JSON.parse(await Deno.readTextFile(join(fileURLToPath(dir), e.name))));
+    }
+  }
+  throw new Error(`no recorded work ${mbid}`);
 }
