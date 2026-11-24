@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { bootstrapAdmin } from "./auth/bootstrap.ts";
 import { LoginThrottle } from "./auth/ratelimit.ts";
 import { SessionStore } from "./auth/sessions.ts";
-import { loadConfig, resolveAcoustidKey } from "./config.ts";
+import { loadConfig, resolveAcoustidKey, resolveJellyfinKey } from "./config.ts";
+import { JellyfinClient } from "./integrations/jellyfin.ts";
+import { enqueueRefresh, folderOfBatch, registerRefreshJob } from "./jobs/refresh.ts";
 import { openMigratedDb } from "./db/db.ts";
 import { createApp } from "./http/app.ts";
 import { JobQueue } from "./jobs/queue.ts";
@@ -60,7 +62,31 @@ async function main() {
   // One client for every job: a second one would bring a second limiter and double the MusicBrainz rate.
   const mb = createMusicBrainzClient(db, config.configDir, settings);
   registerProposeJob(queue, { db, mb, settings: () => settings.proposal, logger });
-  registerWriteJobs(queue, { db, tagio, musicDir: config.musicDir, readOnly: config.readOnly, logger });
+  const jellyfinKey = await resolveJellyfinKey(config);
+  const jellyfin = config.jellyfinUrl && jellyfinKey
+    ? new JellyfinClient({
+      baseUrl: config.jellyfinUrl,
+      apiKey: jellyfinKey,
+      library: config.jellyfinLibrary,
+      userAgent: USER_AGENT,
+      version: VERSION,
+    })
+    : null;
+  if (jellyfin) registerRefreshJob(queue, { db, jellyfin, logger });
+  registerWriteJobs(queue, {
+    db,
+    tagio,
+    musicDir: config.musicDir,
+    readOnly: config.readOnly,
+    logger,
+    // §13: tell the music server once the files changed.
+    afterBatch: jellyfin
+      ? (r) => {
+        const folder = folderOfBatch(db, r.batchId);
+        enqueueRefresh(queue, db, folder === null ? [] : [folder]);
+      }
+      : undefined,
+  });
   registerIdentifyJob(queue, {
     db,
     fingerprints,

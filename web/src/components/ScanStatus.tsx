@@ -31,3 +31,19 @@ export function ScanStatus({ summary }: { summary: LibrarySummary }) {
     : "";
   return <span class="tm-muted">Scanned {when(scan.finishedAt)}{notes && ` · ${notes}`}</span>;
 }
+
+/** "Jellyfin: refreshed MusicTest at …" under the scan status (§13). */
+export function MusicServerStatus({ summary }: { summary: LibrarySummary }) {
+  const m = summary.musicServer;
+  if (!m) return null;
+  const where = m.library ? `the ${m.library} library` : "all libraries";
+  const j = m.lastRefresh;
+  let text = `Jellyfin: ${where} is refreshed after each write`;
+  if (j?.state === "queued") text = `Jellyfin: refresh of ${where} queued`;
+  else if (j?.state === "running") text = `Jellyfin: refreshing ${where}…`;
+  else if (j?.state === "done") text = `Jellyfin: ${where} refreshed ${when(j.finishedAt)}`;
+  else if (j?.state === "failed") {
+    return <p class="tm-error">Jellyfin refresh failed: {j.error}</p>;
+  }
+  return <p class="tm-muted">{text}</p>;
+}

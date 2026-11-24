@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "node:path";
-import { loadConfig, resolveAcoustidKey } from "../server/config.ts";
+import { loadConfig, resolveAcoustidKey, resolveJellyfinKey } from "../server/config.ts";
 
 const SECRET = "s3cret-acoustid-key";
 
@@ -33,4 +33,11 @@ Deno.test("an unreadable key file names the path, never contents", async () => {
     Error,
     "/nonexistent/acoustid",
   );
+});
+
+Deno.test("a Jellyfin key needs a Jellyfin URL; the key comes from a variable or a file", async () => {
+  assertThrows(() => loadConfig({ TAGMONIA_JELLYFIN_KEY: SECRET }), Error, "TAGMONIA_JELLYFIN_URL");
+  const c = loadConfig({ TAGMONIA_JELLYFIN_URL: "http://jellyfin:8096", TAGMONIA_JELLYFIN_KEY: SECRET });
+  assertEquals(await resolveJellyfinKey(c), SECRET);
+  assertEquals(await resolveJellyfinKey(loadConfig({})), undefined);
 });

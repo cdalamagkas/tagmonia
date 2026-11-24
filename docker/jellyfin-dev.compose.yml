@@ -1,0 +1,29 @@
+# A throwaway Jellyfin for development (Phase 3 "Done when", D44): it reads the
+# test library that Tagmonia writes to, so writes show up here as they would in
+# a real server. Never point it, or Tagmonia, at your real music library.
+#
+#   TAGMONIA_TEST_MUSIC=/mnt/c/Users/Public/Music docker compose -f docker/jellyfin-dev.compose.yml up -d
+#   scripts/dk deno run -A scripts/dev_jellyfin.ts        # first-run setup, library, API key
+#   open http://localhost:8096  (user "tagmonia", password in dev/secrets/jellyfin_admin)
+name: tagmonia-dev
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.3
+    container_name: tagmonia-dev-jellyfin
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      # Read-only: only Tagmonia writes to the test library.
+      - ${TAGMONIA_TEST_MUSIC:?set TAGMONIA_TEST_MUSIC to the test music folder}:/music:ro
+    ports:
+      # Loopback only: a dev server with a known password must not be reachable from the network.
+      - "127.0.0.1:8096:8096"
+    networks: [dev]
+    restart: unless-stopped
+volumes:
+  jellyfin-config:
+  jellyfin-cache:
+networks:
+  dev:
+    name: tagmonia-dev

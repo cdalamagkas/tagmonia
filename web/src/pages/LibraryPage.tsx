@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { LibrarySummary, ReleaseSummary } from "../../../shared/types.ts";
 import { api } from "../api.ts";
-import { scanActive, ScanStatus } from "../components/ScanStatus.tsx";
+import { MusicServerStatus, scanActive, ScanStatus } from "../components/ScanStatus.tsx";
 import { onLinkClick } from "../router.ts";
 import { StatusBadge } from "../components/Identification.tsx";
 
@@ -90,6 +90,7 @@ export function LibraryPage() {
             </p>
           )}
           {summary && <ScanStatus summary={summary} />}
+          {summary && <MusicServerStatus summary={summary} />}
         </div>
         <div class="tm-actions">
           {active

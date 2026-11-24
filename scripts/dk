@@ -8,10 +8,17 @@ if [[ "${DK_REBUILD:-}" == 1 ]] || ! docker image inspect "$image" >/dev/null 2>
   docker build -q -t "$image" -f "$here/docker/dev.Dockerfile" "$here/docker" >/dev/null
 fi
 tty=(); [[ -t 0 && -t 1 ]] && tty=(-it)
+# TAGMONIA_* variables pass through by name, so secrets never appear on a command line.
+envs=(); while IFS= read -r name; do envs+=(-e "$name"); done < <(compgen -e | grep '^TAGMONIA_' || true)
+# DK_MUSIC: a music folder to mount at /music (e.g. a test library). DK_NETWORK: join e.g. the dev Jellyfin's network.
+extra=()
+[[ -n "${DK_MUSIC:-}" ]] && extra+=(-v "$DK_MUSIC:/music")
+[[ -n "${DK_NETWORK:-}" ]] && extra+=(--network "$DK_NETWORK")
 exec docker run --rm "${tty[@]}" \
   --user "$(id -u):$(id -g)" \
   -e HOME=/tmp -e DENO_DIR=/cache/deno \
   -v tagmonia-deno-dir:/cache \
   -v "$here:/app" -w /app \
   ${DK_PORTS:+-p "$DK_PORTS"} \
+  "${envs[@]}" "${extra[@]}" \
   "$image" "$@"
