@@ -4,11 +4,19 @@ import { buildFieldProposals, type FieldLock } from "../../server/proposal/build
 import { normalizeText, valuesAgree } from "../../server/proposal/compare.ts";
 import type { ProposedTags } from "../../server/proposal/musicbrainz_tags.ts";
 
-Deno.test("comparison: case, spacing, NFC and typographic quotes do not count as changes", () => {
-  assert(valuesAgree("title", "Don’t  Stop", "don't stop"));
-  assert(valuesAgree("artist", "Beyoncé", "Beyoncé"), "decomposed é equals composed é");
+Deno.test("comparison: invisible differences agree; case and punctuation are changes (D43)", () => {
+  assert(valuesAgree("title", "Don\u2019t  Stop ", "Don\u2019t Stop"), "extra spaces are invisible");
+  assert(valuesAgree("artist", "Beyonce\u0301", "Beyoncé"), "decomposed é equals composed é");
+  // MusicBrainz's exact spelling is proposed, as Picard writes it.
+  assert(!valuesAgree("title", "is this it", "Is This It"));
+  assert(!valuesAgree("title", "Don't Stop", "Don\u2019t Stop"));
   assert(!valuesAgree("title", "Stop", "Start"));
-  assertEquals(normalizeText("  A “quote” "), 'a "quote"');
+});
+
+Deno.test("comparison: the loose strength ignores case and punctuation, for providers agreeing", () => {
+  assert(valuesAgree("title", "is this it", "Is This It", "loose"));
+  assert(valuesAgree("title", "Don't Stop", "Don\u2019t Stop", "loose"));
+  assertEquals(normalizeText("  A \u201Cquote\u201D "), 'a "quote"');
 });
 
 Deno.test("comparison: dates at shared precision, barcodes by digits", () => {
@@ -18,10 +26,12 @@ Deno.test("comparison: dates at shared precision, barcodes by digits", () => {
 });
 
 Deno.test("comparison: unordered lists ignore order, artist lists do not", () => {
-  assert(valuesAgree("genre", ["Rock", "Pop"], ["pop", "rock"]));
+  assert(valuesAgree("genre", ["Rock", "Pop"], ["Pop", "Rock"]));
+  assert(!valuesAgree("genre", ["rock"], ["Rock"]), "case is a change");
   assert(!valuesAgree("artists", ["A", "B"], ["B", "A"]));
   assert(valuesAgree("label", "Label A", ["Label A"]), "a single stored value agrees with a one-item list");
-  assert(valuesAgree("performer", { Piano: ["X"] }, { piano: ["x"] }));
+  assert(valuesAgree("performer", { piano: ["X", "Y"] }, { piano: ["Y", "X"] }));
+  assert(valuesAgree("performer", { Piano: ["X"] }, { piano: ["x"] }, "loose"));
   assert(!valuesAgree("performer", { piano: ["X"] }, { piano: ["X", "Y"] }));
 });
 
@@ -49,7 +59,8 @@ Deno.test("fields are unchanged, changed or added; unmapped files are left out",
   const r = build();
   const f1 = new Map(r.fields.filter((f) => f.fileId === 1).map((f) => [f.field, f.status]));
   assertEquals(Object.fromEntries(f1), {
-    album: "unchanged",
+    // "album" → "Album": MusicBrainz's case is proposed (D43).
+    album: "changed",
     date: "unchanged",
     genre: "added",
     title: "changed",
