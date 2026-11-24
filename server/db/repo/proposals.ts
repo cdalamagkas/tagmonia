@@ -3,6 +3,7 @@ import type { Db } from "../db.ts";
 import { transaction } from "../db.ts";
 import type { BuildResult, FieldLock, FieldStatus, LockScope } from "../../proposal/build.ts";
 import type { CanonicalField } from "../../tagio/types.ts";
+import type { ProviderMatch } from "../../providers/enrichment.ts";
 
 export type ProposalState = "draft" | "needs_review" | "approved" | "written" | "discarded";
 export type ChosenBy = "auto" | "user";
@@ -296,4 +297,42 @@ export function discardProposal(db: Db, id: number, now: number): void {
   if (!p) throw new ReviewError("proposal not found");
   if (p.state === "written") throw new ReviewError("a written proposal is undone, not discarded");
   setProposalState(db, id, "discarded", now);
+}
+
+// ---- the release on other providers (D47)
+
+export function saveProviderMatches(db: Db, proposalId: number, matches: ProviderMatch[], now: number): void {
+  transaction(db, () => {
+    db.prepare("DELETE FROM provider_release WHERE proposal_id = ?").run(proposalId);
+    const ins = db.prepare(
+      `INSERT INTO provider_release (proposal_id, provider, status, via, url, reason, data, fetched_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const m of matches) {
+      ins.run(
+        proposalId,
+        m.provider,
+        m.status,
+        m.via,
+        m.url,
+        m.reason,
+        m.release ? JSON.stringify(m.release) : null,
+        now,
+      );
+    }
+  });
+}
+
+export function providerMatches(db: Db, proposalId: number): ProviderMatch[] {
+  const rows = db.prepare(
+    "SELECT provider, status, via, url, reason, data FROM provider_release WHERE proposal_id = ? ORDER BY rowid",
+  ).all(proposalId) as unknown as {
+    provider: ProviderMatch["provider"];
+    status: ProviderMatch["status"];
+    via: ProviderMatch["via"];
+    url: string | null;
+    reason: string | null;
+    data: string | null;
+  }[];
+  return rows.map((r) => ({ ...r, release: r.data ? JSON.parse(r.data) : null }));
 }

@@ -60,6 +60,7 @@ Deno.test("genres: release and release-group votes merged, top 5, stable order (
     id: BEETHOVEN_5,
     genres: [g("classical", 1)],
     "release-group": { genres: [g("romantic", 3), g("classical", 4), g("symphony", 1), g("a", 1), g("b", 1)] },
+    relations: [],
   };
   assertEquals(mergeGenres(genres, 3), ["classical", "romantic", "a"]);
   assertEquals(mergeGenres(null), []);

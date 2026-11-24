@@ -161,12 +161,20 @@ export type MbBrowseRelease = z.infer<typeof releaseBrowseSchema>["releases"][nu
 
 const genreSchema = z.looseObject({ id: z.string(), name: z.string(), count: z.number().int().default(0) });
 
-/** `release/<mbid>?inc=genres+release-groups`: the nested release group carries its own genres (D40). */
-export const releaseGenresSchema = z.looseObject({
+/**
+ * `release/<mbid>?inc=genres+release-groups+url-rels`: genres (the nested
+ * release group carries its own, D40) and links to the same release elsewhere
+ * (Discogs, Deezer, Apple Music…), for provider lookups (D47).
+ */
+export const releaseExtrasSchema = z.looseObject({
   id: mbidSchema,
   genres: z.array(genreSchema).default([]),
   "release-group": z.looseObject({ genres: z.array(genreSchema).default([]) }).optional(),
+  relations: z.array(z.looseObject({
+    type: z.string(),
+    url: z.looseObject({ resource: z.string() }).optional(),
+  })).default([]),
 });
 
 export type MbGenre = z.infer<typeof genreSchema>;
-export type MbReleaseGenres = z.infer<typeof releaseGenresSchema>;
+export type MbReleaseExtras = z.infer<typeof releaseExtrasSchema>;

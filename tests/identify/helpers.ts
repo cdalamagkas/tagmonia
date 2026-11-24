@@ -1,12 +1,13 @@
 /** Builders for identification tests, based on recorded MusicBrainz responses (never the live API). */
 import { join } from "node:path";
+import { readSnap } from "../helpers/replay_fetch.ts";
 import { fileURLToPath } from "node:url";
 import type { Cited, ReleaseQuery } from "../../server/providers/musicbrainz/client.ts";
 import { MusicBrainzResponseError } from "../../server/providers/musicbrainz/client.ts";
 import {
   type MbBrowseRelease,
   type MbRelease,
-  type MbReleaseGenres,
+  type MbReleaseExtras,
   type MbSearchRelease,
   type MbWork,
   releaseSchema,
@@ -23,10 +24,10 @@ const RELEASE_DIR = new URL("../fixtures/snaps/musicbrainz.org/ws/2/release/", i
 
 export async function loadRelease(mbid: string): Promise<MbRelease> {
   for await (const e of Deno.readDir(RELEASE_DIR)) {
-    if (e.name.startsWith(mbid) && !e.name.endsWith(".404.json")) {
-      const text = await Deno.readTextFile(fileURLToPath(new URL(e.name, RELEASE_DIR)));
-      return releaseSchema.parse(JSON.parse(text));
-    }
+    if (!e.name.startsWith(`${mbid}__sha256-`) || e.name.includes(".404.")) continue;
+    // Corpus recordings are gzipped (D38); readSnap reads either form.
+    const bytes = await readSnap(join(fileURLToPath(RELEASE_DIR), e.name.replace(/\.gz$/, "")));
+    if (bytes) return releaseSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
   }
   throw new Error(`no recorded release ${mbid}`);
 }
@@ -90,11 +91,11 @@ export class FakeMb implements MbSource {
   readonly truncated = new Set<string>();
   search: (q: ReleaseQuery) => MbRelease[] = () => [];
   /** Genre lookups by release id (§10.3). */
-  readonly genres = new Map<string, MbReleaseGenres>();
+  readonly genres = new Map<string, MbReleaseExtras>();
   /** Work lookups by id (parent works, §6.3). */
   readonly works = new Map<string, MbWork>();
 
-  lookupReleaseGenres(mbid: string): Promise<Cited<MbReleaseGenres> | null> {
+  lookupReleaseExtras(mbid: string): Promise<Cited<MbReleaseExtras> | null> {
     this.calls.push(`genres ${mbid}`);
     const g = this.genres.get(mbid);
     return Promise.resolve(g ? { value: g, snapshotId: 4 } : null);

@@ -42,7 +42,9 @@ export type AcoustIdResult = z.infer<typeof lookupSchema>["results"][number];
 export class AcoustIdKeyError extends Error {
   override name = "AcoustIdKeyError";
   constructor() {
-    super("AcoustID rejected the API key (TAGMONIA_ACOUSTID_KEY)");
+    super(
+      "AcoustID rejected the API key: lookups need an application key (acoustid.org/my-applications), not the user API key",
+    );
   }
 }
 

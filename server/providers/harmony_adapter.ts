@@ -80,6 +80,8 @@ export interface HarmonyRegistry {
   /** Internal name of the provider that would handle this URL, or undefined (unsupported host). */
   providerForUrl(url: URL): string | undefined;
   lookupByUrl(url: URL, options?: HarmonyReleaseOptions): Promise<HarmonizedRelease>;
+  /** By barcode, on one enabled provider (D47). Rejects when that provider is not registered. */
+  lookupByGtin(provider: HarmonyProviderId, gtin: string, options?: HarmonyReleaseOptions): Promise<HarmonizedRelease>;
 }
 
 export class UnsupportedUrlError extends Error {
@@ -126,6 +128,13 @@ export async function createHarmonyRegistry(opts: HarmonyRegistryOptions): Promi
       const provider = find(url);
       if (!provider) return Promise.reject(new UnsupportedUrlError(url));
       return provider.getRelease(url, options);
+    },
+    lookupByGtin(id, gtin, options = {}) {
+      if (!enabled.includes(id)) return Promise.reject(new Error(`provider ${id} is not enabled`));
+      // Harmony's internal names are the simplified display names: "deezer", "itunes", "discogs".
+      const provider = registry.findByName(id);
+      if (!provider) return Promise.reject(new Error(`provider ${id} is not registered`));
+      return provider.getRelease(["gtin", gtin], options);
     },
   };
 }

@@ -14,11 +14,11 @@ import {
   type MbBrowseRelease,
   mbidSchema,
   type MbRelease,
-  type MbReleaseGenres,
+  type MbReleaseExtras,
   type MbReleaseSearch,
   type MbWork,
   releaseBrowseSchema,
-  releaseGenresSchema,
+  releaseExtrasSchema,
   releaseSchema,
   releaseSearchSchema,
   workSchema,
@@ -172,14 +172,14 @@ export class MusicBrainzClient {
   }
 
   /**
-   * Genres of a release and of its release group (§10.3, D27). A separate
-   * request: adding `genres` to the identification lookup would change its URL
-   * and every recorded fixture with it (D40).
+   * Genres of a release and its release group (§10.3, D27), and its links to the
+   * same release on other providers (D47), in one request. Separate from the
+   * identification lookup, whose URL every recorded fixture depends on (D40).
    */
-  async lookupReleaseGenres(mbid: string, signal?: AbortSignal): Promise<Cited<MbReleaseGenres> | null> {
+  async lookupReleaseExtras(mbid: string, signal?: AbortSignal): Promise<Cited<MbReleaseExtras> | null> {
     const id = mbidSchema.parse(mbid);
-    const url = this.#url(`release/${id}`, { inc: "genres+release-groups" });
-    return await this.#get(url, this.#ttl.lookupMs, releaseGenresSchema, signal);
+    const url = this.#url(`release/${id}`, { inc: "genres+release-groups+url-rels" });
+    return await this.#get(url, this.#ttl.lookupMs, releaseExtrasSchema, signal);
   }
 
   async lookupWork(mbid: string, signal?: AbortSignal): Promise<Cited<MbWork> | null> {

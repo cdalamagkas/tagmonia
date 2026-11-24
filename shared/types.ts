@@ -259,6 +259,16 @@ export interface ProposalDto {
   /** Files with no track on the release; they are left untouched. */
   unmappedFiles: number[];
   fields: FieldProposalDto[];
+  /** The same release on Deezer, iTunes and Discogs (D47). */
+  providers: ProviderMatchDto[];
+}
+
+export interface ProviderMatchDto {
+  provider: "deezer" | "itunes" | "discogs";
+  status: "found" | "different_edition" | "not_found" | "skipped" | "error";
+  via: "link" | "barcode" | null;
+  url: string | null;
+  reason: string | null;
 }
 
 /** GET …/proposal: the latest proposal (or null) and the live propose job, if any. */

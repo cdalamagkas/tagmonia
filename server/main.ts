@@ -24,7 +24,8 @@ import { RateLimiter } from "./providers/ratelimit.ts";
 import { SnapshotCache } from "./providers/snapshots.ts";
 import { identifyConfig, loadSettings } from "./settings.ts";
 import { createTagIO } from "./tagio/mod.ts";
-import { USER_AGENT, VERSION } from "./version.ts";
+import { PROJECT_URL, USER_AGENT, VERSION } from "./version.ts";
+import { createHarmonyRegistry } from "./providers/harmony_adapter.ts";
 
 async function main() {
   const config = loadConfig();
@@ -86,7 +87,25 @@ async function main() {
 
   // One client for every job: a second one would bring a second limiter and double the MusicBrainz rate.
   const mb = createMusicBrainzClient(db, config.configDir, settings);
-  registerProposeJob(queue, { db, mb, settings: () => settings.proposal, logger });
+  // Deezer, iTunes and Discogs through Harmony (D47). Harmony reads Discogs credentials once, when its
+  // modules load (D12): saving new ones takes effect after a restart, as the providers page says.
+  const discogs = await creds.get("discogs");
+  const discogsReady = !!(discogs.consumerKey && discogs.consumerSecret);
+  const harmony = await createHarmonyRegistry({
+    app: { name: "Tagmonia", version: VERSION, contact: PROJECT_URL },
+    snapsDir: join(config.configDir, "snaps", "harmony"),
+    providers: ["deezer", "itunes", ...(discogsReady ? ["discogs" as const] : [])],
+    credentials: discogsReady
+      ? { discogsConsumerKey: discogs.consumerKey, discogsConsumerSecret: discogs.consumerSecret }
+      : undefined,
+  });
+  registerProposeJob(queue, {
+    db,
+    mb,
+    settings: () => settings.proposal,
+    logger,
+    enrichment: { registry: harmony, enabled: (id) => settings.providers[id].enabled },
+  });
   registerRefreshJob(queue, { db, jellyfin, logger });
   registerProviderTestJob(queue, { db, creds, mb, userAgent: USER_AGENT, version: VERSION });
   registerWriteJobs(queue, {
