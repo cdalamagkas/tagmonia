@@ -730,10 +730,14 @@ Artists, labels and standalone recordings can be seeded with GET query parameter
 | Server | Action after a write batch | Auth |
 |---|---|---|
 | Navidrome | Subsonic API `startScan` (and poll `getScanStatus`) | Navidrome user + password or token, stored encrypted (§14.3) |
-| Jellyfin | Trigger a library refresh via its REST API | API key |
+| Jellyfin | Full re-read of exactly the albums Tagmonia wrote (`POST /Items/{album}/Refresh`, `MetadataRefreshMode=FullRefresh`, `ReplaceAllMetadata=true`, recursive); a library scan for folders Jellyfin does not know yet (D44) | API key: `TAGMONIA_JELLYFIN_KEY` or `_KEY_FILE`, with `TAGMONIA_JELLYFIN_URL` and optional `TAGMONIA_JELLYFIN_LIBRARY` |
 | None | Nothing; user's server picks up changes on its own schedule | |
 
-Debounce: at most one rescan request per server per minute, so a large batch does not trigger repeated scans.
+Debounce: at most one rescan request per server per minute, so a large batch does not trigger repeated scans. Written album folders queue in `refresh_pending`; one refresh takes them all, and folders written while it runs are picked up by the same run.
+
+Written folders are matched to Jellyfin albums by the end of the album's path (whole path segments, Windows separators and Unicode forms normalised), so Tagmonia's and Jellyfin's mount points may differ. Only those albums get their metadata replaced from the files; manual edits elsewhere in the Jellyfin library are kept. A plain library scan is not enough: Jellyfin merges the new tags into what it had and keeps values a write or undo removed (checked against 10.11.3).
+
+For development, `docker/jellyfin-dev.compose.yml` runs a throwaway Jellyfin over a test folder and `scripts/dev_jellyfin.ts` sets it up (see the README).
 
 ---
 
@@ -877,6 +881,8 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Done when:** a reviewed release is written, verified, visible correctly in a real Jellyfin instance, and fully undoable. (Jellyfin replaces Navidrome here, D40.)
 
+**Status:** done 2026-11-24. On a dev Jellyfin 10.11.3 over the maintainer's two test albums (a two-disc FLAC release and four Opus tracks of a partial album), driven through the HTTP API with live MusicBrainz: both were identified, reviewed (album titles and genres edited), written (17/17 and 4/4 files, verified), and Jellyfin showed the edited values after Tagmonia's own refresh; both writes were undone, Jellyfin returned exactly to its view before the write, every file's tags equalled their pre-write tags, and the audio packets of all 21 files were identical to a byte backup taken beforehand. Findings: D40–D44.
+
 ### Phase 4 — More providers
 
 - Discogs, Deezer, iTunes via Harmony; Cover Art Archive with fallbacks.
@@ -945,6 +951,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D41 | 2026-11-24 | Write procedure details (§11.3): per-field stale check against the reviewed values; backup stored before each file is written; verified restore; database and content hash refreshed after each file so a rescan sees no change; writes and undos never retried and serialised per release; undo skips files whose written fields changed since; asking to write a proposal is its approval; no pictures written in Phase 3 | Raw file-byte backups; retry failed writes; a separate approve step | Tag-level backups restore exactly what Tagmonia changed while keeping anything else that changed in the file, and the atomic write never re-encodes audio. A retry would read its own changes as "changed since review". The review UI (part 3) is where fields are decided; a separate approve call adds nothing. Without the hash refresh, every written release looked "changed" to the next scan and was re-identified. |
 | D42 | 2026-11-24 | **Performer roles are read as written:** the Vorbis `Name (role)` role is the last balanced parenthesised group, and its case is kept (Vorbis and ID3 `TMCL`). **Review UI:** release-level fields are decided once for every file; per field the user can use the proposed value, keep the current one, edit it, or lock it for the album/file or everywhere; "Use this" in the edition picker or candidate list builds the proposal from that release; locked rows refuse decisions until unlocked; a decision after approval returns the proposal to review | Lower-case roles on read; per-file decisions only | Found by an end-to-end write of *Is This It* against live MusicBrainz: the instrument "drums (drum set)" read back as a role-less name, every file failed verification and was (correctly) restored. Lower-casing on read would fail the same way for "Rhodes piano"; comparison already ignores case (§10.2). |
 | D43 | 2026-11-24 | Case and punctuation differences are changes: a field is "unchanged" only when it differs from the proposal invisibly (Unicode form, spacing), so MusicBrainz's exact spelling is proposed as Picard writes it. The case- and quote-insensitive comparison is kept for providers agreeing with each other | Case-insensitive change detection (the original §10.2); fix case but not quotes | Maintainer choice. Found by the end-to-end write of *Is This It*: the lower-case title `is this it` counted as unchanged and was never corrected, though fixing capitalisation is a common reason to retag. Any field can still be kept or edited in the review. |
+| D44 | 2026-11-24 | **Jellyfin integration:** after a write or undo, the written album folders are queued and a debounced job fully re-reads exactly those albums (`FullRefresh` + `ReplaceAllMetadata=true`, recursive), with a library scan for folders Jellyfin does not know yet. Configured by `TAGMONIA_JELLYFIN_URL`, `TAGMONIA_JELLYFIN_KEY`/`_KEY_FILE` and optional `TAGMONIA_JELLYFIN_LIBRARY` (same pattern as D37); the key goes only in the `Authorization` header. **Development:** a throwaway Jellyfin (`docker/jellyfin-dev.compose.yml`, `jellyfin/jellyfin:10.11.3`, loopback only) over the test folder, set up by `scripts/dev_jellyfin.ts` with online metadata and real-time monitoring off; `scripts/dk` passes `TAGMONIA_*` variables by name and can mount a test folder (`DK_MUSIC`) and join the dev network (`DK_NETWORK`) | Plain library scan; replace metadata for the whole library; test against the maintainer's real server | Checked against 10.11.3: a plain scan merges tags and keeps values a write or undo removed (an undone genre stayed visible); an album-level full refresh showed the files' state within seconds. Replacing only the written albums keeps manual edits elsewhere. The maintainer asked for a test instance in the dev setup instead of the real server. |
 
 ---
 

@@ -14,6 +14,7 @@ import type {
 import type { Db } from "../../db/db.ts";
 import { getRelease, librarySummary, listReleases, type StoredFile } from "../../db/repo/library.ts";
 import { enqueueScan, SCAN_JOB } from "../../jobs/scan.ts";
+import { REFRESH_JOB } from "../../jobs/refresh.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
@@ -69,6 +70,8 @@ export interface LibraryRouteDeps {
   db: Db;
   queue: JobQueue;
   readOnly: boolean;
+  /** Jellyfin, when configured (§13). */
+  musicServer?: { name: "jellyfin"; library: string | null };
   /** Read per request, so the UI shows the thresholds the scores were judged by. */
   thresholds: () => { auto: number; review: number };
 }
@@ -99,10 +102,12 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
   return new Hono<AuthEnv>()
     .get("/summary", (c) => {
       const scan = queue.latest(SCAN_JOB);
+      const refresh = queue.latest(REFRESH_JOB);
       const body: LibrarySummary = {
         ...librarySummary(db),
         readOnly: deps.readOnly,
         scan: scan ? (toJobDto(scan) as ScanJobDto) : null,
+        musicServer: deps.musicServer ? { ...deps.musicServer, lastRefresh: refresh ? toJobDto(refresh) : null } : null,
       };
       return c.json(body);
     })

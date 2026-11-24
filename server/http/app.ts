@@ -74,6 +74,9 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
       db,
       queue,
       readOnly: config.readOnly,
+      musicServer: config.jellyfinUrl && (config.jellyfinKey || config.jellyfinKeyFile)
+        ? { name: "jellyfin", library: config.jellyfinLibrary ?? null }
+        : undefined,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
     }),
   );

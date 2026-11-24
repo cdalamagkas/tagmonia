@@ -98,6 +98,16 @@ export interface LibrarySummary {
   readOnly: boolean;
   /** Most recent scan job, running or finished. */
   scan: ScanJobDto | null;
+  /** The music server told to rescan after writes (§13); null when none is configured. */
+  musicServer: MusicServerStatus | null;
+}
+
+export interface MusicServerStatus {
+  name: "jellyfin";
+  /** Library refreshed after writes; null = all libraries. */
+  library: string | null;
+  /** Latest refresh request, queued, running or finished. */
+  lastRefresh: JobDto | null;
 }
 
 /** A release candidate (§6.1 `candidate`): files believed to form one release. */

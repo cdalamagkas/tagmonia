@@ -33,7 +33,28 @@ On first start the UI asks you to create the admin account (or set `TAGMONIA_ADM
 
 Fingerprint identification is optional: get a free application key at <https://acoustid.org/new-application> and pass it as `TAGMONIA_ACOUSTID_KEY`, or as a Docker secret with `TAGMONIA_ACOUSTID_KEY_FILE` (see `docker-compose.example.yml`).
 
+After each write, Tagmonia can ask Jellyfin to re-read the albums it changed: set `TAGMONIA_JELLYFIN_URL`, an API key
+(Jellyfin → Dashboard → API Keys) as `TAGMONIA_JELLYFIN_KEY` or `TAGMONIA_JELLYFIN_KEY_FILE`, and optionally
+`TAGMONIA_JELLYFIN_LIBRARY` to limit it to one library.
+
 `deno task dev` starts both servers in one container (publish both ports with two `-p` flags if you run it that way).
+
+### A throwaway Jellyfin for development
+
+To see writes the way a music server does (Phase 3), run a dev Jellyfin over a **test** music folder (never your real
+library; Tagmonia writes to it):
+
+```sh
+TAGMONIA_TEST_MUSIC=/path/to/test-music UID=$(id -u) GID=$(id -g) \
+  docker compose -f docker/jellyfin-dev.compose.yml up -d     # http://localhost:8096
+DK_NETWORK=tagmonia-dev scripts/dk deno run -A scripts/dev_jellyfin.ts
+# first-run setup, a "MusicTest" library over the folder, and an API key in dev/secrets/ (gitignored, never printed)
+```
+
+Then run Tagmonia on the same folder with `DK_NETWORK=tagmonia-dev DK_MUSIC=/path/to/test-music` and
+`TAGMONIA_MUSIC_DIR=/music TAGMONIA_JELLYFIN_URL=http://tagmonia-dev-jellyfin:8096
+TAGMONIA_JELLYFIN_KEY_FILE=dev/secrets/jellyfin_key TAGMONIA_JELLYFIN_LIBRARY=MusicTest`. `scripts/dk` passes every
+`TAGMONIA_*` variable of your shell into the container by name.
 
 ### TagIO
 

@@ -12,9 +12,14 @@ services:
       - TAGMONIA_PUBLIC_URL=https://tagmonia.home.example
       # Optional: fingerprint identification. Get a free application key at https://acoustid.org/new-application
       #- TAGMONIA_ACOUSTID_KEY_FILE=/run/secrets/acoustid_key
+      # Optional: tell Jellyfin to re-read the albums Tagmonia wrote (an API key from Dashboard -> API Keys).
+      #- TAGMONIA_JELLYFIN_URL=https://jellyfin.home.example
+      #- TAGMONIA_JELLYFIN_KEY_FILE=/run/secrets/jellyfin_key
+      #- TAGMONIA_JELLYFIN_LIBRARY=Music
       - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
     #secrets:
     #  - acoustid_key
+    #  - jellyfin_key
     volumes:
       - /mnt/c/Users/Public/Music:/music:ro
       - tagmonia-config:/config
@@ -23,3 +28,5 @@ volumes:
 #secrets:
 #  acoustid_key:
 #    file: ./acoustid_key.txt
+#  jellyfin_key:
+#    file: ./jellyfin_key.txt
