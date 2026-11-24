@@ -17,24 +17,34 @@ export type FieldKind =
   | "text"
   /** string list */
   | "multi"
-  /** integer; for ID3/MP4 packed into a pair frame/atom (TRCK, TPOS, trkn, disk) */
+  /** integer; may be packed into an "n/total" pair (see `pair`) */
   | "int"
   /** role -> names map */
   | "performer";
+
+export type PairGroup = "track" | "disc" | "movement";
+
+/** ID3 frame holding each pair group. */
+export const ID3_PAIR_FRAMES: Record<PairGroup, string> = { track: "TRCK", disc: "TPOS", movement: "MVIN" };
 
 export interface FieldMapping {
   field: CanonicalField;
   kind: FieldKind;
   /** Picard internal name, or null when Picard does not define the tag. */
   picard: string | null;
-  /** Frame id, `TXXX:<desc>` or `UFID:<owner>`. */
+  /** Frame id, `TXXX:<desc>`, `UFID:<owner>` or `TIPL:<role>` (one role inside the shared TIPL frame). */
   id3: string;
   /** First key is canonical for reading; every key is written (Picard writes both TRACKTOTAL and TOTALTRACKS). */
   vorbis: string[];
   /** Atom name or freeform `----:mean:name`; null = not stored in MP4. */
   mp4: string | null;
-  /** For pair-packed ints: which half of `n/total`. */
-  pair?: { group: "track" | "disc"; index: 0 | 1 };
+  /**
+   * Which half of an ID3 "n/total" frame (TRCK, TPOS, MVIN) this int is. Vorbis
+   * reads also accept "n/total" in the number key, as some taggers write it.
+   */
+  pair?: { group: PairGroup; index: 0 | 1 };
+  /** MP4 packs the pair into one atom too (trkn, disk); movement numbers use separate atoms. */
+  mp4Pair?: boolean;
 }
 
 export const FIELD_MAPPINGS: readonly FieldMapping[] = [
@@ -50,6 +60,7 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
     vorbis: ["TRACKNUMBER"],
     mp4: "trkn",
     pair: { group: "track", index: 0 },
+    mp4Pair: true,
   },
   {
     field: "totaltracks",
@@ -59,6 +70,7 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
     vorbis: ["TRACKTOTAL", "TOTALTRACKS"],
     mp4: "trkn",
     pair: { group: "track", index: 1 },
+    mp4Pair: true,
   },
   {
     field: "discnumber",
@@ -68,6 +80,7 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
     vorbis: ["DISCNUMBER"],
     mp4: "disk",
     pair: { group: "disc", index: 0 },
+    mp4Pair: true,
   },
   {
     field: "totaldiscs",
@@ -77,6 +90,7 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
     vorbis: ["DISCTOTAL", "TOTALDISCS"],
     mp4: "disk",
     pair: { group: "disc", index: 1 },
+    mp4Pair: true,
   },
   { field: "isrc", kind: "multi", picard: "isrc", id3: "TSRC", vorbis: ["ISRC"], mp4: ff("ISRC") },
   { field: "composer", kind: "multi", picard: "composer", id3: "TCOM", vorbis: ["COMPOSER"], mp4: "©wrt" },
@@ -93,6 +107,51 @@ export const FIELD_MAPPINGS: readonly FieldMapping[] = [
   },
   // Picard writes TXXX:WORK unless its iTunes-compatibility option is on.
   { field: "work", kind: "text", picard: "work", id3: "TXXX:WORK", vorbis: ["WORK"], mp4: "©wrk" },
+  // Classical (§6.3). Arranger is one role in ID3's shared TIPL frame, next to producer and engineer.
+  {
+    field: "arranger",
+    kind: "multi",
+    picard: "arranger",
+    id3: "TIPL:arranger",
+    vorbis: ["ARRANGER"],
+    mp4: ff("arranger"),
+  },
+  {
+    field: "composersort",
+    kind: "multi",
+    picard: "composersort",
+    id3: "TSOC",
+    vorbis: ["COMPOSERSORT"],
+    mp4: "soco",
+  },
+  { field: "movement", kind: "text", picard: "movement", id3: "MVNM", vorbis: ["MOVEMENTNAME"], mp4: "©mvn" },
+  // Picard's docs table says "mvi"/"mvc"; Picard and mutagen write ©mvi/©mvc (D35).
+  {
+    field: "movementnumber",
+    kind: "int",
+    picard: "movementnumber",
+    id3: "MVIN",
+    vorbis: ["MOVEMENT"],
+    mp4: "©mvi",
+    pair: { group: "movement", index: 0 },
+  },
+  {
+    field: "movementtotal",
+    kind: "int",
+    picard: "movementtotal",
+    id3: "MVIN",
+    vorbis: ["MOVEMENTTOTAL"],
+    mp4: "©mvc",
+    pair: { group: "movement", index: 1 },
+  },
+  {
+    field: "showmovement",
+    kind: "int",
+    picard: "showmovement",
+    id3: "TXXX:SHOWMOVEMENT",
+    vorbis: ["SHOWMOVEMENT"],
+    mp4: "shwm",
+  },
   {
     field: "musicbrainz_recordingid",
     kind: "text",

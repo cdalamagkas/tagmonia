@@ -88,6 +88,8 @@ def mp4(path):
                     data.append({"dtype": dtype, "size": len(raw)})
                 elif dtype == 1:
                     data.append(raw.decode("utf-8"))
+                elif dtype == 21:  # iTunes big-endian signed integer (©mvi, ©mvc, shwm)
+                    data.append(int.from_bytes(raw, "big", signed=True))
                 else:
                     data.append({"dtype": dtype, "hex": raw.hex()})
         if key == "----":

@@ -25,6 +25,15 @@ export interface CanonicalTags {
   /** Role (lowercase) -> names. Not stored in MP4, as in Picard (D9). */
   performer?: Record<string, Multi>;
   work?: string;
+  // Classical credits and work structure (§6.3, D28); Picard's own names.
+  arranger?: Multi;
+  composersort?: Multi;
+  /** Movement name, e.g. "I. Allegro con brio". The track title is never rewritten into it. */
+  movement?: string;
+  movementnumber?: number;
+  movementtotal?: number;
+  /** 1 when the movement fields are set, so players that support it show work + movement. */
+  showmovement?: number;
   musicbrainz_recordingid?: string;
   /** Release-track MBID (Picard's naming; Vorbis MUSICBRAINZ_RELEASETRACKID). */
   musicbrainz_trackid?: string;

@@ -305,6 +305,12 @@ export interface CanonicalTags {
   conductor?: Multi;
   performer?: Record<string, Multi>;   // role -> names
   work?: string;
+  arranger?: Multi;                    // classical fields: §6.3
+  composersort?: Multi;
+  movement?: string;
+  movementnumber?: number;
+  movementtotal?: number;
+  showmovement?: number;               // 1 when movement fields are set
   musicbrainz_recordingid?: string;
   musicbrainz_trackid?: string;        // release-track MBID (Picard's name; see D8)
   musicbrainz_artistid?: Multi;
@@ -596,6 +602,11 @@ Follow MusicBrainz Picard's tag mapping table as the authoritative reference (li
 | `work` | `TXXX:WORK` | `WORK` | `©wrk` |
 | `originaldate` | `TDOR` | `ORIGINALDATE` | `----:com.apple.iTunes:originaldate` (D9) |
 | `performer` | `TMCL` (role, name pairs) | `PERFORMER=Name (role)` | not stored, as in Picard (D9) |
+| `arranger` | `TIPL` role `arranger`, sharing the frame with producer, engineer and mix credits, which a write keeps | `ARRANGER` | `----:com.apple.iTunes:arranger` (Picard's fallback naming, D9) |
+| `composersort` | `TSOC` | `COMPOSERSORT` | `soco` |
+| `movement` | `MVNM` | `MOVEMENTNAME` | `©mvn` |
+| `movementnumber` / `movementtotal` | `MVIN` (`n/total`) | `MOVEMENT`, `MOVEMENTTOTAL` | `©mvi`, `©mvc` (integer atoms; Picard's docs table says `mvi`/`mvc`, D35) |
+| `showmovement` | `TXXX:SHOWMOVEMENT` | `SHOWMOVEMENT` | `shwm` (integer atom) |
 | `albumartists` | `TXXX:ALBUMARTISTS` | `ALBUMARTISTS` | `----:com.apple.iTunes:ALBUMARTISTS` (not in Picard's table, D8) |
 | front cover | `APIC` type 3 | FLAC: `PICTURE` block; OGG/Opus: `METADATA_BLOCK_PICTURE` | `covr` |
 | provider IDs | `TXXX:DISCOGS_RELEASE_ID`, ... | `DISCOGS_RELEASE_ID`, ... | `----:com.apple.iTunes:DISCOGS_RELEASE_ID`, ... |
@@ -901,6 +912,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D28 | 2026-11-23 | Deep classical support in v1 (§6.3): composer, arranger, performers by instrument, conductor, work hierarchy and movement fields | Basic credits only; defer | Maintainer choice (§18 Q4). Uses Picard's own tag names (`movement`, `movementnumber`, `movementtotal`, `showmovement`, `arranger`, `composersort`), so no custom tags are needed. |
 | D29 | 2026-11-23 | v1 is single-user (one admin) | Roles (admin, reviewer) | Maintainer choice (§18 Q5); confirms D25. |
 | D30 | 2026-11-23 | Renamed to **Tagmonia** ("tag" + αρμονία, Greek for harmony): app name, `TAGMONIA_*` variables, cookie `tagmonia_session`, database `tagmonia.db`, repository `cdalamagkas/tagmonia` | Keep Tagmony | Maintainer choice: a meaningful root and no "tag money" reading when spoken. Done before any release, so nothing depends on the old names. The wordmark was regenerated from the brand fonts; the mark is unchanged. |
+| D35 | 2026-11-24 | Classical tags follow **Picard's code** where its docs table differs: MP4 movement atoms are `©mvi`/`©mvc` (iTunes integer atoms), not `mvi`/`mvc`; `arranger` is one role inside ID3's shared `TIPL` frame and an MP4 freeform `arranger` atom; `MVIN` is packed `n/total` like `TRCK` | Follow the docs table literally | Checked against Picard's `formats/mp4.py` and `formats/id3.py` and mutagen 1.47: a bare `mvi` atom is read by nothing. Writing `arranger` replaces only its own `TIPL` entries, so producer, engineer and mix credits from other taggers survive. `tests/tagio/mapping.test.ts` lists the docs errata explicitly. (D31–D34 are in the Phase 2 MusicBrainz client PR.) |
 
 ---
 
