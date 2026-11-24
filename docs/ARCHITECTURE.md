@@ -909,3 +909,36 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D32 | 2026-11-23 | MusicBrainz limits as checked on 2026-11-23: **1 request per second** on average per IP; excess requests get **503**. Linked-entity lists are capped at 25 per entity. Search `limit` is at most 100. Release lookups use `inc=artist-credits+labels+recordings+release-groups+media+isrcs+recording-level-rels+work-rels+work-level-rels+artist-rels` | — | From the MusicBrainz API docs, then checked against the live API. The docs do not mention `Retry-After`, but the server does send `503` + `Retry-After: 1` when its *global* limit is hit (`X-RateLimit-Zone: global`), even for a client below 1 req/s, so backoff that honours `Retry-After` is required. One release lookup returns conductor, performer and arranger relationships on recordings and the performed work with its composer and its `parts` link to the parent work (`ordering-key` = movement number). The parent work needs its own lookup for `movementtotal`. A release whose tracklist comes back shorter than `track-count` is rejected rather than scored. |
 | D33 | 2026-11-23 | The labelled identification fixtures (D26) are **synthesised from recorded MusicBrainz releases**: files are generated from the release data with realistic damage (jittered durations, missing or misspelt tags, wrong order, missing bonus tracks, untagged sets) | Export tags from the maintainer's library | Maintainer choice. Reproducible, no audio or personal data committed. A real-library check can be added later. |
 | D34 | 2026-11-23 | AcoustID is tested with hand-built responses only in Phase 2 | Record live AcoustID responses | Maintainer choice: no AcoustID key or real-audio fingerprints are available yet. Generated fixture audio matches nothing in AcoustID. A live check comes later. |
+
+---
+
+## 18. Open questions
+
+1. ~~**License**~~ — resolved: GPL-3.0 (D17).
+2. ~~**Identification accuracy target**~~ — resolved (D26, proposed; revisit after Phase 2).
+3. ~~**Genre policy**~~ — resolved: MusicBrainz genres (D27).
+4. ~~**Classical support depth**~~ — resolved: deep support in v1 (D28, §6.3).
+5. ~~**Multiple users**~~ — resolved: single user in v1 (D29).
+6. **Local MusicBrainz mirror** support documented as a first-class option for very large libraries?
+7. ~~**Bandcamp and Beatport**~~ — resolved: opt-in (D16).
+8. ~~**Public repository URL**~~ — resolved (D18).
+
+---
+
+## 19. References
+
+- MusicBrainz API: <https://musicbrainz.org/doc/MusicBrainz_API>
+- MusicBrainz rate limiting: <https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting>
+- Release editor seeding: <https://musicbrainz.org/doc/Development/Release_Editor_Seeding>
+- Seeding overview (other entities): <https://musicbrainz.org/doc/Development/Seeding>
+- Picard tag mapping: <https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html>
+- Picard tag variables (basic and advanced): <https://picard-docs.musicbrainz.org/en/variables/tags_basic.html>
+- Harmony: <https://github.com/kellnerd/harmony>
+- AcoustID web service: <https://acoustid.org/webservice>
+- Chromaprint / fpcalc: <https://acoustid.org/chromaprint>
+- Cover Art Archive API: <https://musicbrainz.org/doc/Cover_Art_Archive/API>
+- Navidrome custom tags and tag handling: <https://www.navidrome.org/docs/usage/configuration/custom-tags/>
+- Subsonic API: <http://www.subsonic.org/pages/api.jsp>
+- Jellyfin API: <https://api.jellyfin.org/>
+- YouTube Data API quota costs: <https://developers.google.com/youtube/v3/determine_quota_cost>
+- Discogs API: <https://www.discogs.com/developers>
