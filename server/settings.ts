@@ -33,6 +33,10 @@ export const settingsSchema = z.object({
       /** AcoustID matches scoring below this are ignored. */
       minScore: z.number().min(0).max(1).default(0.5),
     }).prefault({}),
+    // Enrichment providers (§9.2): on by default; Discogs acts only once it has credentials.
+    deezer: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+    itunes: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+    discogs: z.object({ enabled: z.boolean().default(true) }).prefault({}),
   }).prefault({}),
   identify: z.object({
     /** §8.1: at or above, a match may be auto-approved (only if the user enables it, Phase 3). */
@@ -83,7 +87,8 @@ export async function loadSettings(configDir: string): Promise<Settings> {
   } catch (e) {
     if (!(e instanceof Deno.errors.NotFound)) throw e;
     await Deno.writeTextFile(path, JSON.stringify(DEFAULT_SETTINGS, null, 2) + "\n");
-    return DEFAULT_SETTINGS;
+    // A copy: settings are updated in place (updateSettings), and the defaults must stay the defaults.
+    return structuredClone(DEFAULT_SETTINGS);
   }
   let json: unknown;
   try {
@@ -107,4 +112,54 @@ export function identifyConfig(s: Settings): IdentifyConfig {
     thresholds: { autoThreshold: i.autoThreshold, reviewThreshold: i.reviewThreshold, editionMargin: i.editionMargin },
     maxLookupsPerSearch: i.maxLookupsPerSearch,
   };
+}
+
+/** Settings read once at startup (rate limiters, sessions): changing them needs a restart. */
+const STARTUP_ONLY = ["providers.musicbrainz", "providers.acoustid.requestsPerSecond", "auth"];
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Objects merge key by key; arrays and scalars replace. */
+function deepMerge(base: unknown, patch: unknown): unknown {
+  if (!isObject(base) || !isObject(patch)) return patch;
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(patch)) out[k] = deepMerge(base[k], v);
+  return out;
+}
+
+function changedPaths(a: unknown, b: unknown, prefix = ""): string[] {
+  if (isObject(a) && isObject(b)) {
+    return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap((k) =>
+      changedPaths(a[k], b[k], prefix ? `${prefix}.${k}` : k)
+    );
+  }
+  return JSON.stringify(a) === JSON.stringify(b) ? [] : [prefix];
+}
+
+export class SettingsError extends Error {
+  override name = "SettingsError";
+}
+
+/**
+ * Applies a partial change from the UI (§15.2): validated like the file at
+ * startup, written atomically, then copied into `settings` in place so every
+ * job and route that holds it sees the change. Returns the changed paths that
+ * only take effect after a restart.
+ */
+export async function updateSettings(configDir: string, settings: Settings, patch: unknown): Promise<string[]> {
+  const parsed = settingsSchema.safeParse(deepMerge(structuredClone(settings), patch));
+  if (!parsed.success) {
+    throw new SettingsError(`invalid settings: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`);
+  }
+  const changed = changedPaths(settings, parsed.data);
+  const path = join(configDir, "settings.json");
+  const tmp = `${path}.tmp`;
+  await Deno.writeTextFile(tmp, JSON.stringify(parsed.data, null, 2) + "\n");
+  await Deno.rename(tmp, path);
+  for (const k of Object.keys(parsed.data) as (keyof Settings)[]) {
+    (settings as Record<string, unknown>)[k] = parsed.data[k];
+  }
+  return changed.filter((c) => STARTUP_ONLY.some((s) => c === s || c.startsWith(`${s}.`)));
 }

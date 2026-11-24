@@ -3,6 +3,7 @@ import {
   type ApiError,
   type AuthState,
   type Credentials,
+  type CredentialsRequest,
   CSRF_HEADER,
   type DecisionRequest,
   type HealthResponse,
@@ -15,9 +16,12 @@ import {
   type LockRequest,
   type ProposalResponse,
   type ProposeRequest,
+  type ProvidersResponse,
   type ReleaseDetail,
   type ReleaseList,
   type ScanJobDto,
+  type SettingsDto,
+  type SettingsUpdateResponse,
 } from "../../shared/types.ts";
 
 export class ApiRequestError extends Error {
@@ -88,6 +92,12 @@ export const api = {
   unlock: (lockId: number) => request<void>("DELETE", `/api/locks/${lockId}`),
   history: (id: number) => request<HistoryResponse>("GET", `/api/library/releases/${id}/history`),
   undo: (batchId: number) => request<JobDto>("POST", `/api/batches/${batchId}/undo`),
+  providers: () => request<ProvidersResponse>("GET", "/api/providers"),
+  saveCredentials: (id: string, body: CredentialsRequest) =>
+    request<{ restartRequired: boolean }>("PUT", `/api/providers/${id}/credentials`, body),
+  testProvider: (id: string) => request<JobDto>("POST", `/api/providers/${id}/test`),
+  settings: () => request<SettingsDto>("GET", "/api/settings"),
+  updateSettings: (patch: unknown) => request<SettingsUpdateResponse>("PATCH", "/api/settings", patch),
   identify: (id: number, body: IdentifyRequest = {}) =>
     request<JobDto>("POST", `/api/library/releases/${id}/identify`, body),
   cancelJob: (id: number) => request<ScanJobDto>("POST", `/api/jobs/${id}/cancel`),

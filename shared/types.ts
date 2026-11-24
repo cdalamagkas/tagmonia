@@ -4,6 +4,7 @@
  * sides can use it.
  */
 import type { CanonicalTags } from "../server/tagio/types.ts";
+import type { Settings } from "../server/settings.ts";
 import type {
   MatchMethod,
   ReleaseSummary as EditionSummary,
@@ -333,4 +334,62 @@ export interface DecisionRequest {
   decision: FieldDecision;
   /** Required with "edited": the user's own value, in the field's canonical type. */
   edited?: unknown;
+}
+
+// ---- providers and settings (§9.2, §14.3, §15.2, Phase 4)
+
+export type SettingsDto = Settings;
+
+/** PATCH /api/settings answer: the saved settings, and changed paths that apply only after a restart. */
+export interface SettingsUpdateResponse {
+  settings: SettingsDto;
+  restartRequired: string[];
+}
+
+export interface CredentialFieldDto {
+  key: string;
+  label: string;
+  /** Never returned once saved; only "set". */
+  secret: boolean;
+  kind: "text" | "url";
+  optional: boolean;
+  set: boolean;
+  /** "environment" fields are managed by the deployment and cannot be changed in the app. */
+  source: "environment" | "app" | null;
+  /** Non-secret fields only. */
+  value: string | null;
+  /** A saved value that cannot be decrypted (the secret key changed). */
+  error: string | null;
+}
+
+export interface ProviderHealthDto {
+  ok: boolean;
+  message: string;
+  checkedAt: number;
+}
+
+export interface ProviderDto {
+  id: string;
+  name: string;
+  tier: "core" | "enrichment" | "music_server";
+  help: string;
+  /** Changing credentials takes effect after a restart (Discogs, D12). */
+  restartRequired: boolean;
+  /** Has an on/off switch; null when always on. */
+  enabled: boolean | null;
+  /** Every required credential has a value. */
+  configured: boolean;
+  fields: CredentialFieldDto[];
+  health: ProviderHealthDto | null;
+  /** A health check queued or running. */
+  test: JobDto | null;
+}
+
+export interface ProvidersResponse {
+  providers: ProviderDto[];
+}
+
+/** PUT /api/providers/:id/credentials: a string saves a field, null (or "") removes it. */
+export interface CredentialsRequest {
+  values: Record<string, string | null>;
 }

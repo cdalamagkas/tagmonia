@@ -333,6 +333,22 @@ a:focus-visible {
 .tm-file-review h4 {
   margin: 16px 0 6px;
 }
+.tm-nav-link {
+  color: #fff;
+  text-decoration: none;
+  margin-right: 8px;
+}
+.tm-cred-form label span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.tm-field-env {
+  margin: 0;
+}
+.tm-provider-health {
+  margin: 12px 0 0;
+}
 .tm-values {
   margin: 4px 0 0;
   padding-left: 18px;

@@ -27,8 +27,11 @@ const payloadSchema = z.object({
 export interface IdentifyJobDeps {
   db: Db;
   mb: MbSource;
-  /** Null when no AcoustID key is configured (D37). */
-  fingerprints?: FingerprintSource | null;
+  /**
+   * Null when no AcoustID key is configured (D37). A function is asked on every
+   * run, so a key saved on the providers page applies without a restart (D46).
+   */
+  fingerprints?: FingerprintSource | null | (() => Promise<FingerprintSource | null>);
   /** Read per run so settings edits apply to the next identification. */
   config: () => IdentifyConfig;
   logger: Logger;
@@ -94,13 +97,14 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
     markIdentifying(deps.db, candidateId);
     try {
       const ev = buildEvidence(found.release.mbid, found.files);
+      const fp = typeof deps.fingerprints === "function" ? await deps.fingerprints() : deps.fingerprints;
       const result = await identify(
         ev,
         deps.mb,
         found.release.folder,
         deps.config(),
         signal,
-        deps.fingerprints ?? undefined,
+        fp ?? undefined,
         { manualMbid: releaseMbid },
       );
       if (result.fingerprintError) deps.logger.warn("fingerprinting skipped", { error: result.fingerprintError });

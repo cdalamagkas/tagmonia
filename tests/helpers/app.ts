@@ -7,6 +7,8 @@ import { type AppContext, createApp } from "../../server/http/app.ts";
 import { JobQueue } from "../../server/jobs/queue.ts";
 import { type Logger, nullLogger } from "../../server/log.ts";
 import { DEFAULT_SETTINGS } from "../../server/settings.ts";
+import { CredentialStore, type EnvCredentials } from "../../server/providers/credentials.ts";
+import { Vault } from "../../server/secrets/vault.ts";
 import { CSRF_HEADER } from "../../shared/types.ts";
 
 export const ORIGIN = "http://tagmonia.test";
@@ -34,7 +36,13 @@ export interface TestApp {
 }
 
 export async function makeTestApp(
-  opts: { env?: Record<string, string>; config?: Partial<Config>; logger?: Logger; now?: () => number } = {},
+  opts: {
+    env?: Record<string, string>;
+    config?: Partial<Config>;
+    logger?: Logger;
+    now?: () => number;
+    envCredentials?: EnvCredentials;
+  } = {},
 ): Promise<TestApp> {
   const musicDir = await Deno.makeTempDir({ prefix: "tagmonia-music-" });
   const configDir = await Deno.makeTempDir({ prefix: "tagmonia-config-" });
@@ -48,12 +56,13 @@ export async function makeTestApp(
   const sessions = new SessionStore(db, { idleMs: 3_600_000, maxMs: 86_400_000 }, opts.now);
   const ctx: AppContext = {
     config,
-    settings: DEFAULT_SETTINGS,
+    settings: structuredClone(DEFAULT_SETTINGS),
     db,
     queue,
     sessions,
     throttle: new LoginThrottle(undefined, opts.now),
     logger,
+    creds: new CredentialStore(db, await Vault.open({ configDir }), opts.envCredentials ?? {}),
   };
   const app = createApp(ctx);
   return {

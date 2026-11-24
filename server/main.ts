@@ -15,7 +15,10 @@ import { registerWriteJobs } from "./jobs/write.ts";
 import { registerScanJob } from "./jobs/scan.ts";
 import { createLogger } from "./log.ts";
 import { createMusicBrainzClient } from "./providers/musicbrainz/mod.ts";
-import { createAcoustIdSource } from "./identify/acoustid_source.ts";
+import { createAcoustIdSource, type FingerprintSource } from "./identify/acoustid_source.ts";
+import { registerProviderTestJob } from "./jobs/provider_test.ts";
+import { CredentialStore } from "./providers/credentials.ts";
+import { Vault } from "./secrets/vault.ts";
 import { AcoustIdClient } from "./providers/acoustid.ts";
 import { RateLimiter } from "./providers/ratelimit.ts";
 import { SnapshotCache } from "./providers/snapshots.ts";
@@ -41,51 +44,65 @@ async function main() {
     logger,
     onCandidatesTouched: (ids) => enqueueIdentify(queue, ids),
   });
-  const acoustidKey = await resolveAcoustidKey(config);
-  if (!acoustidKey) logger.info("no AcoustID key: fingerprint identification is off (set TAGMONIA_ACOUSTID_KEY)");
-  const fingerprints = acoustidKey
-    ? createAcoustIdSource({
-      db,
-      musicDir: config.musicDir,
-      logger,
-      minScore: settings.providers.acoustid.minScore,
-      acoustid: new AcoustIdClient({
-        apiKey: acoustidKey,
-        cache: new SnapshotCache(db, join(config.configDir, "snaps")),
-        http: {
-          userAgent: USER_AGENT,
-          limiter: new RateLimiter({ requests: 1, perMs: 1000 / settings.providers.acoustid.requestsPerSecond }),
-        },
-      }),
-    })
-    : null;
+  // Credentials (§14.3, D46): environment variables win; otherwise the encrypted store behind the providers page.
+  const vault = await Vault.open({ secretKey: config.secretKey, configDir: config.configDir });
+  const creds = new CredentialStore(db, vault, {
+    acoustid: { apiKey: await resolveAcoustidKey(config) },
+    jellyfin: { url: config.jellyfinUrl, apiKey: await resolveJellyfinKey(config), library: config.jellyfinLibrary },
+  });
+  const snaps = new SnapshotCache(db, join(config.configDir, "snaps"));
+
+  // Built when first needed and again whenever the key changes, so a key saved in the app applies at once.
+  // One limiter for every client it builds: AcoustID allows 3 requests per second in total (D37).
+  const acoustidLimiter = new RateLimiter({ requests: 1, perMs: 1000 / settings.providers.acoustid.requestsPerSecond });
+  let acoustid: { key: string; source: FingerprintSource } | null = null;
+  const fingerprints = async (): Promise<FingerprintSource | null> => {
+    const { apiKey } = await creds.get("acoustid");
+    if (!apiKey) return null;
+    if (acoustid?.key !== apiKey) {
+      acoustid = {
+        key: apiKey,
+        source: createAcoustIdSource({
+          db,
+          musicDir: config.musicDir,
+          logger,
+          minScore: settings.providers.acoustid.minScore,
+          acoustid: new AcoustIdClient({
+            apiKey,
+            cache: snaps,
+            http: { userAgent: USER_AGENT, limiter: acoustidLimiter },
+          }),
+        }),
+      };
+    }
+    return acoustid.source;
+  };
+  const jellyfin = async (): Promise<JellyfinClient | null> => {
+    const { url, apiKey, library } = await creds.get("jellyfin");
+    return url && apiKey
+      ? new JellyfinClient({ baseUrl: url, apiKey, library, userAgent: USER_AGENT, version: VERSION })
+      : null;
+  };
+
   // One client for every job: a second one would bring a second limiter and double the MusicBrainz rate.
   const mb = createMusicBrainzClient(db, config.configDir, settings);
   registerProposeJob(queue, { db, mb, settings: () => settings.proposal, logger });
-  const jellyfinKey = await resolveJellyfinKey(config);
-  const jellyfin = config.jellyfinUrl && jellyfinKey
-    ? new JellyfinClient({
-      baseUrl: config.jellyfinUrl,
-      apiKey: jellyfinKey,
-      library: config.jellyfinLibrary,
-      userAgent: USER_AGENT,
-      version: VERSION,
-    })
-    : null;
-  if (jellyfin) registerRefreshJob(queue, { db, jellyfin, logger });
+  registerRefreshJob(queue, { db, jellyfin, logger });
+  registerProviderTestJob(queue, { db, creds, mb, userAgent: USER_AGENT, version: VERSION });
   registerWriteJobs(queue, {
     db,
     tagio,
     musicDir: config.musicDir,
     readOnly: config.readOnly,
     logger,
-    // §13: tell the music server once the files changed.
-    afterBatch: jellyfin
-      ? (r) => {
+    // §13: tell the music server once the files changed (when one is configured).
+    afterBatch: (r) => {
+      creds.configured("jellyfin").then((on) => {
+        if (!on) return;
         const folder = folderOfBatch(db, r.batchId);
         enqueueRefresh(queue, db, folder === null ? [] : [folder]);
-      }
-      : undefined,
+      }).catch((e) => logger.error("cannot queue the Jellyfin refresh", { error: (e as Error).message }));
+    },
   });
   registerIdentifyJob(queue, {
     db,
@@ -102,7 +119,7 @@ async function main() {
   });
   const purge = setInterval(() => sessions.purgeExpired(), 3_600_000);
 
-  const app = createApp({ config, settings, db, queue, sessions, throttle: new LoginThrottle(), logger });
+  const app = createApp({ config, settings, db, queue, sessions, throttle: new LoginThrottle(), logger, creds });
   const server = Deno.serve({
     port: config.port,
     onListen: ({ hostname, port }) =>

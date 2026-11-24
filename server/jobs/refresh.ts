@@ -14,10 +14,22 @@ export const REFRESH_DEDUPE = "refresh:jellyfin";
 
 export function registerRefreshJob(
   queue: JobQueue,
-  deps: { db: Db; jellyfin: JellyfinClient; logger: Logger; now?: () => number },
+  deps: {
+    db: Db;
+    /** A function is asked on every run, so credentials saved in the app apply at once (D46). */
+    jellyfin: JellyfinClient | (() => Promise<JellyfinClient | null>);
+    logger: Logger;
+    now?: () => number;
+  },
 ): void {
   const now = deps.now ?? Date.now;
   queue.register(REFRESH_JOB, async ({ signal }) => {
+    const jellyfin = typeof deps.jellyfin === "function" ? await deps.jellyfin() : deps.jellyfin;
+    if (!jellyfin) {
+      // Not configured (any more): nothing will ever refresh these folders.
+      deps.db.prepare("DELETE FROM refresh_pending").run();
+      return { server: "jellyfin", skipped: "not configured" };
+    }
     const pending = () =>
       (deps.db.prepare("SELECT folder FROM refresh_pending ORDER BY folder").all() as { folder: string }[]).map((r) =>
         r.folder
@@ -30,7 +42,7 @@ export function registerRefreshJob(
     for (let round = 0; round < 5; round++) {
       let r;
       try {
-        r = await deps.jellyfin.refreshFolders(folders, signal);
+        r = await jellyfin.refreshFolders(folders, signal);
       } catch (e) {
         if (e instanceof JellyfinConfigError) throw new PermanentJobError(e.message);
         throw e;

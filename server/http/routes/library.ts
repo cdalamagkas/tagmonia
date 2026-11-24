@@ -70,8 +70,8 @@ export interface LibraryRouteDeps {
   db: Db;
   queue: JobQueue;
   readOnly: boolean;
-  /** Jellyfin, when configured (§13). */
-  musicServer?: { name: "jellyfin"; library: string | null };
+  /** Jellyfin, when configured now (§13); credentials can change at runtime (D46). */
+  musicServer?: () => Promise<{ name: "jellyfin"; library: string | null } | null>;
   /** Read per request, so the UI shows the thresholds the scores were judged by. */
   thresholds: () => { auto: number; review: number };
 }
@@ -100,14 +100,15 @@ export function editionRows(
 export function libraryRoutes(deps: LibraryRouteDeps) {
   const { db, queue } = deps;
   return new Hono<AuthEnv>()
-    .get("/summary", (c) => {
+    .get("/summary", async (c) => {
       const scan = queue.latest(SCAN_JOB);
       const refresh = queue.latest(REFRESH_JOB);
+      const server = deps.musicServer ? await deps.musicServer() : null;
       const body: LibrarySummary = {
         ...librarySummary(db),
         readOnly: deps.readOnly,
         scan: scan ? (toJobDto(scan) as ScanJobDto) : null,
-        musicServer: deps.musicServer ? { ...deps.musicServer, lastRefresh: refresh ? toJobDto(refresh) : null } : null,
+        musicServer: server ? { ...server, lastRefresh: refresh ? toJobDto(refresh) : null } : null,
       };
       return c.json(body);
     })
