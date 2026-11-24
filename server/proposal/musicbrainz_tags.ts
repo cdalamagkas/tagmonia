@@ -7,7 +7,7 @@ import type {
   MbArtistCredit,
   MbRelation,
   MbRelease,
-  MbReleaseGenres,
+  MbReleaseExtras,
   MbWork,
 } from "../providers/musicbrainz/schema.ts";
 import type { CanonicalTags } from "../tagio/types.ts";
@@ -21,7 +21,7 @@ export interface ProposedTags {
 
 export interface MusicBrainzTagInput {
   release: MbRelease;
-  genres?: MbReleaseGenres | null;
+  genres?: MbReleaseExtras | null;
   /** Parent works by MBID, for movement totals and the top-level work (§6.3). */
   parentWorks?: ReadonlyMap<string, MbWork>;
   /** §10.3: up to 5 genres by vote count. */
@@ -53,7 +53,7 @@ function compact(t: CanonicalTags): CanonicalTags {
 }
 
 /** Release and release-group genres merged by vote count (§10.3, D27). */
-export function mergeGenres(g: MbReleaseGenres | null | undefined, max = 5): string[] {
+export function mergeGenres(g: MbReleaseExtras | null | undefined, max = 5): string[] {
   if (!g) return [];
   const votes = new Map<string, number>();
   for (const x of [...g.genres, ...(g["release-group"]?.genres ?? [])]) {

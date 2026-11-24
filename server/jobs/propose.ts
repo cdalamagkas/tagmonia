@@ -7,14 +7,15 @@
 import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { getRelease } from "../db/repo/library.ts";
-import { type ChosenBy, latestProposal, listLocks, saveProposal } from "../db/repo/proposals.ts";
+import { type ChosenBy, latestProposal, listLocks, saveProposal, saveProviderMatches } from "../db/repo/proposals.ts";
+import { type EnrichmentDeps, findOnProviders, linksOf } from "../providers/enrichment.ts";
 import { toReleaseView } from "../identify/release.ts";
 import { DEFAULT_SCORING, scoreRelease } from "../identify/score.ts";
 import type { Logger } from "../log.ts";
 import { buildFieldProposals } from "../proposal/build.ts";
 import { missingParentWorks, tagsFromMusicBrainz } from "../proposal/musicbrainz_tags.ts";
 import type { Cited } from "../providers/musicbrainz/client.ts";
-import { mbidSchema, type MbRelease, type MbReleaseGenres, type MbWork } from "../providers/musicbrainz/schema.ts";
+import { mbidSchema, type MbRelease, type MbReleaseExtras, type MbWork } from "../providers/musicbrainz/schema.ts";
 import { buildEvidence } from "./identify.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
 
@@ -22,7 +23,7 @@ export const PROPOSE_JOB = "propose";
 
 export interface ProposalSource {
   lookupRelease(mbid: string, signal?: AbortSignal): Promise<Cited<MbRelease> | null>;
-  lookupReleaseGenres(mbid: string, signal?: AbortSignal): Promise<Cited<MbReleaseGenres> | null>;
+  lookupReleaseExtras(mbid: string, signal?: AbortSignal): Promise<Cited<MbReleaseExtras> | null>;
   lookupWork(mbid: string, signal?: AbortSignal): Promise<Cited<MbWork> | null>;
 }
 
@@ -35,6 +36,8 @@ export interface ProposalSettings {
 export interface ProposeJobDeps {
   db: Db;
   mb: ProposalSource;
+  /** Deezer, iTunes and Discogs through Harmony (D47); absent = MusicBrainz only. */
+  enrichment?: EnrichmentDeps | null;
   settings: () => ProposalSettings;
   logger: Logger;
   now?: () => number;
@@ -74,14 +77,10 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
     const snapshotIds = [rel.snapshotId];
 
     const settings = deps.settings();
-    let genres: MbReleaseGenres | null = null;
-    if (settings.genres === "musicbrainz") {
-      const g = await deps.mb.lookupReleaseGenres(rel.value.id, signal);
-      if (g) {
-        genres = g.value;
-        snapshotIds.push(g.snapshotId);
-      }
-    }
+    // Genres and links to other providers in one request; links are needed even with genres off.
+    const extras = await deps.mb.lookupReleaseExtras(rel.value.id, signal);
+    if (extras) snapshotIds.push(extras.snapshotId);
+    const genres: MbReleaseExtras | null = settings.genres === "musicbrainz" ? extras?.value ?? null : null;
 
     const parents = new Map<string, MbWork>();
     for (let round = 0; round < MAX_WORK_ROUNDS; round++) {
@@ -128,6 +127,11 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
         unmappedFiles: [...build.unmappedFiles, ...found.files.filter((f) => f.readError).map((f) => f.id)],
       },
     }, now());
+    // The same release on other providers (D47). Shown now; merged into the fields in part 3.
+    if (deps.enrichment) {
+      const matches = await findOnProviders(deps.enrichment, rel.value, linksOf(extras?.value ?? null));
+      saveProviderMatches(deps.db, proposalId, matches, now());
+    }
     const count = (s: string) => build.fields.filter((f) => f.status === s).length;
     return {
       proposalId,

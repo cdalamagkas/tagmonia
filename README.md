@@ -4,8 +4,9 @@
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
 > **Status: Phase 4 (more providers) in progress.** Phases 0–3 are done: Tagmonia identifies releases against
-> MusicBrainz, proposes tags field by field, writes them with verification and undo, and tells Jellyfin. Discogs,
-> Deezer, iTunes and cover art come next. See the roadmap in
+> MusicBrainz, proposes tags field by field, writes them with verification and undo, and tells Jellyfin. It now also
+> finds each release on Deezer, iTunes and Discogs; merging their values into the proposal and cover art come next.
+> See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
 
 ## What it does today
@@ -20,6 +21,10 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 - **Writes** reviewed tags safely: a backup first, an atomic write, a read-back check with automatic restore, and
   **undo** for every write. A read-only mode writes nothing.
 - **Tells Jellyfin** to re-read exactly the albums it changed.
+- **Finds the same release on Deezer, iTunes and Discogs**, by the release's own MusicBrainz link or by barcode, and
+  shows where it was found, where only another edition exists (a different track count), and where it is missing.
+- **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
+  provider.
 
 - Design and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (source of truth)
 - Agent/contributor conventions: [CLAUDE.md](CLAUDE.md)

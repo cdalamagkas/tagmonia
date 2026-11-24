@@ -2,7 +2,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { Db } from "../../server/db/db.ts";
 import { reconcileUnit, upsertFile } from "../../server/db/repo/library.ts";
-import { latestProposal } from "../../server/db/repo/proposals.ts";
+import { latestProposal, providerMatches } from "../../server/db/repo/proposals.ts";
 import { enqueueIdentify, registerIdentifyJob } from "../../server/jobs/identify.ts";
 import { autoPropose, enqueuePropose, PROPOSE_JOB, registerProposeJob } from "../../server/jobs/propose.ts";
 import { JobQueue } from "../../server/jobs/queue.ts";
@@ -60,6 +60,7 @@ async function setup() {
     id: BEETHOVEN_5,
     genres: [],
     "release-group": { genres: [{ id: "g", name: "classical", count: 3 }] },
+    relations: [],
   });
   const queue = new JobQueue(db, { logger: nullLogger, retryBaseMs: 10 });
   registerProposeJob(queue, { db, mb, settings: () => ({ genres: "musicbrainz", maxGenres: 5 }), logger: nullLogger });
@@ -127,4 +128,43 @@ Deno.test("an unknown release fails the job permanently, without retries", async
   await queue.drain();
   const done = queue.get(job.id)!;
   assertEquals([done.state, done.attempts], ["failed", 1]);
+});
+
+Deno.test("the release's matches on other providers are stored with the proposal (D47)", async () => {
+  const { db, id } = await setup();
+  const seen: string[][] = [];
+  // A propose job registered with a fake registry: it sees the links MusicBrainz gave.
+  const q2 = new JobQueue(db, { logger: nullLogger });
+  const mb = new FakeMb([release]);
+  mb.genres.set(BEETHOVEN_5, {
+    id: BEETHOVEN_5,
+    genres: [],
+    relations: [{ type: "discogs", url: { resource: "https://www.discogs.com/release/1" } }],
+  });
+  registerProposeJob(q2, {
+    db,
+    mb,
+    settings: () => ({ genres: "musicbrainz", maxGenres: 5 }),
+    logger: nullLogger,
+    enrichment: {
+      registry: {
+        providerIds: ["discogs"],
+        providerForUrl: (u) => (u.host.includes("discogs") ? "discogs" : undefined),
+        lookupByUrl: (u) => {
+          seen.push([u.href]);
+          return Promise.reject(new Error("API returned no results"));
+        },
+        lookupByGtin: () => Promise.reject(new Error("unused")),
+      },
+      enabled: () => true,
+    },
+  });
+  enqueuePropose(q2, id, BEETHOVEN_5, "user");
+  await q2.drain();
+  const p = latestProposal(db, id)!;
+  assertEquals(seen, [["https://www.discogs.com/release/1"]]);
+  assertEquals(
+    providerMatches(db, p.id).map((m) => [m.provider, m.status, m.via]),
+    [["deezer", "skipped", null], ["itunes", "skipped", null], ["discogs", "not_found", "link"]],
+  );
 });

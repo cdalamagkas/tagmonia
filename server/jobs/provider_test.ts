@@ -55,7 +55,14 @@ export async function testProvider(id: ProviderId, deps: ProviderTestDeps): Prom
       }, { method: "POST", body: new URLSearchParams({ client: apiKey, duration: "30", fingerprint: "AQAA" }) });
       const body = await res.json().catch(() => ({}));
       const code = z.object({ error: z.object({ code: z.number() }) }).safeParse(body);
-      if (code.success && code.data.error.code === 4) return { ok: false, message: "AcoustID rejected the API key" };
+      if (code.success && code.data.error.code === 4) {
+        // The usual cause: the user API key from the profile page, which lookups do not accept.
+        return {
+          ok: false,
+          message:
+            "AcoustID rejected the API key. Lookups need an application key (acoustid.org/my-applications), not the user API key from your profile.",
+        };
+      }
       if (res.ok || (code.success && code.data.error.code === 3)) return { ok: true, message: "API key accepted" };
       return { ok: false, message: `AcoustID answered HTTP ${res.status}` };
     }

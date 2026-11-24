@@ -10,13 +10,58 @@ import type {
   HistoryResponse,
   LibraryFileDto,
   LockDto,
+  ProposalDto,
   ProposalResponse,
   WriteBatchDto,
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { RELEASE_FIELDS, tagValue, when } from "../format.ts";
 
-const PROVIDERS: Record<string, string> = { musicbrainz: "MusicBrainz" };
+const PROVIDERS: Record<string, string> = {
+  musicbrainz: "MusicBrainz",
+  deezer: "Deezer",
+  itunes: "iTunes",
+  discogs: "Discogs",
+};
+
+/** "Also found on": where the release is on other providers, and why not when it is not (D47). */
+function ProviderMatches({ matches }: { matches: ProposalDto["providers"] }) {
+  if (matches.length === 0) return null;
+  const label = (m: ProposalDto["providers"][number]) => {
+    switch (m.status) {
+      case "found":
+        return m.via === "link" ? "found (linked from MusicBrainz)" : "found (by barcode)";
+      case "different_edition":
+        return `another edition: ${m.reason}`;
+      case "not_found":
+        return "not found";
+      case "skipped":
+        return m.reason ?? "skipped";
+      case "error":
+        return `could not check: ${m.reason ?? "error"}`;
+    }
+  };
+  return (
+    <p class="tm-section-note">
+      <span class="tm-muted">Also on:</span> {matches.map((m, i) => (
+        <span key={m.provider}>
+          {i > 0 && " · "}
+          <span
+            class={`tm-badge tm-inline ${
+              m.status === "found" ? "tm-badge-ok" : m.status === "different_edition" ? "tm-badge-warn" : ""
+            }`}
+            title={label(m)}
+          >
+            {m.url && (m.status === "found" || m.status === "different_edition")
+              ? <a href={m.url} target="_blank" rel="noopener noreferrer">{PROVIDERS[m.provider]}</a>
+              : PROVIDERS[m.provider]}
+          </span>{" "}
+          <span class="tm-muted">{label(m)}</span>
+        </span>
+      ))}
+    </p>
+  );
+}
 const RELEASE = new Set<string>(RELEASE_FIELDS);
 
 /** One reviewable line: a release field across all files, or one field of one file. */
@@ -476,6 +521,7 @@ export function Review(
             )}
           </div>
         </div>
+        <ProviderMatches matches={p.providers} />
         {data.readOnly && (
           <p class="tm-badge tm-badge-warn tm-inline">Read-only mode: you can review, but nothing is written.</p>
         )}
