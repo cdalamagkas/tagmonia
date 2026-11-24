@@ -18,6 +18,8 @@ import { healthRoutes } from "./routes/health.ts";
 import { jobRoutes, libraryRoutes } from "./routes/library.ts";
 import { writeRoutes } from "./routes/writes.ts";
 import { reviewRoutes } from "./routes/review.ts";
+import { providerRoutes } from "./routes/providers.ts";
+import type { CredentialStore } from "../providers/credentials.ts";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy":
@@ -36,6 +38,8 @@ export interface AppContext {
   sessions: SessionStore;
   throttle: LoginThrottle;
   logger: Logger;
+  /** Provider credentials, encrypted at rest (§14.3, D46). */
+  creds: CredentialStore;
 }
 
 export function createApp(ctx: AppContext): Hono<AuthEnv> {
@@ -74,15 +78,20 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
       db,
       queue,
       readOnly: config.readOnly,
-      musicServer: config.jellyfinUrl && (config.jellyfinKey || config.jellyfinKeyFile)
-        ? { name: "jellyfin", library: config.jellyfinLibrary ?? null }
-        : undefined,
+      musicServer: async () =>
+        (await ctx.creds.configured("jellyfin"))
+          ? { name: "jellyfin", library: (await ctx.creds.get("jellyfin")).library ?? null }
+          : null,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
     }),
   );
   app.route("/api/jobs", jobRoutes(queue));
   app.route("/api", writeRoutes({ db, queue, readOnly: config.readOnly }));
   app.route("/api", reviewRoutes({ db }));
+  app.route(
+    "/api",
+    providerRoutes({ db, queue, creds: ctx.creds, settings: ctx.settings, configDir: config.configDir }),
+  );
   app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 
   if (config.webDir) {

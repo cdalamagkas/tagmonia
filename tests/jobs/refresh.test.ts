@@ -82,3 +82,14 @@ Deno.test("a rejected key fails at once and keeps the folders for a later refres
   );
   s.db.close();
 });
+
+Deno.test("with Jellyfin no longer configured, the refresh clears its queue instead of failing", async () => {
+  const db = await memoryDb();
+  const queue = new JobQueue(db, { logger: nullLogger });
+  registerRefreshJob(queue, { db, jellyfin: () => Promise.resolve(null), logger: nullLogger });
+  const j = enqueueRefresh(queue, db, ["A"]);
+  await queue.drain();
+  assertEquals(queue.get(j.id)!.result, { server: "jellyfin", skipped: "not configured" });
+  assertEquals((db.prepare("SELECT count(*) n FROM refresh_pending").get() as { n: number }).n, 0);
+  db.close();
+});

@@ -3,8 +3,23 @@
 **Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phase 1 (scan and read).** Scans and browses a library read-only; identification and tag writing come next. See the roadmap in
+> **Status: Phase 4 (more providers) in progress.** Phases 0–3 are done: Tagmonia identifies releases against
+> MusicBrainz, proposes tags field by field, writes them with verification and undo, and tells Jellyfin. Discogs,
+> Deezer, iTunes and cover art come next. See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
+
+## What it does today
+
+- **Scans** a library (FLAC, OGG Vorbis, Opus, MP3, M4A) and groups files into releases, multi-disc sets included.
+- **Identifies** each release against MusicBrainz: existing MBIDs, barcode or catalog number, text search, and
+  optional AcoustID fingerprints. Albums with missing tracks are recognised; similar editions are never picked
+  silently but shown side by side in an **edition picker**. A MusicBrainz link can be pasted when nothing fits.
+- **Proposes tags** the way Picard writes them, including classical credits (composer, conductor, performers, work and
+  movement) and MusicBrainz genres. Every field shows what the files hold now, what is proposed and where it comes
+  from; each can be accepted, kept, edited or locked.
+- **Writes** reviewed tags safely: a backup first, an atomic write, a read-back check with automatic restore, and
+  **undo** for every write. A read-only mode writes nothing.
+- **Tells Jellyfin** to re-read exactly the albums it changed.
 
 - Design and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (source of truth)
 - Agent/contributor conventions: [CLAUDE.md](CLAUDE.md)
@@ -31,11 +46,25 @@ scripts/dk deno run --allow-read --allow-write --allow-env --allow-run=python3 s
 
 On first start the UI asks you to create the admin account (or set `TAGMONIA_ADMIN_PASSWORD_FILE`).
 
-Fingerprint identification is optional: get a free application key at <https://acoustid.org/new-application> and pass it as `TAGMONIA_ACOUSTID_KEY`, or as a Docker secret with `TAGMONIA_ACOUSTID_KEY_FILE` (see `docker-compose.example.yml`).
+### Providers and credentials
 
-After each write, Tagmonia can ask Jellyfin to re-read the albums it changed: set `TAGMONIA_JELLYFIN_URL`, an API key
-(Jellyfin → Dashboard → API Keys) as `TAGMONIA_JELLYFIN_KEY` or `TAGMONIA_JELLYFIN_KEY_FILE`, and optionally
-`TAGMONIA_JELLYFIN_LIBRARY` to limit it to one library.
+**Settings → Providers** in the app lists every provider with its purpose, an on/off switch where it applies, its
+credentials and a **Test** button. Secrets are stored encrypted (AES-256-GCM) and never shown again once saved.
+
+- **AcoustID** (optional fingerprint identification): a free application key from
+  <https://acoustid.org/new-application>.
+- **Discogs**: a consumer key and secret from discogs.com → Settings → Developers. Takes effect after a restart.
+- **Jellyfin** (optional): the server URL, an API key (Dashboard → API Keys) and optionally one library; Tagmonia then
+  asks Jellyfin to re-read exactly the albums it changed.
+- MusicBrainz, Deezer and iTunes need no credentials.
+
+The same values can come from the environment instead, which wins over the app and suits Docker secrets:
+`TAGMONIA_ACOUSTID_KEY` / `TAGMONIA_ACOUSTID_KEY_FILE`, `TAGMONIA_JELLYFIN_URL`, `TAGMONIA_JELLYFIN_KEY` /
+`TAGMONIA_JELLYFIN_KEY_FILE`, `TAGMONIA_JELLYFIN_LIBRARY` (see `docker-compose.example.yml`).
+
+**Back up the encryption key with the database.** Saved credentials are encrypted with `TAGMONIA_SECRET_KEY` if set,
+otherwise with a key generated into `/config/secret.key` on first start. Without that key they cannot be read (the app
+says so and asks for them again).
 
 `deno task dev` starts both servers in one container (publish both ports with two `-p` flags if you run it that way).
 
@@ -93,7 +122,7 @@ Every dependency is pinned (`deno.json`, `deno.lock`, the Harmony submodule comm
 | `@std/assert`                           | Test assertions                                                                                   |
 | `taglib-wasm`                           | TagIO spike implementation kept so the D7 decision can be re-checked; not used in production      |
 | mutagen, Python 3 (Debian packages)     | Production TagIO sidecar (D7)                                                                     |
-| Chromaprint `fpcalc` (Debian package)   | Fingerprinting (§8, used from Phase 2)                                                            |
+| Chromaprint `fpcalc` (Debian package)   | Fingerprinting for AcoustID identification (§8)                                                   |
 
 Third-party licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

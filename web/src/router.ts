@@ -1,10 +1,15 @@
 /** Minimal history-API router: the SPA has only a handful of pages. */
 import { useEffect, useState } from "preact/hooks";
 
-export type Route = { page: "library" } | { page: "release"; id: number } | { page: "notFound" };
+export type Route =
+  | { page: "library" }
+  | { page: "release"; id: number }
+  | { page: "settings" }
+  | { page: "notFound" };
 
 export function parseRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { page: "library" };
+  if (/^\/settings\/?$/.test(pathname)) return { page: "settings" };
   const m = /^\/releases\/(\d+)\/?$/.exec(pathname);
   if (m) return { page: "release", id: Number(m[1]) };
   return { page: "notFound" };

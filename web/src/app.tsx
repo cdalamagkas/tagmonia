@@ -1,3 +1,4 @@
+import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { useEffect, useState } from "preact/hooks";
 import type { AuthState } from "../../shared/types.ts";
 import { api, setUnauthorizedHandler } from "./api.ts";
@@ -41,6 +42,7 @@ export function App() {
   else if (!auth.user) body = <AuthPage mode="login" onDone={setAuth} />;
   else if (route.page === "library") body = <LibraryPage />;
   else if (route.page === "release") body = <ReleasePage id={route.id} />;
+  else if (route.page === "settings") body = <SettingsPage />;
   else {body = (
       <main>
         <p>
@@ -57,6 +59,7 @@ export function App() {
         </a>
         {auth?.user && (
           <nav class="tm-nav">
+            <a href="/settings" onClick={onLinkClick} class="tm-nav-link">Settings</a>
             <span>{auth.user.username}</span>
             <button type="button" class="tm-button tm-on-navy" onClick={logout}>Sign out</button>
           </nav>
