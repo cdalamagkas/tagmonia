@@ -60,7 +60,14 @@ Deno.test("canonical field names equal Picard internal names where Picard define
 
 Deno.test("Vorbis performer values parse as Picard writes them", () => {
   assertEquals(parseVorbisPerformer("Angus Young (guitar)"), { name: "Angus Young", role: "guitar" });
-  assertEquals(parseVorbisPerformer("Art Garfunkel (Vocals)"), { name: "Art Garfunkel", role: "vocals" });
+  // Case is kept: verification compares exactly, and MusicBrainz has instruments like "Rhodes piano".
+  assertEquals(parseVorbisPerformer("Art Garfunkel (Vocals)"), { name: "Art Garfunkel", role: "Vocals" });
+  // MusicBrainz instrument names can contain parentheses: the role is the last balanced group.
+  assertEquals(parseVorbisPerformer("Fabrizio Moretti (drums (drum set))"), {
+    name: "Fabrizio Moretti",
+    role: "drums (drum set)",
+  });
+  assertEquals(parseVorbisPerformer("Unbalanced (drums"), { name: "Unbalanced (drums", role: "" });
   assertEquals(parseVorbisPerformer("Bob (Live) (drums)"), { name: "Bob (Live)", role: "drums" });
   assertEquals(parseVorbisPerformer("No Role"), { name: "No Role", role: "" });
 });

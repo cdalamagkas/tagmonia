@@ -312,7 +312,22 @@ export function formatVorbisPerformer(name: string, role: string): string {
   return `${name} (${role})`;
 }
 
+/**
+ * The role is the last balanced parenthesised group, since MusicBrainz instrument
+ * names can hold parentheses ("drums (drum set)"); its case is kept so a write
+ * verifies exactly (D42). Mirrors parse_vorbis_performer in the sidecar.
+ */
 export function parseVorbisPerformer(value: string): { name: string; role: string } {
-  const m = /^(.*\S)\s+\(([^()]+)\)$/.exec(value.trim());
-  return m ? { name: m[1], role: m[2].toLowerCase() } : { name: value.trim(), role: "" };
+  const s = value.trim();
+  if (!s.endsWith(")")) return { name: s, role: "" };
+  let depth = 0;
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] === ")") depth++;
+    else if (s[i] === "(" && --depth === 0) {
+      const name = s.slice(0, i).trimEnd();
+      const role = s.slice(i + 1, -1);
+      return name && role && /\s/.test(s[i - 1] ?? "") ? { name, role } : { name: s, role: "" };
+    }
+  }
+  return { name: s, role: "" };
 }
