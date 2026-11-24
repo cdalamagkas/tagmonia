@@ -14,9 +14,11 @@ import {
   type MbBrowseRelease,
   mbidSchema,
   type MbRelease,
+  type MbReleaseGenres,
   type MbReleaseSearch,
   type MbWork,
   releaseBrowseSchema,
+  releaseGenresSchema,
   releaseSchema,
   releaseSearchSchema,
   workSchema,
@@ -167,6 +169,17 @@ export class MusicBrainzClient {
       if (out.length >= got.value["release-count"] || got.value.releases.length === 0) break;
     }
     return { value: out, snapshotId };
+  }
+
+  /**
+   * Genres of a release and of its release group (§10.3, D27). A separate
+   * request: adding `genres` to the identification lookup would change its URL
+   * and every recorded fixture with it (D40).
+   */
+  async lookupReleaseGenres(mbid: string, signal?: AbortSignal): Promise<Cited<MbReleaseGenres> | null> {
+    const id = mbidSchema.parse(mbid);
+    const url = this.#url(`release/${id}`, { inc: "genres+release-groups" });
+    return await this.#get(url, this.#ttl.lookupMs, releaseGenresSchema, signal);
   }
 
   async lookupWork(mbid: string, signal?: AbortSignal): Promise<Cited<MbWork> | null> {

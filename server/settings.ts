@@ -58,6 +58,11 @@ export const settingsSchema = z.object({
     message: "reviewThreshold must be below autoThreshold",
     path: ["reviewThreshold"],
   }),
+  proposal: z.object({
+    /** §10.3, D27: where `genre` comes from. */
+    genres: z.enum(["musicbrainz", "none"]).default("musicbrainz"),
+    maxGenres: z.number().int().min(1).max(20).default(5),
+  }).prefault({}),
   auth: z.object({
     /** Sessions end after this long without a request. */
     sessionIdleHours: z.number().positive().max(24 * 90).default(24 * 7),

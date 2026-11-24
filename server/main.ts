@@ -8,6 +8,7 @@ import { openMigratedDb } from "./db/db.ts";
 import { createApp } from "./http/app.ts";
 import { JobQueue } from "./jobs/queue.ts";
 import { enqueueIdentify, registerIdentifyJob } from "./jobs/identify.ts";
+import { registerProposeJob } from "./jobs/propose.ts";
 import { registerScanJob } from "./jobs/scan.ts";
 import { createLogger } from "./log.ts";
 import { createMusicBrainzClient } from "./providers/musicbrainz/mod.ts";
@@ -55,10 +56,13 @@ async function main() {
       }),
     })
     : null;
+  // One client for every job: a second one would bring a second limiter and double the MusicBrainz rate.
+  const mb = createMusicBrainzClient(db, config.configDir, settings);
+  registerProposeJob(queue, { db, mb, settings: () => settings.proposal, logger });
   registerIdentifyJob(queue, {
     db,
     fingerprints,
-    mb: createMusicBrainzClient(db, config.configDir, settings),
+    mb,
     config: () => identifyConfig(settings),
     logger,
   });
