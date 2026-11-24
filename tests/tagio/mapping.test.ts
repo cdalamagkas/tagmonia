@@ -15,6 +15,15 @@ for (const line of (await Deno.readTextFile(join(here, "../fixtures/picard_tag_m
   rows.set(name.split(" ")[0], { id3, vorbis, mp4 });
 }
 
+/**
+ * Where Picard's docs table disagrees with what Picard's code writes, the code
+ * wins (D35): formats/mp4.py and mutagen use the iTunes atoms ©mvi and ©mvc.
+ */
+const PICARD_DOC_ERRATA: Record<string, { mp4: string }> = {
+  movementnumber: { mp4: "©mvi" },
+  movementtotal: { mp4: "©mvc" },
+};
+
 /** Picard cells look like "TDRC (ID3v2.4) TYER + TDAT (ID3v2.3)": the first token is the v2.4/default form. */
 function primary(cell: string): string {
   return cell.split(/ \(|\s+(?=TXXX:|TIT1|GRP1)/)[0].trim();
@@ -38,7 +47,7 @@ Deno.test("every Picard-defined field matches Picard's ID3v2.4, Vorbis and MP4 k
       // Picard writes unmapped tags as a freeform atom named after the internal name (D9).
       assertEquals(m.mp4, MP4_FREEFORM + m.picard, `${m.field} mp4`);
     } else {
-      assertEquals(m.mp4, primary(row.mp4), `${m.field} mp4`);
+      assertEquals(m.mp4, PICARD_DOC_ERRATA[m.picard]?.mp4 ?? primary(row.mp4), `${m.field} mp4`);
     }
   }
 });

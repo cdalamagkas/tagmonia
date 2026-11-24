@@ -70,6 +70,13 @@ function assertPicardLayout(format: AudioFormat, raw: RawDump, tags: CanonicalTa
         assertEquals(tmcl[0].people, expected, where);
         continue;
       }
+      if (m.id3.startsWith("TIPL:")) {
+        const tipl = raw.frames.filter((f) => f.id === "TIPL");
+        assertEquals(tipl.length, 1, `${where}: expected one shared TIPL frame`);
+        const role = m.id3.slice(5);
+        assertEquals(tipl[0].people!.filter(([r]) => r === role).map(([, n]) => n), asList(m.kind, v), where);
+        continue;
+      }
       if (m.id3.startsWith("UFID:")) {
         const f = raw.frames.filter((f) => f.hash === m.id3);
         assertEquals(f.map((x) => x.data), [String(v)], where);
@@ -87,7 +94,7 @@ function assertPicardLayout(format: AudioFormat, raw: RawDump, tags: CanonicalTa
       }
     } else {
       if (m.mp4 === null) continue;
-      if (m.pair) {
+      if (m.mp4Pair && m.pair) {
         const items = raw.items.filter((i) => i.key === m.mp4);
         assertEquals(items.length, 1, where);
         assertEquals((items[0].values[0] as number[])[m.pair.index], v, where);
@@ -95,7 +102,9 @@ function assertPicardLayout(format: AudioFormat, raw: RawDump, tags: CanonicalTa
       }
       const items = raw.items.filter((i) => i.key === m.mp4);
       assertEquals(items.length, 1, `${where}: expected exactly one ${m.mp4} atom, got ${items.length}`);
-      assertEquals(items[0].values, asList(m.kind, v), where);
+      // Integer atoms (©mvi, ©mvc, shwm) must hold iTunes integers, not text.
+      const native = m.kind === "int" && !m.mp4.startsWith(MP4_FREEFORM) ? [v] : asList(m.kind, v);
+      assertEquals(items[0].values, native, where);
       if (m.mp4.startsWith(MP4_FREEFORM)) {
         const ci = raw.items.filter((i) => i.key.toLowerCase() === m.mp4!.toLowerCase());
         assertEquals(ci.length, 1, `${where}: duplicate freeform atom with different case`);
@@ -248,6 +257,29 @@ Deno.test({
           assertEquals((await Deno.stat(path)).mode! & 0o777, 0o640);
         });
       }
+
+      await t.step("mp3: arranger changes leave other TIPL roles alone", async () => {
+        const { path } = await copyFixture("tagged.mp3");
+        const tipl = async () => ((await rawInspect(path)) as RawId3).frames.filter((f) => f.id === "TIPL");
+        await tagio.write(path, { set: { arranger: ["New Arranger"] }, remove: [] });
+        let frames = await tipl();
+        assertEquals(frames.length, 1);
+        assertEquals(frames[0].people, [["producer", "Producer One"], ["arranger", "New Arranger"]]);
+        assertEquals((await tagio.read(path)).tags.arranger, ["New Arranger"]);
+        await tagio.write(path, { set: {}, remove: ["arranger"] });
+        frames = await tipl();
+        assertEquals(frames.map((f) => f.people), [[["producer", "Producer One"]]]);
+        assertEquals((await tagio.read(path)).tags.arranger, undefined);
+      });
+
+      await t.step("setting movementnumber keeps movementtotal", async () => {
+        for (const format of FORMATS) {
+          const { path } = await copyFixture(`tagged.${format}`);
+          await tagio.write(path, { set: { movementnumber: 2 }, remove: [] });
+          const r = await tagio.read(path);
+          assertEquals([r.tags.movementnumber, r.tags.movementtotal], [2, 4], format);
+        }
+      });
 
       await t.step("mp3: reads ID3v2.3 without splitting multi-values", async () => {
         const { path } = await copyFixture("tagged-v23.mp3");

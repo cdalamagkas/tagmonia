@@ -22,7 +22,7 @@ import traceback
 
 import mutagen
 from mutagen.flac import FLAC, Picture as FlacPicture
-from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TMCL, TXXX, UFID, Frames
+from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TIPL, TMCL, TXXX, UFID, Frames
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
@@ -101,6 +101,15 @@ def shape(m, values):
     return values[0]
 
 
+def pair_fields():
+    """ID3 pair frame -> (number field, total field), e.g. MVIN -> (movementnumber, movementtotal)."""
+    out = {}
+    for m in MAPPING:
+        if m.get("pair"):
+            out.setdefault(m["id3"], [None, None])[m["pair"]["index"]] = m["field"]
+    return out
+
+
 def as_list(m, value):
     if m["kind"] == "multi":
         return [str(v) for v in value]
@@ -143,7 +152,8 @@ def vorbis_read(f):
         if v is not None:
             out[m["field"]] = v
     # Fill totals from "n/total" numbers when no explicit total tag exists.
-    for num_key, field in (("TRACKNUMBER", "totaltracks"), ("DISCNUMBER", "totaldiscs")):
+    for num_key, field in (("TRACKNUMBER", "totaltracks"), ("DISCNUMBER", "totaldiscs"),
+                           ("MOVEMENT", "movementtotal")):
         if field not in out:
             for v in vorbis_get(tags, num_key):
                 _, t = parse_pair(v)
@@ -221,6 +231,9 @@ def id3_values(tags, spec):
         return [str(t) for fr in id3_txxx(tags, spec[5:]) for t in fr.text]
     if spec.startswith("UFID:"):
         return [fr.data.decode("ascii", "replace") for fr in tags.getall("UFID") if fr.owner == spec[5:]]
+    if spec.startswith("TIPL:"):
+        role = spec[5:].lower()
+        return [name for fr in tags.getall("TIPL") for r, name in fr.people if r.lower() == role]
     return [str(t) for fr in tags.getall(spec) for t in fr.text]
 
 
@@ -266,6 +279,13 @@ def id3_delete(tags, spec):
             tags.delall(fr.HashKey)
     elif spec.startswith("UFID:"):
         tags.delall("UFID:" + spec[5:])
+    elif spec.startswith("TIPL:"):
+        # TIPL is shared with producer, engineer and mix credits: drop only this role's entries.
+        role = spec[5:].lower()
+        for fr in tags.getall("TIPL"):
+            fr.people = [p for p in fr.people if p[0].lower() != role]
+        if not any(fr.people for fr in tags.getall("TIPL")):
+            tags.delall("TIPL")
     else:
         tags.delall(spec)
 
@@ -294,10 +314,17 @@ def id3_write(f, change, current):
             tags.add(TXXX(encoding=3, desc=spec[5:], text=as_list(m, value)))
         elif spec.startswith("UFID:"):
             tags.add(UFID(owner=spec[5:], data=str(value).encode("ascii")))
+        elif spec.startswith("TIPL:"):
+            entries = [[spec[5:], n] for n in as_list(m, value)]
+            existing = tags.getall("TIPL")
+            if existing:
+                existing[0].people = list(existing[0].people) + entries
+            else:
+                tags.add(TIPL(encoding=3, people=entries))
         else:
             tags.add(Frames[spec](encoding=3, text=as_list(m, value)))
-    # TRCK/TPOS hold "n/total"; recompute from the merged canonical state.
-    for spec, (num_f, tot_f) in (("TRCK", ("tracknumber", "totaltracks")), ("TPOS", ("discnumber", "totaldiscs"))):
+    # TRCK/TPOS/MVIN hold "n/total"; recompute from the merged canonical state.
+    for spec, (num_f, tot_f) in pair_fields().items():
         if spec not in pairs:
             continue
         n, t = merged(current, change, num_f), merged(current, change, tot_f)
@@ -353,7 +380,7 @@ def mp4_read(f):
         keys = mp4_find(tags, atom)
         if not keys:
             continue
-        if m.get("pair"):
+        if m.get("mp4Pair"):
             val = tags[keys[0]][0]
             v = val[m["pair"]["index"]] if len(val) > m["pair"]["index"] else 0
             if v:  # MP4 stores 0 for "unset"
@@ -386,7 +413,7 @@ def mp4_write(f, change, current):
         fld, atom = m["field"], m["mp4"]
         if atom is None or (fld not in change["set"] and fld not in change["remove"]):
             continue
-        if m.get("pair"):
+        if m.get("mp4Pair"):
             pairs.add(atom)
             continue
         for k in mp4_find(tags, atom):
@@ -397,6 +424,9 @@ def mp4_write(f, change, current):
         if atom.startswith("----:"):
             # One atom holding every value: duplicate atoms make Navidrome show only one.
             tags[atom] = [MP4FreeForm(v.encode("utf-8")) for v in vals]
+        elif m["kind"] == "int":
+            # ©mvi, ©mvc, shwm are iTunes integer atoms, not text.
+            tags[atom] = [int(change["set"][fld])]
         else:
             tags[atom] = vals
     for atom, (num_f, tot_f) in (("trkn", ("tracknumber", "totaltracks")), ("disk", ("discnumber", "totaldiscs"))):

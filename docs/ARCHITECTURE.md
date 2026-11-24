@@ -305,6 +305,12 @@ export interface CanonicalTags {
   conductor?: Multi;
   performer?: Record<string, Multi>;   // role -> names
   work?: string;
+  arranger?: Multi;                    // classical fields: §6.3
+  composersort?: Multi;
+  movement?: string;
+  movementnumber?: number;
+  movementtotal?: number;
+  showmovement?: number;               // 1 when movement fields are set
   musicbrainz_recordingid?: string;
   musicbrainz_trackid?: string;        // release-track MBID (Picard's name; see D8)
   musicbrainz_artistid?: Multi;
@@ -600,6 +606,11 @@ Follow MusicBrainz Picard's tag mapping table as the authoritative reference (li
 | `work` | `TXXX:WORK` | `WORK` | `©wrk` |
 | `originaldate` | `TDOR` | `ORIGINALDATE` | `----:com.apple.iTunes:originaldate` (D9) |
 | `performer` | `TMCL` (role, name pairs) | `PERFORMER=Name (role)` | not stored, as in Picard (D9) |
+| `arranger` | `TIPL` role `arranger`, sharing the frame with producer, engineer and mix credits, which a write keeps | `ARRANGER` | `----:com.apple.iTunes:arranger` (Picard's fallback naming, D9) |
+| `composersort` | `TSOC` | `COMPOSERSORT` | `soco` |
+| `movement` | `MVNM` | `MOVEMENTNAME` | `©mvn` |
+| `movementnumber` / `movementtotal` | `MVIN` (`n/total`) | `MOVEMENT`, `MOVEMENTTOTAL` | `©mvi`, `©mvc` (integer atoms; Picard's docs table says `mvi`/`mvc`, D35) |
+| `showmovement` | `TXXX:SHOWMOVEMENT` | `SHOWMOVEMENT` | `shwm` (integer atom) |
 | `albumartists` | `TXXX:ALBUMARTISTS` | `ALBUMARTISTS` | `----:com.apple.iTunes:ALBUMARTISTS` (not in Picard's table, D8) |
 | front cover | `APIC` type 3 | FLAC: `PICTURE` block; OGG/Opus: `METADATA_BLOCK_PICTURE` | `covr` |
 | provider IDs | `TXXX:DISCOGS_RELEASE_ID`, ... | `DISCOGS_RELEASE_ID`, ... | `----:com.apple.iTunes:DISCOGS_RELEASE_ID`, ... |
@@ -909,6 +920,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D32 | 2026-11-23 | MusicBrainz limits as checked on 2026-11-23: **1 request per second** on average per IP; excess requests get **503**. Linked-entity lists are capped at 25 per entity. Search `limit` is at most 100. Release lookups use `inc=artist-credits+labels+recordings+release-groups+media+isrcs+recording-level-rels+work-rels+work-level-rels+artist-rels` | — | From the MusicBrainz API docs, then checked against the live API. The docs do not mention `Retry-After`, but the server does send `503` + `Retry-After: 1` when its *global* limit is hit (`X-RateLimit-Zone: global`), even for a client below 1 req/s, so backoff that honours `Retry-After` is required. One release lookup returns conductor, performer and arranger relationships on recordings and the performed work with its composer and its `parts` link to the parent work (`ordering-key` = movement number). The parent work needs its own lookup for `movementtotal`. A release whose tracklist comes back shorter than `track-count` is rejected rather than scored. |
 | D33 | 2026-11-23 | The labelled identification fixtures (D26) are **synthesised from recorded MusicBrainz releases**: files are generated from the release data with realistic damage (jittered durations, missing or misspelt tags, wrong order, missing bonus tracks, untagged sets) | Export tags from the maintainer's library | Maintainer choice. Reproducible, no audio or personal data committed. A real-library check can be added later. |
 | D34 | 2026-11-23 | AcoustID is tested with hand-built responses only in Phase 2 | Record live AcoustID responses | Maintainer choice: no AcoustID key or real-audio fingerprints are available yet. Generated fixture audio matches nothing in AcoustID. A live check comes later. |
+| D35 | 2026-11-24 | Classical tags follow **Picard's code** where its docs table differs: MP4 movement atoms are `©mvi`/`©mvc` (iTunes integer atoms), not `mvi`/`mvc`; `arranger` is one role inside ID3's shared `TIPL` frame and an MP4 freeform `arranger` atom; `MVIN` is packed `n/total` like `TRCK` | Follow the docs table literally | Checked against Picard's `formats/mp4.py` and `formats/id3.py` and mutagen 1.47: a bare `mvi` atom is read by nothing. Writing `arranger` replaces only its own `TIPL` entries, so producer, engineer and mix credits from other taggers survive. `tests/tagio/mapping.test.ts` lists the docs errata explicitly. |
 
 ---
 

@@ -12,7 +12,7 @@ import base64, json, os, subprocess, sys
 from mutagen.flac import FLAC, Picture
 from mutagen.oggvorbis import OggVorbis
 from mutagen.oggopus import OggOpus
-from mutagen.id3 import ID3, TXXX, UFID, TMCL, APIC, COMM, PRIV, Frames
+from mutagen.id3 import ID3, TXXX, UFID, TIPL, TMCL, APIC, COMM, PRIV, Frames
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 
 FORMATS = {
@@ -95,7 +95,10 @@ def write_vorbis(path, ext, mapping, tags, front, back):
 
 def write_id3(path, mapping, tags, front, back, version=4):
     id3 = ID3()
-    pairs = {"track": [None, None], "disc": [None, None]}
+    pairs = {"track": [None, None], "disc": [None, None], "movement": [None, None]}
+    # Picard keeps arranger in TIPL next to other involvement roles; the extra
+    # producer entry lets the suite check that writing arranger leaves it alone.
+    tipl = [["producer", "Producer One"]]
     for m in mapping:
         f = m["field"]
         if f not in tags:
@@ -110,9 +113,12 @@ def write_id3(path, mapping, tags, front, back, version=4):
             id3.add(TXXX(encoding=3, desc=frame[5:], text=values(kind, tags[f])))
         elif frame.startswith("UFID:"):
             id3.add(UFID(owner=frame[5:], data=tags[f].encode("ascii")))
+        elif frame.startswith("TIPL:"):
+            tipl += [[frame[5:], n] for n in values(kind, tags[f])]
         else:
             id3.add(Frames[frame](encoding=3, text=values(kind, tags[f])))
-    for group, fid in (("track", "TRCK"), ("disc", "TPOS")):
+    id3.add(TIPL(encoding=3, people=tipl))
+    for group, fid in (("track", "TRCK"), ("disc", "TPOS"), ("movement", "MVIN")):
         n, total = pairs[group]
         if n is not None:
             id3.add(Frames[fid](encoding=3, text=[f"{n}/{total}" if total else str(n)]))
@@ -134,10 +140,12 @@ def write_mp4(path, mapping, tags, front, back):
         fld, atom = m["field"], m["mp4"]
         if fld not in tags or atom is None:
             continue
-        if m.get("pair"):
+        if m.get("mp4Pair"):
             pairs[atom][m["pair"]["index"]] = tags[fld]
         elif atom.startswith("----:"):
             f.tags[atom] = [MP4FreeForm(v.encode("utf-8")) for v in values(m["kind"], tags[fld])]
+        elif m["kind"] == "int":
+            f.tags[atom] = [int(tags[fld])]
         else:
             f.tags[atom] = values(m["kind"], tags[fld])
     for atom, (n, total) in pairs.items():
