@@ -76,10 +76,11 @@ Deno.test("a proposal is built from the release, its genres and its parent works
   assertEquals(p.snapshotIds, [2, 4, 5]);
   const first = p.fields.filter((f) => f.fileId === p.fields[0].fileId);
   const status = (field: string) => first.find((f) => f.field === field)?.status;
+  // "Symphony No. 5" in the files, "Symphony no. 5" on MusicBrainz: the case is proposed (D43).
   assertEquals([status("title"), status("tracknumber"), status("album"), status("genre")], [
     "unchanged",
     "unchanged",
-    "unchanged",
+    "changed",
     "added",
   ]);
   assertEquals(status("albumartist"), "changed");

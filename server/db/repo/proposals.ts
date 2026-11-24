@@ -192,3 +192,108 @@ export function listLocks(db: Db): FieldLock[] {
     field: CanonicalField;
   }[]).map((r) => ({ scope: r.scope, target: r.target, field: r.field }));
 }
+
+// ---- review: decisions and locks (§10.3)
+
+/** Proposals the review can still change. */
+const OPEN = "('draft', 'needs_review', 'approved')";
+
+export class ReviewError extends Error {
+  override name = "ReviewError";
+}
+
+/** Applies one decision to field rows of one open proposal. Locked rows refuse: unlock first. */
+export function setDecisions(
+  db: Db,
+  proposalId: number,
+  fieldIds: number[],
+  decision: Decision,
+  edited: unknown,
+  now: number,
+): void {
+  transaction(db, () => {
+    const p = db.prepare(`SELECT state FROM proposal WHERE id = ?`).get(proposalId) as { state: string } | undefined;
+    if (!p) throw new ReviewError("proposal not found");
+    if (!["draft", "needs_review", "approved"].includes(p.state)) throw new ReviewError(`proposal is ${p.state}`);
+    const rows = db.prepare(
+      `SELECT id, locked FROM field_proposal WHERE proposal_id = ? AND id IN (${fieldIds.map(() => "?").join(",")})`,
+    ).all(proposalId, ...fieldIds) as { id: number; locked: number }[];
+    if (rows.length !== new Set(fieldIds).size) throw new ReviewError("unknown field for this proposal");
+    if (rows.some((r) => r.locked)) throw new ReviewError("a locked field keeps its value; unlock it first");
+    const update = db.prepare("UPDATE field_proposal SET decision = ?, edited_value = ? WHERE id = ?");
+    for (const r of rows) update.run(decision, decision === "edited" ? JSON.stringify(edited) : null, r.id);
+    // Any change after approval needs a fresh look before writing.
+    db.prepare("UPDATE proposal SET state = 'needs_review', updated_at = ? WHERE id = ? AND state = 'approved'").run(
+      now,
+      proposalId,
+    );
+  });
+}
+
+export interface StoredLock extends FieldLock {
+  id: number;
+}
+
+export function locksFor(db: Db, candidateId: number): StoredLock[] {
+  const fileIds = (db.prepare("SELECT id FROM library_file WHERE candidate_id = ?").all(candidateId) as {
+    id: number;
+  }[]).map((r) => String(r.id));
+  return (db.prepare("SELECT id, scope, target, field FROM field_lock ORDER BY id").all() as unknown as StoredLock[])
+    .filter((l) =>
+      l.scope === "global_field" || (l.scope === "release" && l.target === String(candidateId)) ||
+      (l.scope === "file" && fileIds.includes(l.target))
+    );
+}
+
+/** Re-derives `locked` for open proposals' rows of one field from the locks that exist now. */
+function reapplyLocks(db: Db, field: CanonicalField): void {
+  const locks = listLocks(db);
+  const rows = db.prepare(
+    `SELECT f.id, f.file_id, f.locked, p.candidate_id FROM field_proposal f JOIN proposal p ON p.id = f.proposal_id
+     WHERE f.field = ? AND p.state IN ${OPEN}`,
+  ).all(field) as { id: number; file_id: number; locked: number; candidate_id: number }[];
+  const lock = db.prepare(
+    "UPDATE field_proposal SET locked = 1, decision = 'kept_current', edited_value = NULL WHERE id = ?",
+  );
+  const unlock = db.prepare("UPDATE field_proposal SET locked = 0, decision = 'auto' WHERE id = ?");
+  for (const r of rows) {
+    const now = locks.some((l) =>
+      l.field === field && (l.scope === "global_field" ||
+        (l.scope === "release" && l.target === String(r.candidate_id)) ||
+        (l.scope === "file" && l.target === String(r.file_id)))
+    );
+    if (now && !r.locked) lock.run(r.id);
+    if (!now && r.locked) unlock.run(r.id);
+  }
+}
+
+export function addLock(db: Db, l: FieldLock, now: number): StoredLock {
+  return transaction(db, () => {
+    db.prepare("INSERT OR IGNORE INTO field_lock (scope, target, field, created_at) VALUES (?, ?, ?, ?)").run(
+      l.scope,
+      l.target,
+      l.field,
+      now,
+    );
+    reapplyLocks(db, l.field);
+    return db.prepare("SELECT id, scope, target, field FROM field_lock WHERE scope = ? AND target = ? AND field = ?")
+      .get(l.scope, l.target, l.field) as unknown as StoredLock;
+  });
+}
+
+export function removeLock(db: Db, id: number): boolean {
+  return transaction(db, () => {
+    const l = db.prepare("SELECT field FROM field_lock WHERE id = ?").get(id) as { field: CanonicalField } | undefined;
+    if (!l) return false;
+    db.prepare("DELETE FROM field_lock WHERE id = ?").run(id);
+    reapplyLocks(db, l.field);
+    return true;
+  });
+}
+
+export function discardProposal(db: Db, id: number, now: number): void {
+  const p = db.prepare("SELECT state FROM proposal WHERE id = ?").get(id) as { state: string } | undefined;
+  if (!p) throw new ReviewError("proposal not found");
+  if (p.state === "written") throw new ReviewError("a written proposal is undone, not discarded");
+  setProposalState(db, id, "discarded", now);
+}

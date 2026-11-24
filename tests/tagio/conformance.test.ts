@@ -250,6 +250,15 @@ Deno.test({
           assertEquals([r.tags.tracknumber, r.tags.totaltracks], [5, 12]);
         });
 
+        await t.step(`${format}: performer roles with parentheses and capitals round-trip`, async () => {
+          if (format === "m4a") return; // MP4 stores no performers (D9).
+          const { path } = await copyFixture(`blank.${format}`);
+          // Real MusicBrainz instrument names (found writing "Is This It", D42).
+          const performer = { "drums (drum set)": ["Fabrizio Moretti"], "Rhodes piano": ["Ray Manzarek"] };
+          await tagio.write(path, { set: { performer }, remove: [] });
+          assertEquals((await tagio.read(path)).tags.performer, performer);
+        });
+
         await t.step(`${format}: write keeps file mode`, async () => {
           const { path } = await copyFixture(`tagged.${format}`);
           await Deno.chmod(path, 0o640);

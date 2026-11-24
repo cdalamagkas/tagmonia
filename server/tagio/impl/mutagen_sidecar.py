@@ -76,8 +76,22 @@ def parse_pair(s):
 
 
 def parse_vorbis_performer(v):
-    m = re.match(r"^(.*\S)\s+\(([^()]+)\)$", v.strip())
-    return (m.group(1), m.group(2).lower()) if m else (v.strip(), "")
+    """'Name (role)' as Picard writes it. The role is the last balanced group, since
+    MusicBrainz instrument names can hold parentheses ("drums (drum set)"); its case
+    is kept, so a write verifies exactly (D42)."""
+    s = v.strip()
+    if not s.endswith(")"):
+        return s, ""
+    depth = 0
+    for i in range(len(s) - 1, -1, -1):
+        if s[i] == ")":
+            depth += 1
+        elif s[i] == "(":
+            depth -= 1
+            if depth == 0:
+                name, role = s[:i].rstrip(), s[i + 1:-1]
+                return (name, role) if name and role and s[i - 1:i].isspace() else (s, "")
+    return s, ""
 
 
 def b64(data):
@@ -248,7 +262,7 @@ def id3_read(f):
             perf = {}
             for fr in tags.getall("TMCL"):
                 for role, name in fr.people:
-                    perf.setdefault(role.lower(), []).append(name)
+                    perf.setdefault(role, []).append(name)
             if perf:
                 out[m["field"]] = perf
             continue
