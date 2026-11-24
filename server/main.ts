@@ -7,9 +7,11 @@ import { loadConfig } from "./config.ts";
 import { openMigratedDb } from "./db/db.ts";
 import { createApp } from "./http/app.ts";
 import { JobQueue } from "./jobs/queue.ts";
+import { enqueueIdentify, registerIdentifyJob } from "./jobs/identify.ts";
 import { registerScanJob } from "./jobs/scan.ts";
 import { createLogger } from "./log.ts";
-import { loadSettings } from "./settings.ts";
+import { createMusicBrainzClient } from "./providers/musicbrainz/mod.ts";
+import { identifyConfig, loadSettings } from "./settings.ts";
 import { createTagIO } from "./tagio/mod.ts";
 import { VERSION } from "./version.ts";
 
@@ -28,6 +30,13 @@ async function main() {
     tagio,
     musicDir: config.musicDir,
     ignore: () => settings.scanner.ignore,
+    logger,
+    onCandidatesTouched: (ids) => enqueueIdentify(queue, ids),
+  });
+  registerIdentifyJob(queue, {
+    db,
+    mb: createMusicBrainzClient(db, config.configDir, settings),
+    config: () => identifyConfig(settings),
     logger,
   });
   queue.start();

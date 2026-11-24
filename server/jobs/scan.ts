@@ -14,13 +14,15 @@ export interface ScanJobDeps {
   /** Read per run so settings edits apply to the next scan. */
   ignore: () => string[];
   logger: Logger;
+  /** Called with new or changed candidates after a scan, to enqueue identification (§7 step 5). */
+  onCandidatesTouched?: (ids: number[]) => void;
 }
 
 export function registerScanJob(queue: JobQueue, deps: ScanJobDeps): void {
   queue.register(SCAN_JOB, async ({ signal, progress }) => {
     // Resolve per run: the mount may appear after startup (e.g. a NAS share).
     const rootReal = await Deno.realPath(deps.musicDir);
-    return await scanLibrary({
+    const result = await scanLibrary({
       db: deps.db,
       tagio: deps.tagio,
       rootReal,
@@ -29,6 +31,8 @@ export function registerScanJob(queue: JobQueue, deps: ScanJobDeps): void {
       signal,
       progress,
     });
+    if (result.candidatesTouched.length) deps.onCandidatesTouched?.(result.candidatesTouched);
+    return result;
   });
 }
 

@@ -5,6 +5,7 @@
  */
 import { join } from "node:path";
 import { z } from "zod";
+import type { IdentifyConfig } from "./identify/identify.ts";
 
 function isPublicMusicBrainz(url: string): boolean {
   const host = new URL(url).hostname;
@@ -27,6 +28,30 @@ export const settingsSchema = z.object({
       { message: "musicbrainz.org allows at most 1 request per second", path: ["requestsPerSecond"] },
     ),
   }).prefault({}),
+  identify: z.object({
+    /** §8.1: at or above, a match may be auto-approved (only if the user enables it, Phase 3). */
+    autoThreshold: z.number().min(0).max(1).default(0.92),
+    /** Below this there is "no confident match". */
+    reviewThreshold: z.number().min(0).max(1).default(0.70),
+    /** §8.2: same-release-group releases this close to the best go to the edition picker. */
+    editionMargin: z.number().min(0).max(0.5).default(0.03),
+    /** D36: share of the total weight that must have evidence before a match may reach autoThreshold. */
+    minCoverage: z.number().min(0).max(1).default(0.6),
+    /** D36: full release lookups per search, at 1 request per second each. */
+    maxLookupsPerSearch: z.number().int().min(1).max(25).default(5),
+    /** §8.1 initial weights; tuned on tests/identify/. Missing signals are excluded, not scored 0 (D36). */
+    weights: z.object({
+      trackCount: z.number().min(0).default(0.20),
+      durations: z.number().min(0).default(0.25),
+      titles: z.number().min(0).default(0.20),
+      album: z.number().min(0).default(0.10),
+      artist: z.number().min(0).default(0.10),
+      fingerprint: z.number().min(0).default(0.15),
+    }).prefault({}),
+  }).prefault({}).refine((i) => i.reviewThreshold < i.autoThreshold, {
+    message: "reviewThreshold must be below autoThreshold",
+    path: ["reviewThreshold"],
+  }),
   auth: z.object({
     /** Sessions end after this long without a request. */
     sessionIdleHours: z.number().positive().max(24 * 90).default(24 * 7),
@@ -61,4 +86,14 @@ export async function loadSettings(configDir: string): Promise<Settings> {
     throw new Error(`${path} is invalid at: ${where}`);
   }
   return parsed.data;
+}
+
+/** Identification settings in the shape the pure identify code takes. */
+export function identifyConfig(s: Settings): IdentifyConfig {
+  const i = s.identify;
+  return {
+    scoring: { weights: i.weights, autoThreshold: i.autoThreshold, minCoverage: i.minCoverage, identifierFloor: 0.95 },
+    thresholds: { autoThreshold: i.autoThreshold, reviewThreshold: i.reviewThreshold, editionMargin: i.editionMargin },
+    maxLookupsPerSearch: i.maxLookupsPerSearch,
+  };
 }
