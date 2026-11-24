@@ -1,7 +1,14 @@
 import { assert, assertEquals } from "@std/assert";
 import { editionsOf, rank, verdict } from "../../server/identify/editions.ts";
 import { toReleaseView } from "../../server/identify/release.ts";
-import { DEFAULT_SCORING, durationSimilarity, mapTracks, scoreRelease } from "../../server/identify/score.ts";
+import {
+  declaredSize,
+  DEFAULT_SCORING,
+  durationSimilarity,
+  mapTracks,
+  scoreRelease,
+  sizeAgreement,
+} from "../../server/identify/score.ts";
 import type { ScoredRelease } from "../../server/identify/types.ts";
 import { BEETHOVEN_5, evidenceFor, filesFor, loadRelease, variant } from "./helpers.ts";
 
@@ -40,13 +47,40 @@ Deno.test("files in the wrong order without track numbers still map by duration 
   );
 });
 
-Deno.test("a missing track lowers the score and is listed as unmatched", () => {
+Deno.test("a missing track costs little and is listed as unmatched (D45)", () => {
+  const full = scoreRelease(evidenceFor(release), view);
   const ev = evidenceFor(release);
   ev.files = ev.files.slice(0, 3);
   const s = scoreRelease(ev, view);
-  assertEquals(s.signals.trackCount, 0.5);
+  assertEquals(s.signals.trackCount, 0.875, "3 of 4 tracks present");
   assertEquals(s.mapping.unmatchedTracks.map((t) => t.position), [4]);
-  assert(s.score < DEFAULT_SCORING.autoThreshold, `score ${s.score}`);
+  // Durations and titles describe the files: the fourth track's absence does not count against them.
+  assertEquals([s.signals.durations, s.signals.titles], [full.signals.durations, full.signals.titles]);
+  assert(s.score < full.score, `${s.score} vs ${full.score}`);
+});
+
+Deno.test("half an album still scores high enough to show, and the right release over a bigger edition (D45)", () => {
+  const ev = evidenceFor(release);
+  ev.files = ev.files.slice(2);
+  const half = scoreRelease(ev, view);
+  assertEquals(half.signals.trackCount, 0.75);
+  assert(half.score >= 0.70, `half an album scores ${half.score}`);
+
+  // An 8-track edition holding the same four tracks plus four more.
+  const bigger = variant(release, "00000000-0000-4000-8000-0000000000b8");
+  for (const t of release.media[0].tracks!) {
+    bigger.media[0].tracks!.push({
+      ...structuredClone(t),
+      id: crypto.randomUUID(),
+      position: t.position + 4,
+      title: `Bonus ${t.position}`,
+    });
+  }
+  bigger.media[0]["track-count"] = 8;
+  const fullRip = evidenceFor(release);
+  const right = scoreRelease(fullRip, view);
+  const wrong = scoreRelease(fullRip, toReleaseView(bigger));
+  assert(right.score - wrong.score > 0.03, `complete release ${right.score} vs bigger edition ${wrong.score}`);
 });
 
 Deno.test("an unrelated file is left unmapped instead of forced onto a track", () => {
@@ -66,15 +100,24 @@ Deno.test("untagged files matched on durations alone are held below the auto thr
   assertEquals(s.score, DEFAULT_SCORING.autoThreshold - 0.01);
 });
 
-Deno.test("an exact catalog number sets the 0.95 floor, but only with a plausible track count", () => {
+Deno.test("an exact catalog number sets the 0.95 floor when the files belong to the release", () => {
   const ev = evidenceFor(release, { album: "Fünfte", albumArtist: "Karajan", catalogNumbers: ["2542-105"] });
   ev.files = ev.files.map((f) => ({ ...f, durationMs: (f.durationMs ?? 0) + 9000 }));
   const s = scoreRelease(ev, view);
   assertEquals(s.identifierMatch, true);
   assertEquals(s.score, 0.95);
 
-  const few = { ...ev, files: ev.files.slice(0, 1) };
-  assert(scoreRelease(few, view).score < 0.95);
+  // Part of the release is still the release (D45).
+  assertEquals(scoreRelease({ ...ev, files: ev.files.slice(0, 1) }, view).score, 0.95);
+
+  // Files that are not on the release get no floor, whatever their tags claim.
+  const strangers = ev.files.map((f, i) => ({
+    ...f,
+    durationMs: 60_000 + i * 1000,
+    title: `Something else ${i}`,
+    tracknumber: 9 + i,
+  }));
+  assert(scoreRelease({ ...ev, files: strangers }, view).score < 0.95);
 });
 
 function scored(id: string, score: number, group: string | null): ScoredRelease {
@@ -118,7 +161,8 @@ Deno.test("an extra file does not give a bonus edition an exact track count (D38
   bonus.media[0]["track-count"] = 5;
   const original = scoreRelease(ev, view);
   const withBonus = scoreRelease(ev, toReleaseView(bonus));
-  assertEquals([original.signals.trackCount, withBonus.signals.trackCount], [0.5, 0.5]);
+  // One file not on either release halves both; the bonus edition also misses its fifth track (D45).
+  assertEquals([original.signals.trackCount, withBonus.signals.trackCount], [0.5, 0.45]);
   assert(withBonus.score <= original.score, `${withBonus.score} > ${original.score}`);
 });
 
@@ -133,4 +177,56 @@ Deno.test("a release the files name ranks first once confident and only competes
   // Two named releases that tie still go to review.
   const two = rank([named, { ...scored("m", 0.96, "g1"), pinned: true }]);
   assertEquals(verdict(two), "needs_review");
+});
+
+// ---- the files' own "of N" tags (D45)
+
+Deno.test("declared size: the majority total per disc and total discs; absent when no file says", () => {
+  const f = (disc: number, total: number | undefined, discs?: number) => ({
+    fileId: 1,
+    path: "a.flac",
+    durationMs: 1,
+    discnumber: disc,
+    totaltracks: total,
+    totaldiscs: discs,
+  });
+  const d = declaredSize([f(1, 9, 2), f(1, 9, 2), f(1, 10, 2), f(2, 7, 2)])!;
+  assertEquals([...d.perDisc], [[1, 9], [2, 7]]);
+  assertEquals(d.discs, 2);
+  assertEquals(declaredSize([f(1, undefined)]), null);
+  assertEquals(sizeAgreement(d, [9, 7]), 1);
+  assertEquals(sizeAgreement(d, [9]), 0.25, "disc 2 missing, and one disc instead of two");
+  assertEquals(sizeAgreement(null, [9]), null);
+});
+
+Deno.test("one track tagged 'of 4' prefers the 4-track release over a 2-track single of the same name", () => {
+  const one = { ...filesFor(release)[1], totaltracks: 4 };
+  const single = variant(release, "00000000-0000-4000-8000-00000000005e", { releaseGroup: crypto.randomUUID() });
+  single.media[0].tracks = single.media[0].tracks!.slice(0, 2);
+  single.media[0]["track-count"] = 2;
+  const ev = {
+    files: [one],
+    album: release.title,
+    albumArtist: "Beethoven; Berlin Philharmonic Orchestra, Herbert von Karajan",
+  };
+  const album = scoreRelease(ev, view);
+  const other = scoreRelease(ev, toReleaseView(single));
+  assertEquals(album.signals.trackCount, 1);
+  assert(album.score > other.score, `${album.score} vs ${other.score}`);
+});
+
+Deno.test("a file whose title contradicts a track is not mapped onto it by duration alone", () => {
+  const ev = evidenceFor(release);
+  // Same length as track 4, nothing else in common.
+  ev.files[3] = {
+    fileId: 4,
+    path: "Album/99.flac",
+    durationMs: release.media[0].tracks![3].length!,
+    title: "Hidden Jingle",
+    tracknumber: 99,
+  };
+  assertEquals(scoreRelease(ev, view).mapping.unmappedFiles, [4]);
+  // A generic title is no contradiction: with its track number it still maps.
+  ev.files[3] = { ...ev.files[3], title: "Track 04", tracknumber: 4 };
+  assertEquals(scoreRelease(ev, view).mapping.unmappedFiles, []);
 });

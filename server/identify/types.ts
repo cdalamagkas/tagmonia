@@ -8,6 +8,9 @@ export interface FileEvidence {
   title?: string;
   tracknumber?: number;
   discnumber?: number;
+  /** "Track 4 of 9", "disc 1 of 2": the album's size as the file's own tags declare it (D45). */
+  totaltracks?: number;
+  totaldiscs?: number;
   /** Recording MBIDs AcoustID returned for this file's fingerprint (part 4). */
   acoustidRecordingIds?: string[];
 }

@@ -67,6 +67,8 @@ export function buildEvidence(hintMbid: string | null, files: StoredFile[]): Can
       title: f.tags.title,
       tracknumber: f.tags.tracknumber,
       discnumber: f.tags.discnumber,
+      totaltracks: f.tags.totaltracks,
+      totaldiscs: f.tags.totaldiscs,
     })),
     album: mostCommon(tags.map((t) => t.album)),
     albumArtist: albumArtist ?? (artists.size === 1 ? [...artists][0] : undefined),

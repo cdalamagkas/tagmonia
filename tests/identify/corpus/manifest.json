@@ -407,6 +407,69 @@
       "title": "Exodus"
     },
     {
+      "slug": "mendelssohn-trios-partial",
+      "damage": "partial_second_half",
+      "releaseMbid": "6bb5308c-0b61-4dca-a2c8-28d5ec7546dc",
+      "releaseGroupMbid": "6db48c4a-0ae2-39ac-8345-976eed9e2076",
+      "title": "Piano Trios"
+    },
+    {
+      "slug": "abbey-road-half",
+      "damage": "partial_first_half",
+      "releaseMbid": "d5625820-d8fb-403a-a920-c40d62c406fe",
+      "releaseGroupMbid": "9162580e-5df4-32de-80cc-f45a8d8a9b1d",
+      "title": "Abbey Road"
+    },
+    {
+      "slug": "dummy-half",
+      "damage": "partial_second_half",
+      "releaseMbid": "eca6d001-35bb-4a1a-9bcb-8efd15814cc0",
+      "releaseGroupMbid": "48140466-cff6-3222-bd55-63c27e43190d",
+      "title": "Dummy"
+    },
+    {
+      "slug": "kind-of-blue-random",
+      "damage": "partial_random",
+      "releaseMbid": "6b78821e-b1f5-40f3-b8c3-a03c2e9e67b8",
+      "releaseGroupMbid": "8e8a594f-2175-38c7-a871-abb68ec363e7",
+      "title": "Kind of Blue"
+    },
+    {
+      "slug": "goldberg-random",
+      "damage": "partial_random",
+      "releaseMbid": "e5f44e6d-9532-4fc1-9127-96fd09658aa9",
+      "releaseGroupMbid": "dcff25f1-702d-3b5e-b0da-d48172e6e62a",
+      "title": "The Goldberg Variations"
+    },
+    {
+      "slug": "rumours-random",
+      "damage": "partial_random",
+      "releaseMbid": "1d74f14f-1ea1-41ee-8361-9f11e24f336f",
+      "releaseGroupMbid": "416bb5e5-c7d1-3977-8fd7-7c9daf6c2be6",
+      "title": "Rumours"
+    },
+    {
+      "slug": "the-wall-disc2",
+      "damage": "partial_second_half",
+      "releaseMbid": "4825a33d-51dc-41ae-8c77-c412fc7fad9a",
+      "releaseGroupMbid": "f2026101-945b-3d05-9ef4-aa718fc3feef",
+      "title": "The Wall"
+    },
+    {
+      "slug": "thriller-single",
+      "damage": "single_track",
+      "releaseMbid": "ba72c286-9eb2-4d24-949e-39a50419383a",
+      "releaseGroupMbid": "f32fab67-77dd-3937-addc-9062e28e4c37",
+      "title": "Thriller"
+    },
+    {
+      "slug": "back-to-black-single",
+      "damage": "single_track",
+      "releaseMbid": "0dfd2d0a-371b-4441-8cdc-04b16ba25af0",
+      "releaseGroupMbid": "6eac2e57-ee50-36f8-b0c4-c4c847a2c098",
+      "title": "Back to Black"
+    },
+    {
       "slug": "unknown-1",
       "damage": "unidentifiable",
       "releaseMbid": "bc18c59d-6131-4e18-aff5-4600ea7f3d7d",

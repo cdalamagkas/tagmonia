@@ -12,7 +12,14 @@ import type { MbBrowseRelease, MbRelease, MbSearchRelease } from "../providers/m
 import { DEFAULT_THRESHOLDS, rank, type Thresholds, type Verdict, verdict } from "./editions.ts";
 import { similarity } from "./normalize.ts";
 import { creditString, normalizeBarcode, normalizeCatno, releaseSummary, toReleaseView } from "./release.ts";
-import { DEFAULT_SCORING, scoreRelease, type ScoringConfig } from "./score.ts";
+import {
+  countSignal,
+  declaredSize,
+  DEFAULT_SCORING,
+  scoreRelease,
+  type ScoringConfig,
+  sizeAgreement,
+} from "./score.ts";
 import type { CandidateEvidence, MatchMethod, ReleaseSummary, ReleaseView, ScoredRelease } from "./types.ts";
 import type { FingerprintSource } from "./acoustid_source.ts";
 import { AcoustIdKeyError } from "../providers/acoustid.ts";
@@ -97,8 +104,11 @@ export function queryFromFolder(folder: string): { artist?: string; album?: stri
 /** Cheap ranking of search hits on what the search response already contains. */
 function preScore(ev: CandidateEvidence, hit: MbSearchRelease, query: { album?: string; artist?: string }): number {
   const tracks = hit["track-count"] ?? hit.media.reduce((n, m) => n + m["track-count"], 0);
-  const d = Math.abs(tracks - ev.files.length);
-  const count = d === 0 ? 1 : d === 1 ? 0.5 : 0;
+  // The scorer's own count rule (D45), so a release holding a partial album is still looked up,
+  // and the edition the files' "of N" tags describe is looked up first.
+  const files = ev.files.length;
+  const declared = sizeAgreement(declaredSize(ev.files), hit.media.map((m) => m["track-count"]));
+  const count = countSignal(Math.max(0, files - tracks), Math.min(files, tracks), tracks, declared);
   const album = query.album ? similarity(query.album, hit.title) : 0.5;
   const artist = query.artist ? similarity(query.artist, creditString(hit["artist-credit"])) : 0.5;
   return 0.4 * count + 0.3 * album + 0.2 * artist + 0.1 * (hit.score / 100);

@@ -33,6 +33,14 @@ export const DAMAGE = [
   "barcode",
   /** No tags, folder "Unknown", files "trackNN.flac": unidentifiable without fingerprints (D34). */
   "unidentifiable",
+  /** Only the first half of the tracks: a partly downloaded album (D45). */
+  "partial_first_half",
+  /** Only the second half, e.g. one work of a two-work classical album (D45). */
+  "partial_second_half",
+  /** A random 40% of the tracks, in order (D45). */
+  "partial_random",
+  /** One track of the album (D45). */
+  "single_track",
 ] as const;
 
 export type Damage = typeof DAMAGE[number];
@@ -126,6 +134,15 @@ export function synthesize(release: MbRelease, c: SynthCase): SynthFolder {
   }
 
   if (c.damage === "missing_last") files = files.slice(0, -1);
+  if (c.damage === "partial_first_half") files = files.slice(0, Math.ceil(files.length / 2));
+  if (c.damage === "partial_second_half") files = files.slice(Math.floor(files.length / 2));
+  if (c.damage === "partial_random") {
+    const keep = Math.max(2, Math.round(files.length * 0.4));
+    const picked = new Set<number>();
+    while (picked.size < Math.min(keep, files.length)) picked.add(Math.floor(rand() * files.length));
+    files = files.filter((_, i) => picked.has(i));
+  }
+  if (c.damage === "single_track") files = [files[Math.floor(rand() * files.length)]];
   if (c.damage === "extra_file") {
     files.push(
       storedFile(id++, `${folder}/99.flac`, folder, 60_000 + Math.round(rand() * 120_000), {
