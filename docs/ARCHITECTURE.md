@@ -279,7 +279,7 @@ erDiagram
 | `submission` | A MusicBrainz seeding attempt | `id`, `proposal_id`, `seed_payload` (JSON), `state` (`seeded`, `returned`, `abandoned`), `release_mbid` |
 | `field_lock` | User's standing "never change this" rule | `scope` (`file`, `release`, `global_field`), `target`, `field` |
 | `job` | Queue entry | `id`, `kind`, `payload`, `state`, `attempts`, `run_after`, `error` |
-| `snapshot` | Cached provider response | `id`, `provider`, `request_key`, `fetched_at`, `body_path` |
+| `snapshot` | Cached provider response | `id`, `provider`, `request_key`, `status`, `fetched_at`, `body_path`, `size` |
 
 ### 6.2 Canonical tag model
 
@@ -482,10 +482,14 @@ Commercial APIs change without notice (Spotify has removed endpoints that Harmon
 
 > Verify each provider's current published limits during Phase 2 and record them in the decision log. Do not hard-code numbers from memory.
 
+MusicBrainz limits were checked on 2026-11-23 (D32). Tagmonia talks to MusicBrainz through its own WS/2 client (`server/providers/musicbrainz/`, D31), not Harmony's. A local mirror is set with `providers.musicbrainz.baseUrl` in `settings.json`; only a mirror may set `requestsPerSecond` above 1.
+
 ### 9.4 Snapshot cache
 
 Harmony's base provider caches responses as snapshots keyed by request URL and timestamp. Tagmonia keeps this behaviour, with storage under `/config/snaps/`:
 
+- Bodies are stored as files under `/config/snaps/<provider>/`, indexed by the `snapshot` table (provider, request URL, HTTP status, time). A refetch adds a row; it never overwrites one, so old proposals keep their evidence.
+- Responses are validated before they are cached, so a malformed or truncated response is never served from the cache. 404s are cached, so a missing MBID is not asked again on every scan.
 - Default TTL: 30 days for release lookups, 1 day for searches.
 - A proposal stores the snapshot IDs it was built from, so the review UI and the MusicBrainz edit note can show exactly what each provider returned.
 - `Settings → Cache` shows size and offers purge by provider or age.
@@ -882,7 +886,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D9 | 2026-11-23 | Tags Picard's table lists as n/a for MP4: `originaldate` → `----:com.apple.iTunes:originaldate`; `performer` is not stored in MP4. Vorbis writes both `TRACKTOTAL`/`TOTALTRACKS` and `DISCTOTAL`/`TOTALDISCS`; ID3 `work` → `TXXX:WORK` | Invent MP4 keys; write `TIT1` | Matches what Picard actually writes. Its `formats/mp4.py` stores unmapped tags as freeform atoms named after the internal name and skips `performer:*`. Its Vorbis writer emits both total keys, and `TXXX:WORK` is its default. |
 | D10 | 2026-11-23 | MP4 covers read back as type "front" with no description | Store type in a custom atom | `covr` has no type or description field; this is Picard's behaviour as well. |
 | D11 | 2026-11-23 | `Picture.mime` accepts any `image/*` | JPEG/PNG only | Files in the wild carry GIF/BMP covers, and backups must restore them exactly. New pictures Tagmonia writes are JPEG/PNG; MP4 accepts only those two. |
-| D12 | 2026-11-23 | Harmony integration rules | — | Harmony is a Deno workspace member; its modules import cleanly outside Fresh, apart from a harmless "lock" warning. Never import `lookup.ts` or `providers/mod.ts`: at import time they build a global registry with Harmony's User-Agent and write `snaps.db` to the current directory. The adapter builds its own `ProviderRegistry`. Provider credentials are read from `Deno.env` when a provider module loads, so the adapter sets them first and imports dynamically; changing credentials needs a restart. Discogs uses a consumer key and secret. `musicbrainz/api_client.ts` hard-codes Harmony's User-Agent, which must be resolved in Phase 2 before any MusicBrainz request. Bandcamp and Beatport scrape HTML, so they were excluded pending D16. |
+| D12 | 2026-11-23 | Harmony integration rules | — | Harmony is a Deno workspace member; its modules import cleanly outside Fresh, apart from a harmless "lock" warning. Never import `lookup.ts` or `providers/mod.ts`: at import time they build a global registry with Harmony's User-Agent and write `snaps.db` to the current directory. The adapter builds its own `ProviderRegistry`. Provider credentials are read from `Deno.env` when a provider module loads, so the adapter sets them first and imports dynamically; changing credentials needs a restart. Discogs uses a consumer key and secret. `musicbrainz/api_client.ts` hard-codes Harmony's User-Agent, which must be resolved in Phase 2 before any MusicBrainz request (resolved by D31). Bandcamp and Beatport scrape HTML, so they were excluded pending D16. |
 | D13 | 2026-11-23 | All development and test tooling runs in Docker (`docker/dev.Dockerfile`, `scripts/dk`); CI uses the same image | Install Deno, ffmpeg and mutagen on the host | Maintainer requirement; local runs and CI stay identical. |
 | D14 | 2026-11-23 | The image runs the server from source with `deno run --cached-only`; `deno task build` = type check + SPA build | `deno compile` | The Python sidecar must exist on the real filesystem, which a compiled binary's embedded files do not provide. |
 | D15 | 2026-11-23 | `ARCHITECTURE.md` lives in `docs/`; `CLAUDE.md` lives in the repository root. `deno fmt` excludes both | Both in `docs/` | The maintainer moved the docs to `docs/`, then asked for `CLAUDE.md` where Claude Code loads it automatically (the root). fmt would otherwise reflow and re-align their Markdown tables. |
@@ -901,36 +905,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D28 | 2026-11-23 | Deep classical support in v1 (§6.3): composer, arranger, performers by instrument, conductor, work hierarchy and movement fields | Basic credits only; defer | Maintainer choice (§18 Q4). Uses Picard's own tag names (`movement`, `movementnumber`, `movementtotal`, `showmovement`, `arranger`, `composersort`), so no custom tags are needed. |
 | D29 | 2026-11-23 | v1 is single-user (one admin) | Roles (admin, reviewer) | Maintainer choice (§18 Q5); confirms D25. |
 | D30 | 2026-11-23 | Renamed to **Tagmonia** ("tag" + αρμονία, Greek for harmony): app name, `TAGMONIA_*` variables, cookie `tagmonia_session`, database `tagmonia.db`, repository `cdalamagkas/tagmonia` | Keep Tagmony | Maintainer choice: a meaningful root and no "tag money" reading when spoken. Done before any release, so nothing depends on the old names. The wordmark was regenerated from the brand fonts; the mark is unchanged. |
-
----
-
-## 18. Open questions
-
-1. ~~**License**~~ — resolved: GPL-3.0 (D17).
-2. ~~**Identification accuracy target**~~ — resolved (D26, proposed; revisit after Phase 2).
-3. ~~**Genre policy**~~ — resolved: MusicBrainz genres (D27).
-4. ~~**Classical support depth**~~ — resolved: deep support in v1 (D28, §6.3).
-5. ~~**Multiple users**~~ — resolved: single user in v1 (D29).
-6. **Local MusicBrainz mirror** support documented as a first-class option for very large libraries?
-7. ~~**Bandcamp and Beatport**~~ — resolved: opt-in (D16).
-8. ~~**Public repository URL**~~ — resolved (D18).
-
----
-
-## 19. References
-
-- MusicBrainz API: <https://musicbrainz.org/doc/MusicBrainz_API>
-- MusicBrainz rate limiting: <https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting>
-- Release editor seeding: <https://musicbrainz.org/doc/Development/Release_Editor_Seeding>
-- Seeding overview (other entities): <https://musicbrainz.org/doc/Development/Seeding>
-- Picard tag mapping: <https://picard-docs.musicbrainz.org/en/appendices/tag_mapping.html>
-- Picard tag variables (basic and advanced): <https://picard-docs.musicbrainz.org/en/variables/tags_basic.html>
-- Harmony: <https://github.com/kellnerd/harmony>
-- AcoustID web service: <https://acoustid.org/webservice>
-- Chromaprint / fpcalc: <https://acoustid.org/chromaprint>
-- Cover Art Archive API: <https://musicbrainz.org/doc/Cover_Art_Archive/API>
-- Navidrome custom tags and tag handling: <https://www.navidrome.org/docs/usage/configuration/custom-tags/>
-- Subsonic API: <http://www.subsonic.org/pages/api.jsp>
-- Jellyfin API: <https://api.jellyfin.org/>
-- YouTube Data API quota costs: <https://developers.google.com/youtube/v3/determine_quota_cost>
-- Discogs API: <https://www.discogs.com/developers>
+| D31 | 2026-11-23 | **Own MusicBrainz WS/2 client** (`server/providers/musicbrainz/`); Harmony's MusicBrainz provider is not registered | Patch Harmony's client; wait for an upstream fix | Resolves the User-Agent gap in D12. Harmony's client also has no search and no recording/work relationship lookups, which §8 and §6.3 need. The client shares the snapshot cache and the per-provider limiter; Harmony is still used for the other providers, merge and seeding. |
+| D32 | 2026-11-23 | MusicBrainz limits as checked on 2026-11-23: **1 request per second** on average per IP; excess requests get **503**. Linked-entity lists are capped at 25 per entity. Search `limit` is at most 100. Release lookups use `inc=artist-credits+labels+recordings+release-groups+media+isrcs+recording-level-rels+work-rels+work-level-rels+artist-rels` | — | From the MusicBrainz API docs, then checked against the live API. The docs do not mention `Retry-After`, but the server does send `503` + `Retry-After: 1` when its *global* limit is hit (`X-RateLimit-Zone: global`), even for a client below 1 req/s, so backoff that honours `Retry-After` is required. One release lookup returns conductor, performer and arranger relationships on recordings and the performed work with its composer and its `parts` link to the parent work (`ordering-key` = movement number). The parent work needs its own lookup for `movementtotal`. A release whose tracklist comes back shorter than `track-count` is rejected rather than scored. |
+| D33 | 2026-11-23 | The labelled identification fixtures (D26) are **synthesised from recorded MusicBrainz releases**: files are generated from the release data with realistic damage (jittered durations, missing or misspelt tags, wrong order, missing bonus tracks, untagged sets) | Export tags from the maintainer's library | Maintainer choice. Reproducible, no audio or personal data committed. A real-library check can be added later. |
+| D34 | 2026-11-23 | AcoustID is tested with hand-built responses only in Phase 2 | Record live AcoustID responses | Maintainer choice: no AcoustID key or real-audio fingerprints are available yet. Generated fixture audio matches nothing in AcoustID. A live check comes later. |
