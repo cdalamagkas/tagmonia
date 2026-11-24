@@ -121,8 +121,13 @@ export function mapTracks(
   return { mapping, pairs };
 }
 
-function trackCountSignal(files: number, tracks: number): number {
-  const d = Math.abs(files - tracks);
+/**
+ * From the mapping, not raw counts: 9 tracks plus a hidden file against a
+ * 10-track bonus edition is not an exact count match when the extra file maps
+ * to nothing there (D38).
+ */
+function trackCountSignal(mapping: TrackMapping): number {
+  const d = Math.max(mapping.unmappedFiles.length, mapping.unmatchedTracks.length);
   return d === 0 ? 1 : d === 1 ? 0.5 : 0;
 }
 
@@ -155,7 +160,7 @@ export function scoreRelease(
   const releaseRecordings = new Set(r.tracks.map((t) => t.recordingId));
 
   const signals: Record<SignalName, number | null> = {
-    trackCount: trackCountSignal(ev.files.length, r.tracks.length),
+    trackCount: trackCountSignal(mapping),
     durations: meanOver(pairs.map((p) => p.duration), n),
     // Titles count only when most files have one, or a few guessed titles would dominate.
     titles: titledFiles * 2 >= ev.files.length ? meanOver(pairs.map((p) => p.title), n) : null,

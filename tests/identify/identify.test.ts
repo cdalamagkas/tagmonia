@@ -205,3 +205,50 @@ Deno.test("a rejected AcoustID key is reported, not fatal", async () => {
   assertEquals(r.fingerprintError, new AcoustIdKeyError().message);
   assertEquals([r.ranked[0].releaseId, r.verdict], [BEETHOVEN_5, "needs_review"]);
 });
+
+// ---- edition pool and fuzzy fallback (D38)
+
+Deno.test("an unexamined same-count edition from the group browse blocks an auto match", async () => {
+  const cd = variant(base, CD, { format: "CD" });
+  const mb = new FakeMb([base, cd]);
+  mb.search = () => [base];
+  mb.browse = () => [base, cd];
+  const r = await identify(evidenceFor(base), mb, "Album");
+  assertEquals(r.verdict, "needs_review");
+  assertEquals(r.unexaminedEditions.map((e) => [e.releaseId, e.summary.format]), [[CD, "CD"]]);
+  assert(mb.calls.includes(`browse ${base["release-group"]!.id}`));
+  assert(!mb.calls.includes(`lookup ${CD}`), "browsed editions are listed, not looked up");
+});
+
+Deno.test("files that name their edition stay matched despite unexamined editions", async () => {
+  const cd = variant(base, CD, { format: "CD" });
+  const mb = new FakeMb([base, cd]);
+  mb.browse = () => [base, cd];
+  const r = await identify(evidenceFor(base, { albumMbid: BEETHOVEN_5 }), mb, "Album");
+  assertEquals([r.verdict, r.ranked[0].pinned], ["matched", true]);
+  assertEquals(r.unexaminedEditions.length, 1, "still listed for the picker");
+});
+
+Deno.test("editions a track off are listed but do not block", async () => {
+  const short = variant(base, CD, { format: "CD" });
+  short.media[0].tracks = short.media[0].tracks!.slice(0, 3);
+  short.media[0]["track-count"] = 3;
+  const mb = new FakeMb([base]);
+  mb.search = () => [base];
+  mb.browse = () => [base, short];
+  const r = await identify(evidenceFor(base), mb, "Album");
+  assertEquals(r.verdict, "matched");
+  assertEquals(r.unexaminedEditions.map((e) => e.releaseId), [CD]);
+});
+
+Deno.test("misspelt tags fall back to a fuzzy word search", async () => {
+  const mb = new FakeMb([base]);
+  const seen: unknown[] = [];
+  mb.search = (q) => {
+    seen.push(q.fuzzy ?? false);
+    return q.fuzzy ? [base] : [];
+  };
+  const r = await identify(evidenceFor(base, { album: "Smyphony no. 5" }), mb, "Album");
+  assertEquals(seen, [false, false, true]);
+  assertEquals(r.ranked[0].releaseId, BEETHOVEN_5);
+});

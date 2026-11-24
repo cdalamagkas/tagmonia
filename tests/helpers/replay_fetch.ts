@@ -29,14 +29,34 @@ export function notFoundPath(path: string): string {
   return path.replace(/\.json$/, ".404.json");
 }
 
-async function replay(url: URL): Promise<Response> {
-  const path = snapPath(url);
-  for (const [file, status] of [[path, 200], [notFoundPath(path), 404]] as const) {
+/**
+ * A recording as plain JSON, or gzipped next to where the JSON would be
+ * (`<name>.json.gz`): the identification corpus is stored compressed (D38).
+ */
+export async function readSnap(path: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  for (const [file, gz] of [[path, false], [`${path}.gz`, true]] as const) {
     try {
-      return new Response(await Deno.readFile(file), { status, headers: { "content-type": "application/json" } });
+      const bytes = await Deno.readFile(file);
+      if (!gz) return bytes;
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
     } catch (e) {
       if (!(e instanceof Deno.errors.NotFound)) throw e;
     }
+  }
+  return null;
+}
+
+export async function writeSnapGz(path: string, body: string): Promise<void> {
+  const stream = new Blob([body]).stream().pipeThrough(new CompressionStream("gzip"));
+  await Deno.writeFile(`${path}.gz`, new Uint8Array(await new Response(stream).arrayBuffer()));
+}
+
+async function replay(url: URL): Promise<Response> {
+  const path = snapPath(url);
+  for (const [file, status] of [[path, 200], [notFoundPath(path), 404]] as const) {
+    const bytes = await readSnap(file);
+    if (bytes) return new Response(bytes, { status, headers: { "content-type": "application/json" } });
   }
   throw new Error(`Unrecorded request ${url.href} (expected ${path})`);
 }

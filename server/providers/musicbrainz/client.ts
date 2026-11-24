@@ -11,10 +11,12 @@ import { z } from "zod";
 import { politeFetch, type PoliteFetchOptions, ProviderHttpError } from "../http.ts";
 import type { SnapshotCache } from "../snapshots.ts";
 import {
+  type MbBrowseRelease,
   mbidSchema,
   type MbRelease,
   type MbReleaseSearch,
   type MbWork,
+  releaseBrowseSchema,
   releaseSchema,
   releaseSearchSchema,
   workSchema,
@@ -73,6 +75,14 @@ export interface ReleaseQuery {
   tracks?: number;
   barcode?: string;
   catno?: string;
+  /** Words instead of phrases, each fuzzy: a fallback for misspelt tags (D38). */
+  fuzzy?: boolean;
+}
+
+/** Lucene word terms; fuzzy (~) only for words long enough not to match everything. */
+function fuzzyTerms(s: string): string {
+  const words = s.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  return `(${words.map((w) => ([...w].length >= 4 ? `${w}~` : w)).join(" ")})`;
 }
 
 /** Inside a Lucene phrase only `"` and `\` are special. */
@@ -84,8 +94,9 @@ function phrase(s: string): string {
 export function buildReleaseQuery(q: ReleaseQuery): string {
   const must: string[] = [];
   const should: string[] = [];
-  if (q.release?.trim()) must.push(`release:${phrase(q.release.trim())}`);
-  if (q.artist?.trim()) must.push(`artist:${phrase(q.artist.trim())}`);
+  const text = (s: string) => (q.fuzzy ? fuzzyTerms(s) : phrase(s));
+  if (q.release?.trim()) must.push(`release:${text(q.release.trim())}`);
+  if (q.artist?.trim()) must.push(`artist:${text(q.artist.trim())}`);
   if (q.barcode?.trim()) must.push(`barcode:${phrase(q.barcode.trim())}`);
   if (q.catno?.trim()) must.push(`catno:${phrase(q.catno.trim())}`);
   if (q.tracks !== undefined && Number.isInteger(q.tracks) && q.tracks > 0) should.push(`tracks:${q.tracks}`);
@@ -129,6 +140,33 @@ export class MusicBrainzClient {
     const id = mbidSchema.parse(mbid);
     const url = this.#url(`release/${id}`, { inc: RELEASE_INC });
     return await this.#get(url, this.#ttl.lookupMs, releaseSchema, signal, assertComplete);
+  }
+
+  /**
+   * Releases of a release group, for the edition picker (§8.2, D38). Browse
+   * pages hold at most 100; a few pages cover all but the most re-issued albums.
+   */
+  async browseReleaseGroup(
+    releaseGroupId: string,
+    opts: { maxPages?: number; signal?: AbortSignal } = {},
+  ): Promise<Cited<MbBrowseRelease[]>> {
+    const id = mbidSchema.parse(releaseGroupId);
+    const out: MbBrowseRelease[] = [];
+    let snapshotId = 0;
+    for (let page = 0; page < (opts.maxPages ?? 3); page++) {
+      const url = this.#url("release", {
+        "release-group": id,
+        inc: "media+labels+artist-credits",
+        limit: "100",
+        offset: String(page * 100),
+      });
+      const got = await this.#get(url, this.#ttl.lookupMs, releaseBrowseSchema, opts.signal);
+      if (!got) break;
+      if (page === 0) snapshotId = got.snapshotId;
+      out.push(...got.value.releases);
+      if (out.length >= got.value["release-count"] || got.value.releases.length === 0) break;
+    }
+    return { value: out, snapshotId };
   }
 
   async lookupWork(mbid: string, signal?: AbortSignal): Promise<Cited<MbWork> | null> {

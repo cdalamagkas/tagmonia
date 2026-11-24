@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { Cited, ReleaseQuery } from "../../server/providers/musicbrainz/client.ts";
 import { MusicBrainzResponseError } from "../../server/providers/musicbrainz/client.ts";
 import {
+  type MbBrowseRelease,
   type MbRelease,
   type MbSearchRelease,
   releaseSchema,
@@ -84,6 +85,8 @@ export class FakeMb implements MbSource {
   readonly merged = new Map<string, string>();
   readonly truncated = new Set<string>();
   search: (q: ReleaseQuery) => MbRelease[] = () => [];
+  /** Release-group browse; unset = the source does not support browsing. */
+  browse?: (releaseGroupId: string) => MbRelease[];
 
   constructor(releases: MbRelease[] = []) {
     for (const r of releases) this.releases.set(r.id, r);
@@ -92,6 +95,15 @@ export class FakeMb implements MbSource {
   searchReleases(q: ReleaseQuery): Promise<Cited<MbSearchRelease[]>> {
     this.calls.push(`search ${JSON.stringify(q)}`);
     return Promise.resolve({ value: this.search(q).map((r) => asSearchHit(r)), snapshotId: 1 });
+  }
+
+  get browseReleaseGroup() {
+    const browse = this.browse;
+    if (!browse) return undefined;
+    return (id: string) => {
+      this.calls.push(`browse ${id}`);
+      return Promise.resolve({ value: browse(id).map((r) => asSearchHit(r) as MbBrowseRelease), snapshotId: 3 });
+    };
   }
 
   lookupRelease(mbid: string): Promise<Cited<MbRelease> | null> {

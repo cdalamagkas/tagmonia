@@ -55,6 +55,37 @@ Deno.test("buildReleaseQuery escapes quotes and backslashes inside phrases", () 
   assertEquals(buildReleaseQuery({ release: 'Say "Hi" \\o/' }), '+release:"Say \\"Hi\\" \\\\o/"');
 });
 
+Deno.test("buildReleaseQuery fuzzy mode uses words, fuzzy only when long enough", () => {
+  assertEquals(
+    buildReleaseQuery({ release: "Dmumy", artist: "The Portishead", fuzzy: true }),
+    "+release:(dmumy~) +artist:(the portishead~)",
+  );
+  assertEquals(buildReleaseQuery({ release: 'AND "x" OR', fuzzy: true }), "+release:(and x or)");
+});
+
+Deno.test("browseReleaseGroup pages until it has every release", async () => {
+  const page = (offset: number, n: number, total: number) =>
+    new Response(JSON.stringify({
+      "release-count": total,
+      "release-offset": offset,
+      releases: Array.from({ length: n }, (_, i) => ({
+        id: `00000000-0000-4000-8000-${String(offset + i).padStart(12, "0")}`,
+        title: "T",
+        media: [{ format: "CD", "track-count": 10 }],
+      })),
+    }));
+  const pages = [page(0, 100, 130), page(100, 30, 130)];
+  const urls: string[] = [];
+  await using s = await setup((input) => {
+    urls.push(String(input));
+    return Promise.resolve(pages.shift()!);
+  });
+  const { value } = await s.client.browseReleaseGroup("d5cb0b10-ddeb-4879-b343-5af4e01712e3");
+  assertEquals(value.length, 130);
+  assertEquals(urls.map((u) => new URL(u).searchParams.get("offset")), ["0", "100"]);
+  assertEquals(new URL(urls[0]).searchParams.get("release-group"), "d5cb0b10-ddeb-4879-b343-5af4e01712e3");
+});
+
 Deno.test("searchReleases returns scored releases", async () => {
   await using s = await setup();
   const { value, snapshotId } = await s.client.searchReleases({
