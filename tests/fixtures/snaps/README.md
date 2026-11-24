@@ -13,3 +13,8 @@ Queries longer than 160 characters (Lucene searches) are stored as
 - `musicbrainz.org/*` was recorded with `scripts/record_mb.ts`, which goes
   through Tagmonia's own client (real User-Agent, 1 req/s, Retry-After). Re-run
   it with `--force` to refresh a recording.
+- The identification corpus (`tests/identify/corpus/`, D38) is recorded with
+  `scripts/build_identify_corpus.ts`. Its responses are stored gzipped
+  (`<name>.json.gz`, read by the replay helper) and release lookups omit
+  relationship blocks, which identification never reads. Re-run the script
+  after changing identification code: it fetches only requests not yet recorded.

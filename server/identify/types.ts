@@ -87,6 +87,8 @@ export interface ScoredRelease {
   capped: boolean;
   /** Barcode or catalog number matched exactly. */
   identifierMatch: boolean;
+  /** The files name this release: identifier match, or the MBID already in their tags (D38). */
+  pinned?: boolean;
   mapping: TrackMapping;
   summary: ReleaseSummary;
 }

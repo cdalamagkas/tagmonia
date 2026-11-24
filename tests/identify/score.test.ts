@@ -101,3 +101,36 @@ Deno.test("variant editions keep the release group and change only what was aske
   assertEquals(cd["release-group"]?.id, release["release-group"]?.id);
   assertEquals(toReleaseView(cd).summary.format, "CD");
 });
+
+Deno.test("an extra file does not give a bonus edition an exact track count (D38)", () => {
+  const ev = evidenceFor(release);
+  ev.files.push({ fileId: 5, path: "Album/99.flac", durationMs: 75_000, title: "Hidden Track", tracknumber: 99 });
+  // A 5-track edition whose bonus track has nothing to do with the hidden file.
+  const bonus = variant(release, "00000000-0000-4000-8000-0000000000b5");
+  bonus.media[0].tracks!.push({
+    ...structuredClone(bonus.media[0].tracks![3]),
+    id: crypto.randomUUID(),
+    position: 5,
+    number: "B3",
+    title: "Coriolan Overture, op. 62",
+    length: 480_000,
+  });
+  bonus.media[0]["track-count"] = 5;
+  const original = scoreRelease(ev, view);
+  const withBonus = scoreRelease(ev, toReleaseView(bonus));
+  assertEquals([original.signals.trackCount, withBonus.signals.trackCount], [0.5, 0.5]);
+  assert(withBonus.score <= original.score, `${withBonus.score} > ${original.score}`);
+});
+
+Deno.test("a release the files name ranks first once confident and only competes with other named ones", () => {
+  const named = { ...scored("n", 0.95, "g1"), pinned: true };
+  const ranked = rank([scored("a", 1.0, "g1"), scored("b", 0.99, "g1"), named]);
+  assertEquals(ranked[0].releaseId, "n");
+  assertEquals(verdict(ranked), "matched");
+  // Below the auto threshold, naming the release earns nothing.
+  const weak = rank([scored("a", 0.9, "g1"), { ...scored("n", 0.85, "g1"), pinned: true }]);
+  assertEquals([weak[0].releaseId, verdict(weak)], ["a", "needs_review"]);
+  // Two named releases that tie still go to review.
+  const two = rank([named, { ...scored("m", 0.96, "g1"), pinned: true }]);
+  assertEquals(verdict(two), "needs_review");
+});

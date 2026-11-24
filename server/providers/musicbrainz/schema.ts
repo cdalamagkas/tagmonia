@@ -138,9 +138,23 @@ export const releaseSearchSchema = z.looseObject({
   })),
 });
 
+/** Browse of a release group's releases: no tracklists, but enough for the edition picker (D38). */
+export const releaseBrowseSchema = z.looseObject({
+  "release-count": z.number().int(),
+  "release-offset": z.number().int(),
+  releases: z.array(z.looseObject({
+    ...releaseBase,
+    media: z.array(z.looseObject({
+      format: z.string().nullable().optional(),
+      "track-count": z.number().int(),
+    })).default([]),
+  })),
+});
+
 export type MbArtistCredit = z.infer<typeof artistCreditSchema>;
 export type MbRelease = z.infer<typeof releaseSchema>;
 export type MbMedium = MbRelease["media"][number];
 export type MbTrack = NonNullable<MbMedium["tracks"]>[number];
 export type MbReleaseSearch = z.infer<typeof releaseSearchSchema>;
 export type MbSearchRelease = MbReleaseSearch["releases"][number];
+export type MbBrowseRelease = z.infer<typeof releaseBrowseSchema>["releases"][number];

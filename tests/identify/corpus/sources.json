@@ -1,0 +1,145 @@
+{
+  "_comment": "Labelled identification corpus (D26, D33). scripts/build_identify_corpus.ts resolves each entry to a MusicBrainz release once and pins it in manifest.json. 'edition: 2' picks a second release of the same release group, so edition alternatives are real.",
+  "cases": [
+    { "slug": "abbey-road", "artist": "The Beatles", "album": "Abbey Road", "damage": "clean" },
+    { "slug": "abbey-road-ed2", "artist": "The Beatles", "album": "Abbey Road", "damage": "clean", "edition": 2 },
+    { "slug": "dark-side", "artist": "Pink Floyd", "album": "The Dark Side of the Moon", "damage": "typo" },
+    { "slug": "ok-computer", "artist": "Radiohead", "album": "OK Computer", "damage": "shuffled" },
+    { "slug": "nevermind", "artist": "Nirvana", "album": "Nevermind", "damage": "missing_last" },
+    { "slug": "discovery", "artist": "Daft Punk", "album": "Discovery", "damage": "untagged_folder" },
+    { "slug": "rumours", "artist": "Fleetwood Mac", "album": "Rumours", "damage": "no_artist" },
+    { "slug": "thriller", "artist": "Michael Jackson", "album": "Thriller", "damage": "extra_file" },
+    { "slug": "adele-21", "artist": "Adele", "album": "21", "damage": "untagged_filenames" },
+    { "slug": "gkmc", "artist": "Kendrick Lamar", "album": "good kid, m.A.A.d city", "damage": "noisy_durations" },
+    { "slug": "homogenic", "artist": "Björk", "album": "Homogenic", "damage": "existing_mbid" },
+    { "slug": "agaetis", "artist": "Sigur Rós", "album": "Ágætis byrjun", "damage": "clean" },
+    { "slug": "mezzanine", "artist": "Massive Attack", "album": "Mezzanine", "damage": "barcode" },
+    { "slug": "dummy", "artist": "Portishead", "album": "Dummy", "damage": "typo" },
+    { "slug": "kind-of-blue", "artist": "Miles Davis", "album": "Kind of Blue", "damage": "shuffled" },
+    { "slug": "love-supreme", "artist": "John Coltrane", "album": "A Love Supreme", "damage": "untagged_folder" },
+    { "slug": "exodus", "artist": "Bob Marley & The Wailers", "album": "Exodus", "damage": "no_artist" },
+    { "slug": "arrival", "artist": "ABBA", "album": "Arrival", "damage": "missing_last" },
+    {
+      "slug": "night-at-the-opera",
+      "artist": "Queen",
+      "album": "A Night at the Opera",
+      "damage": "untagged_filenames"
+    },
+    {
+      "slug": "ziggy",
+      "artist": "David Bowie",
+      "album": "The Rise and Fall of Ziggy Stardust and the Spiders From Mars",
+      "damage": "typo"
+    },
+    { "slug": "trans-europa", "artist": "Kraftwerk", "album": "Trans-Europa Express", "damage": "clean" },
+    { "slug": "moon-safari", "artist": "Air", "album": "Moon Safari", "damage": "noisy_durations" },
+    { "slug": "saw-85-92", "artist": "Aphex Twin", "album": "Selected Ambient Works 85-92", "damage": "existing_mbid" },
+    {
+      "slug": "mhtrtc",
+      "artist": "Boards of Canada",
+      "album": "Music Has the Right to Children",
+      "damage": "extra_file"
+    },
+    { "slug": "funeral", "artist": "Arcade Fire", "album": "Funeral", "damage": "shuffled" },
+    { "slug": "is-this-it", "artist": "The Strokes", "album": "Is This It", "damage": "typo" },
+    { "slug": "back-to-black", "artist": "Amy Winehouse", "album": "Back to Black", "damage": "barcode" },
+    { "slug": "lemonade", "artist": "Beyoncé", "album": "Lemonade", "damage": "untagged_folder" },
+    { "slug": "ts-1989", "artist": "Taylor Swift", "album": "1989", "damage": "no_artist" },
+    { "slug": "master-of-puppets", "artist": "Metallica", "album": "Master of Puppets", "damage": "clean" },
+    { "slug": "back-in-black", "artist": "AC/DC", "album": "Back in Black", "damage": "missing_last" },
+    {
+      "slug": "bridge-over",
+      "artist": "Simon & Garfunkel",
+      "album": "Bridge Over Troubled Water",
+      "damage": "untagged_filenames"
+    },
+    {
+      "slug": "songs-of-cohen",
+      "artist": "Leonard Cohen",
+      "album": "Songs of Leonard Cohen",
+      "damage": "noisy_durations"
+    },
+    { "slug": "blue", "artist": "Joni Mitchell", "album": "Blue", "damage": "typo" },
+    { "slug": "pink-moon", "artist": "Nick Drake", "album": "Pink Moon", "damage": "shuffled" },
+    {
+      "slug": "buena-vista",
+      "artist": "Buena Vista Social Club",
+      "album": "Buena Vista Social Club",
+      "damage": "clean"
+    },
+    {
+      "slug": "merry-christmas",
+      "artist": "坂本龍一",
+      "album": "Merry Christmas Mr. Lawrence",
+      "damage": "untagged_folder"
+    },
+    {
+      "slug": "amelie",
+      "artist": "Yann Tiersen",
+      "album": "Le Fabuleux Destin d'Amélie Poulain",
+      "damage": "extra_file"
+    },
+    { "slug": "inception", "artist": "Hans Zimmer", "album": "Inception", "damage": "no_artist" },
+    { "slug": "the-wall", "artist": "Pink Floyd", "album": "The Wall", "damage": "clean", "multiDisc": true },
+    { "slug": "white-album", "artist": "The Beatles", "album": "The Beatles", "damage": "shuffled", "multiDisc": true },
+    {
+      "slug": "mellon-collie",
+      "artist": "The Smashing Pumpkins",
+      "album": "Mellon Collie and the Infinite Sadness",
+      "damage": "missing_last",
+      "multiDisc": true
+    },
+    {
+      "slug": "pulp-fiction",
+      "artist": "Various Artists",
+      "album": "Pulp Fiction: Music From the Motion Picture",
+      "damage": "clean"
+    },
+    {
+      "slug": "awesome-mix-1",
+      "artist": "Various Artists",
+      "album": "Guardians of the Galaxy: Awesome Mix Vol. 1",
+      "damage": "no_artist"
+    },
+    { "slug": "goldberg-1981", "artist": "Glenn Gould", "album": "Goldberg Variations", "damage": "noisy_durations" },
+    { "slug": "four-seasons", "artist": "Nigel Kennedy", "album": "The Four Seasons", "damage": "untagged_filenames" },
+    { "slug": "tabula-rasa", "artist": "Arvo Pärt", "album": "Tabula Rasa", "damage": "clean" },
+    { "slug": "gorecki-3", "artist": "Henryk Górecki", "album": "Symphony No. 3", "damage": "typo" },
+    {
+      "slug": "recomposed",
+      "artist": "Max Richter",
+      "album": "Recomposed by Max Richter: Vivaldi, The Four Seasons",
+      "damage": "extra_file"
+    },
+    { "slug": "karajan-5", "artist": "Herbert von Karajan", "album": "Symphony no. 5", "damage": "untagged_folder" },
+    {
+      "slug": "dark-side-ed2",
+      "artist": "Pink Floyd",
+      "album": "The Dark Side of the Moon",
+      "damage": "clean",
+      "edition": 2
+    },
+    { "slug": "nevermind-ed2", "artist": "Nirvana", "album": "Nevermind", "damage": "barcode", "edition": 2 },
+    { "slug": "kind-of-blue-ed2", "artist": "Miles Davis", "album": "Kind of Blue", "damage": "typo", "edition": 2 },
+    { "slug": "rumours-ed2", "artist": "Fleetwood Mac", "album": "Rumours", "damage": "existing_mbid", "edition": 2 },
+    {
+      "slug": "thriller-ed2",
+      "artist": "Michael Jackson",
+      "album": "Thriller",
+      "damage": "noisy_durations",
+      "edition": 2
+    },
+    { "slug": "discovery-ed2", "artist": "Daft Punk", "album": "Discovery", "damage": "shuffled", "edition": 2 },
+    { "slug": "is-this-it-ed2", "artist": "The Strokes", "album": "Is This It", "damage": "clean", "edition": 2 },
+    {
+      "slug": "exodus-ed2",
+      "artist": "Bob Marley & The Wailers",
+      "album": "Exodus",
+      "damage": "untagged_filenames",
+      "edition": 2
+    },
+    { "slug": "unknown-1", "artist": "Portishead", "album": "Third", "damage": "unidentifiable" },
+    { "slug": "unknown-2", "artist": "Radiohead", "album": "Kid A", "damage": "unidentifiable" },
+    { "slug": "unknown-3", "artist": "Björk", "album": "Vespertine", "damage": "unidentifiable" }
+  ]
+}

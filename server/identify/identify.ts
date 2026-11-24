@@ -8,18 +8,20 @@
  */
 import type { Cited, ReleaseQuery } from "../providers/musicbrainz/client.ts";
 import { MusicBrainzResponseError } from "../providers/musicbrainz/client.ts";
-import type { MbRelease, MbSearchRelease } from "../providers/musicbrainz/schema.ts";
+import type { MbBrowseRelease, MbRelease, MbSearchRelease } from "../providers/musicbrainz/schema.ts";
 import { DEFAULT_THRESHOLDS, rank, type Thresholds, type Verdict, verdict } from "./editions.ts";
 import { similarity } from "./normalize.ts";
-import { creditString, normalizeBarcode, normalizeCatno, toReleaseView } from "./release.ts";
+import { creditString, normalizeBarcode, normalizeCatno, releaseSummary, toReleaseView } from "./release.ts";
 import { DEFAULT_SCORING, scoreRelease, type ScoringConfig } from "./score.ts";
-import type { CandidateEvidence, MatchMethod, ReleaseView, ScoredRelease } from "./types.ts";
+import type { CandidateEvidence, MatchMethod, ReleaseSummary, ReleaseView, ScoredRelease } from "./types.ts";
 import type { FingerprintSource } from "./acoustid_source.ts";
 import { AcoustIdKeyError } from "../providers/acoustid.ts";
 
 export interface MbSource {
   searchReleases(q: ReleaseQuery, opts?: { limit?: number; signal?: AbortSignal }): Promise<Cited<MbSearchRelease[]>>;
   lookupRelease(mbid: string, signal?: AbortSignal): Promise<Cited<MbRelease> | null>;
+  /** Optional so simple sources still work; without it the edition picker lists search hits only. */
+  browseReleaseGroup?(releaseGroupId: string, opts?: { signal?: AbortSignal }): Promise<Cited<MbBrowseRelease[]>>;
 }
 
 export interface IdentifyConfig {
@@ -55,6 +57,32 @@ export interface IdentifyResult {
   skipped: { releaseId: string; reason: string }[];
   /** Fingerprinting was attempted but could not run (e.g. a rejected AcoustID key). */
   fingerprintError?: string;
+  /**
+   * Releases of the best release's group, within one track of its count, that
+   * were found (by search or by browsing the group) but not looked up. Their
+   * summaries are enough for the edition picker. While one with the same track
+   * count exists the result is never "matched" (D38).
+   */
+  unexaminedEditions: { releaseId: string; summary: ReleaseSummary }[];
+}
+
+function hitTrackCount(h: { "track-count"?: number; media: { "track-count": number }[] }): number {
+  return h["track-count"] ?? h.media.reduce((n, m) => n + m["track-count"], 0);
+}
+
+interface PoolEntry {
+  releaseGroupId: string | null;
+  trackCount: number;
+  summary: ReleaseSummary;
+}
+
+function poolEntry(h: MbSearchRelease | MbBrowseRelease, releaseGroupId?: string): PoolEntry {
+  const n = hitTrackCount(h);
+  return {
+    releaseGroupId: h["release-group"]?.id ?? releaseGroupId ?? null,
+    trackCount: n,
+    summary: releaseSummary(h, n),
+  };
 }
 
 /** Guesses "Artist - Album (1999) [FLAC]" from a folder name, for untagged sets. Used to search, never to score. */
@@ -90,11 +118,35 @@ export async function identify(
   /** Kept so fingerprint evidence can rescore releases found by earlier methods. */
   const views = new Map<string, { view: ReleaseView; snapshotId: number }>();
   const looked = new Set<string>();
-  const result: IdentifyResult = { verdict: "no_match", ranked: [], methodsTried: [], skipped: [] };
+  const result: IdentifyResult = {
+    verdict: "no_match",
+    ranked: [],
+    methodsTried: [],
+    skipped: [],
+    unexaminedEditions: [],
+  };
+  /** Every release seen without a lookup: candidates for the edition picker. */
+  const pool = new Map<string, PoolEntry>();
 
   const settled = () => {
-    result.ranked = rank([...best.values()]) as IdentifiedRelease[];
+    result.ranked = rank([...best.values()], cfg.thresholds) as IdentifiedRelease[];
     result.verdict = verdict(result.ranked, cfg.thresholds);
+    const top = result.ranked[0];
+    const editions = top?.releaseGroupId
+      ? [...pool].filter(([id, e]) =>
+        !looked.has(id) && e.releaseGroupId === top.releaseGroupId &&
+        Math.abs(e.trackCount - top.summary.trackCount) <= 1
+      )
+      : [];
+    result.unexaminedEditions = editions.map(([releaseId, e]) => ({ releaseId, summary: e.summary }));
+    // Never silently pick one edition (§8.2), including ones the budget did not look at;
+    // unless the files name the edition themselves.
+    if (
+      result.verdict === "matched" && !top.pinned &&
+      editions.some(([, e]) => e.trackCount === top.summary.trackCount)
+    ) {
+      result.verdict = "needs_review";
+    }
     return result.verdict === "matched";
   };
 
@@ -116,16 +168,19 @@ export async function identify(
     views.set(view.id, { view, snapshotId: got.snapshotId });
     const scored = scoreRelease(ev, view, cfg.scoring);
     const prev = best.get(scored.releaseId);
+    // The files' own MBID (or the release it was merged into) names the edition, as an identifier does.
+    const pinned = scored.identifierMatch || method === "existing_mbid";
     if (!prev || scored.score > prev.score) {
-      best.set(scored.releaseId, { ...scored, method, snapshotId: got.snapshotId });
+      best.set(scored.releaseId, { ...scored, pinned, method, snapshotId: got.snapshotId });
     }
     return got.value;
   }
 
   async function searchAndScore(q: ReleaseQuery, method: MatchMethod, pre: { album?: string; artist?: string }) {
     result.methodsTried.push(method);
-    const hits = (await mb.searchReleases(q, { limit: 25, signal })).value;
-    const order = hits
+    const found = (await mb.searchReleases(q, { limit: 25, signal })).value;
+    for (const h of found) pool.set(h.id, poolEntry(h));
+    const order = found
       .filter((h) => !looked.has(h.id))
       .map((h) => ({ h, s: preScore(ev, h, pre) }))
       .sort((a, b) => b.s - a.s || a.h.id.localeCompare(b.h.id))
@@ -133,73 +188,94 @@ export async function identify(
     for (const { h } of order) await lookupAndScore(h.id, method);
   }
 
-  // 1. Existing MBID: verify it still exists; MusicBrainz answers a merged MBID with its target.
-  if (ev.albumMbid) {
-    result.methodsTried.push("existing_mbid");
-    const r = await lookupAndScore(ev.albumMbid, "existing_mbid");
-    if (r && r.id !== ev.albumMbid) result.redirected = { from: ev.albumMbid, to: r.id };
-    if (settled()) return result;
-  }
+  /** §8 orders 1-4; returns as soon as one is confident. */
+  async function run(): Promise<void> {
+    // 1. Existing MBID: verify it still exists; MusicBrainz answers a merged MBID with its target.
+    if (ev.albumMbid) {
+      result.methodsTried.push("existing_mbid");
+      const r = await lookupAndScore(ev.albumMbid, "existing_mbid");
+      if (r && r.id !== ev.albumMbid) result.redirected = { from: ev.albumMbid, to: r.id };
+      if (settled()) return;
+    }
 
-  const n = ev.files.length;
-  // 2. Barcode, then catalog number: exact identifiers.
-  if (normalizeBarcode(ev.barcode)) {
-    await searchAndScore({ barcode: ev.barcode }, "barcode", { album: ev.album, artist: ev.albumArtist });
-    if (settled()) return result;
-  }
-  const catno = (ev.catalogNumbers ?? []).find((c) => normalizeCatno(c));
-  if (catno) {
-    // A catalog number alone is often shared across labels; the artist narrows it when known.
-    await searchAndScore({ catno, artist: ev.albumArtist }, "catno", { album: ev.album, artist: ev.albumArtist });
-    if (settled()) return result;
-  }
+    const n = ev.files.length;
+    // 2. Barcode, then catalog number: exact identifiers.
+    if (normalizeBarcode(ev.barcode)) {
+      await searchAndScore({ barcode: ev.barcode }, "barcode", { album: ev.album, artist: ev.albumArtist });
+      if (settled()) return;
+    }
+    const catno = (ev.catalogNumbers ?? []).find((c) => normalizeCatno(c));
+    if (catno) {
+      // A catalog number alone is often shared across labels; the artist narrows it when known.
+      await searchAndScore({ catno, artist: ev.albumArtist }, "catno", { album: ev.album, artist: ev.albumArtist });
+      if (settled()) return;
+    }
 
-  // 3. Text search from tags, else from the folder name.
-  const fromFolder = queryFromFolder(folder);
-  const album = ev.album ?? fromFolder.album;
-  const artist = ev.albumArtist ?? (ev.album ? undefined : fromFolder.artist);
-  if (album) {
-    await searchAndScore({ release: album, artist, tracks: n || undefined }, "text", { album, artist });
-    if (!settled() && artist && best.size === 0) {
-      // Artist spellings differ a lot ("The Beatles" vs "Beatles"); retry on the title alone.
-      await searchAndScore({ release: album, tracks: n || undefined }, "text", { album, artist });
+    // 3. Text search from tags, else from the folder name.
+    const fromFolder = queryFromFolder(folder);
+    const album = ev.album ?? fromFolder.album;
+    const artist = ev.albumArtist ?? (ev.album ? undefined : fromFolder.artist);
+    if (album) {
+      await searchAndScore({ release: album, artist, tracks: n || undefined }, "text", { album, artist });
+      if (!settled() && artist && best.size === 0) {
+        // Artist spellings differ a lot ("The Beatles" vs "Beatles"); retry on the title alone.
+        await searchAndScore({ release: album, tracks: n || undefined }, "text", { album, artist });
+      }
+      if (!settled() && best.size === 0) {
+        // Phrases miss misspelt tags ("Dmumy"); fuzzy words still find them (D38).
+        await searchAndScore({ release: album, artist, tracks: n || undefined, fuzzy: true }, "text", {
+          album,
+          artist,
+        });
+      }
+    }
+
+    if (settled()) return;
+
+    // 4. Fingerprints: when tags and text search are weak or missing.
+    if (fingerprints && ev.files.length) {
+      result.methodsTried.push("fingerprint");
+      let matches;
+      try {
+        matches = await fingerprints.lookup(ev.files, signal);
+      } catch (e) {
+        // A rejected key affects every candidate; report it and keep the other methods' results.
+        if (!(e instanceof AcoustIdKeyError)) throw e;
+        result.fingerprintError = e.message;
+        settled();
+        return;
+      }
+      ev = {
+        ...ev,
+        files: ev.files.map((f) => ({ ...f, acoustidRecordingIds: matches.get(f.fileId)?.recordingIds ?? [] })),
+      };
+      // Earlier candidates now have fingerprint evidence too: score them again.
+      for (const [id, prev] of best) {
+        const v = views.get(id)!;
+        const rescored = scoreRelease(ev, v.view, cfg.scoring);
+        best.set(id, { ...rescored, pinned: prev.pinned, method: prev.method, snapshotId: v.snapshotId });
+      }
+      // Releases containing the most fingerprinted files first.
+      const votes = new Map<string, number>();
+      for (const m of matches.values()) for (const r of m.releaseIds) votes.set(r, (votes.get(r) ?? 0) + 1);
+      const order = [...votes]
+        .filter(([id]) => !looked.has(id))
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, cfg.maxLookupsPerSearch);
+      for (const [id] of order) await lookupAndScore(id, "fingerprint");
     }
   }
 
-  if (settled()) return result;
-
-  // 4. Fingerprints: when tags and text search are weak or missing.
-  if (fingerprints && ev.files.length) {
-    result.methodsTried.push("fingerprint");
-    let matches;
-    try {
-      matches = await fingerprints.lookup(ev.files, signal);
-    } catch (e) {
-      // A rejected key affects every candidate; report it and keep the other methods' results.
-      if (!(e instanceof AcoustIdKeyError)) throw e;
-      result.fingerprintError = e.message;
-      settled();
-      return result;
+  await run();
+  // The edition picker needs the release group's other releases, not only the ones search happened
+  // to return; and a confident match must not hide an edition it never examined (D38).
+  const top = result.ranked[0];
+  if (top?.releaseGroupId && top.score >= cfg.thresholds.reviewThreshold && mb.browseReleaseGroup) {
+    const group = top.releaseGroupId;
+    for (const r of (await mb.browseReleaseGroup(group, { signal })).value) {
+      if (!pool.has(r.id)) pool.set(r.id, poolEntry(r, group));
     }
-    ev = {
-      ...ev,
-      files: ev.files.map((f) => ({ ...f, acoustidRecordingIds: matches.get(f.fileId)?.recordingIds ?? [] })),
-    };
-    // Earlier candidates now have fingerprint evidence too: score them again.
-    for (const [id, prev] of best) {
-      const v = views.get(id)!;
-      best.set(id, { ...scoreRelease(ev, v.view, cfg.scoring), method: prev.method, snapshotId: v.snapshotId });
-    }
-    // Releases containing the most fingerprinted files first.
-    const votes = new Map<string, number>();
-    for (const m of matches.values()) for (const r of m.releaseIds) votes.set(r, (votes.get(r) ?? 0) + 1);
-    const order = [...votes]
-      .filter(([id]) => !looked.has(id))
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, cfg.maxLookupsPerSearch);
-    for (const [id] of order) await lookupAndScore(id, "fingerprint");
   }
-
   settled();
   return result;
 }
