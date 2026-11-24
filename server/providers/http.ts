@@ -48,7 +48,17 @@ export function backoffMs(attempt: number, base: number, max: number, random: ()
  * Returns the final response (2xx, or a non-retryable status such as 404) and
  * leaves interpreting it to the caller. Throws after retries run out.
  */
-export async function politeFetch(url: URL, opts: PoliteFetchOptions, signal?: AbortSignal): Promise<Response> {
+/** A form POST, for APIs that take long parameters (AcoustID fingerprints) or secrets that must stay out of URLs. */
+export interface FormBody {
+  form: URLSearchParams;
+}
+
+export async function politeFetch(
+  url: URL,
+  opts: PoliteFetchOptions,
+  signal?: AbortSignal,
+  body?: FormBody,
+): Promise<Response> {
   const doFetch = opts.fetch ?? globalThis.fetch;
   const clock = opts.clock ?? realClock;
   const maxRetries = opts.maxRetries ?? 5;
@@ -63,7 +73,13 @@ export async function politeFetch(url: URL, opts: PoliteFetchOptions, signal?: A
     let res: Response;
     try {
       res = await doFetch(url, {
-        headers: { "User-Agent": opts.userAgent, Accept: "application/json" },
+        method: body ? "POST" : "GET",
+        headers: {
+          "User-Agent": opts.userAgent,
+          Accept: "application/json",
+          ...(body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+        },
+        body: body ? body.form.toString() : undefined,
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         redirect: "follow",
       });

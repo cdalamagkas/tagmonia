@@ -1,7 +1,7 @@
 /**
  * Identification order (ARCHITECTURE.md §8): existing MBID, barcode/catalog
- * number, text search; fingerprinting arrives in Phase 2 part 4 and manual
- * lookup with the review UI. Stops at the first method that yields a confident,
+ * number, text search, fingerprint (AcoustID); manual lookup arrives with the
+ * review UI. Stops at the first method that yields a confident,
  * unambiguous match.
  *
  * Talks to MusicBrainz only through `MbSource`, so it is tested without the network.
@@ -13,7 +13,9 @@ import { DEFAULT_THRESHOLDS, rank, type Thresholds, type Verdict, verdict } from
 import { similarity } from "./normalize.ts";
 import { creditString, normalizeBarcode, normalizeCatno, toReleaseView } from "./release.ts";
 import { DEFAULT_SCORING, scoreRelease, type ScoringConfig } from "./score.ts";
-import type { CandidateEvidence, MatchMethod, ScoredRelease } from "./types.ts";
+import type { CandidateEvidence, MatchMethod, ReleaseView, ScoredRelease } from "./types.ts";
+import type { FingerprintSource } from "./acoustid_source.ts";
+import { AcoustIdKeyError } from "../providers/acoustid.ts";
 
 export interface MbSource {
   searchReleases(q: ReleaseQuery, opts?: { limit?: number; signal?: AbortSignal }): Promise<Cited<MbSearchRelease[]>>;
@@ -51,6 +53,8 @@ export interface IdentifyResult {
   redirected?: { from: string; to: string };
   /** Releases that could not be scored, e.g. truncated tracklists (D32). */
   skipped: { releaseId: string; reason: string }[];
+  /** Fingerprinting was attempted but could not run (e.g. a rejected AcoustID key). */
+  fingerprintError?: string;
 }
 
 /** Guesses "Artist - Album (1999) [FLAC]" from a folder name, for untagged sets. Used to search, never to score. */
@@ -73,13 +77,18 @@ function preScore(ev: CandidateEvidence, hit: MbSearchRelease, query: { album?: 
 }
 
 export async function identify(
-  ev: CandidateEvidence,
+  evidence: CandidateEvidence,
   mb: MbSource,
   folder: string,
   cfg: IdentifyConfig = DEFAULT_IDENTIFY,
   signal?: AbortSignal,
+  /** Absent when no AcoustID key is configured: order 4 is skipped. */
+  fingerprints?: FingerprintSource,
 ): Promise<IdentifyResult> {
+  let ev = evidence;
   const best = new Map<string, IdentifiedRelease>();
+  /** Kept so fingerprint evidence can rescore releases found by earlier methods. */
+  const views = new Map<string, { view: ReleaseView; snapshotId: number }>();
   const looked = new Set<string>();
   const result: IdentifyResult = { verdict: "no_match", ranked: [], methodsTried: [], skipped: [] };
 
@@ -103,7 +112,9 @@ export async function identify(
     }
     if (!got) return null;
     looked.add(got.value.id);
-    const scored = scoreRelease(ev, toReleaseView(got.value), cfg.scoring);
+    const view = toReleaseView(got.value);
+    views.set(view.id, { view, snapshotId: got.snapshotId });
+    const scored = scoreRelease(ev, view, cfg.scoring);
     const prev = best.get(scored.releaseId);
     if (!prev || scored.score > prev.score) {
       best.set(scored.releaseId, { ...scored, method, snapshotId: got.snapshotId });
@@ -153,6 +164,40 @@ export async function identify(
       // Artist spellings differ a lot ("The Beatles" vs "Beatles"); retry on the title alone.
       await searchAndScore({ release: album, tracks: n || undefined }, "text", { album, artist });
     }
+  }
+
+  if (settled()) return result;
+
+  // 4. Fingerprints: when tags and text search are weak or missing.
+  if (fingerprints && ev.files.length) {
+    result.methodsTried.push("fingerprint");
+    let matches;
+    try {
+      matches = await fingerprints.lookup(ev.files, signal);
+    } catch (e) {
+      // A rejected key affects every candidate; report it and keep the other methods' results.
+      if (!(e instanceof AcoustIdKeyError)) throw e;
+      result.fingerprintError = e.message;
+      settled();
+      return result;
+    }
+    ev = {
+      ...ev,
+      files: ev.files.map((f) => ({ ...f, acoustidRecordingIds: matches.get(f.fileId)?.recordingIds ?? [] })),
+    };
+    // Earlier candidates now have fingerprint evidence too: score them again.
+    for (const [id, prev] of best) {
+      const v = views.get(id)!;
+      best.set(id, { ...scoreRelease(ev, v.view, cfg.scoring), method: prev.method, snapshotId: v.snapshotId });
+    }
+    // Releases containing the most fingerprinted files first.
+    const votes = new Map<string, number>();
+    for (const m of matches.values()) for (const r of m.releaseIds) votes.set(r, (votes.get(r) ?? 0) + 1);
+    const order = [...votes]
+      .filter(([id]) => !looked.has(id))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, cfg.maxLookupsPerSearch);
+    for (const [id] of order) await lookupAndScore(id, "fingerprint");
   }
 
   settled();

@@ -1,6 +1,8 @@
 /** The §8 identification order against an in-memory MusicBrainz (FakeMb). */
 import { assert, assertEquals } from "@std/assert";
-import { identify, queryFromFolder } from "../../server/identify/identify.ts";
+import { DEFAULT_IDENTIFY, identify, queryFromFolder } from "../../server/identify/identify.ts";
+import type { FingerprintSource } from "../../server/identify/acoustid_source.ts";
+import { AcoustIdKeyError } from "../../server/providers/acoustid.ts";
 import { BEETHOVEN_5, evidenceFor, FakeMb, filesFor, loadRelease, variant } from "./helpers.ts";
 
 const base = await loadRelease(BEETHOVEN_5);
@@ -113,4 +115,93 @@ Deno.test("queryFromFolder reads 'Artist - Album (year) [tags]'", () => {
   });
   assertEquals(queryFromFolder("Discovery"), { album: "Discovery" });
   assertEquals(queryFromFolder(""), {});
+});
+
+// ---- order 4: fingerprints (AcoustID is mocked, D34)
+
+function fakeFingerprints(releaseIdsFor: (fileId: number) => string[], recordingIdsFor?: (fileId: number) => string[]) {
+  const calls: number[][] = [];
+  const source: FingerprintSource = {
+    lookup(files) {
+      calls.push(files.map((f) => f.fileId));
+      return Promise.resolve(
+        new Map(files.map((f) => [f.fileId, {
+          recordingIds: recordingIdsFor?.(f.fileId) ?? [],
+          releaseIds: releaseIdsFor(f.fileId),
+        }])),
+      );
+    },
+  };
+  return { source, calls };
+}
+
+/** Recording MBIDs of the recorded release, per file id (files are numbered from 1 in track order). */
+const recordingOf = (fileId: number) => [base.media[0].tracks![fileId - 1].recording.id];
+
+Deno.test("untagged files with no usable folder name are identified by fingerprint", async () => {
+  const mb = new FakeMb([base]);
+  const fp = fakeFingerprints(() => [BEETHOVEN_5], recordingOf);
+  const files = filesFor(base, { tagged: false });
+  const r = await identify({ files }, mb, "", undefined, undefined, fp.source);
+  assertEquals(r.methodsTried, ["fingerprint"]);
+  assertEquals(r.ranked[0].method, "fingerprint");
+  assertEquals(r.ranked[0].signals.fingerprint, 1);
+  // Count + durations + fingerprint reach the 60% coverage floor, so no cap (D36).
+  assertEquals([r.ranked[0].coverage, r.ranked[0].capped], [0.6, false]);
+  assertEquals(r.verdict, "matched");
+});
+
+Deno.test("fingerprint evidence rescores releases found by text search", async () => {
+  const mb = new FakeMb([base]);
+  mb.search = () => [base];
+  const fp = fakeFingerprints(() => [BEETHOVEN_5], recordingOf);
+  const files = filesFor(base, { tagged: false });
+  const r = await identify({ files }, mb, "Karajan - Symphony no. 5", undefined, undefined, fp.source);
+  assertEquals(r.methodsTried, ["text", "fingerprint"]);
+  // Found by text (capped without fingerprints), confirmed by fingerprints: now unattended-safe.
+  assertEquals([r.ranked[0].method, r.ranked[0].capped, r.verdict], ["text", false, "matched"]);
+  assertEquals(mb.calls.filter((c) => c.startsWith("lookup")).length, 1, "no second lookup of the same release");
+});
+
+Deno.test("fingerprints are not computed when an earlier method is already confident", async () => {
+  const mb = new FakeMb([base]);
+  const fp = fakeFingerprints(() => [BEETHOVEN_5]);
+  await identify(evidenceFor(base, { albumMbid: BEETHOVEN_5 }), mb, "Album", undefined, undefined, fp.source);
+  assertEquals(fp.calls.length, 0);
+});
+
+Deno.test("releases most files point at are looked up first", async () => {
+  const other = variant(base, OTHER, { releaseGroup: crypto.randomUUID() });
+  const mb = new FakeMb([base, other]);
+  // Every file is on the right release; only file 1 is also on a compilation.
+  const fp = fakeFingerprints((id) => (id === 1 ? [OTHER, BEETHOVEN_5] : [BEETHOVEN_5]), recordingOf);
+  const r = await identify(
+    { files: filesFor(base, { tagged: false }) },
+    mb,
+    "",
+    {
+      ...DEFAULT_IDENTIFY,
+      maxLookupsPerSearch: 1,
+    },
+    undefined,
+    fp.source,
+  );
+  assertEquals(mb.calls, [`lookup ${BEETHOVEN_5}`]);
+  assertEquals(r.ranked[0].releaseId, BEETHOVEN_5);
+});
+
+Deno.test("a rejected AcoustID key is reported, not fatal", async () => {
+  const mb = new FakeMb([base]);
+  mb.search = () => [base];
+  const source: FingerprintSource = { lookup: () => Promise.reject(new AcoustIdKeyError()) };
+  const r = await identify(
+    { files: filesFor(base, { tagged: false }) },
+    mb,
+    "Karajan - Symphony no. 5",
+    undefined,
+    undefined,
+    source,
+  );
+  assertEquals(r.fingerprintError, new AcoustIdKeyError().message);
+  assertEquals([r.ranked[0].releaseId, r.verdict], [BEETHOVEN_5, "needs_review"]);
 });

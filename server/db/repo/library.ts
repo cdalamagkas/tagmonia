@@ -97,7 +97,9 @@ export function upsertFile(db: Db, f: FileRecord): void {
        folder = excluded.folder, size = excluded.size, mtime_ms = excluded.mtime_ms, format = excluded.format,
        duration_ms = excluded.duration_ms, sample_rate = excluded.sample_rate, channels = excluded.channels,
        bitrate_kbps = excluded.bitrate_kbps, current_tags = excluded.current_tags, pictures = excluded.pictures,
-       read_error = excluded.read_error, scanned_at = excluded.scanned_at`,
+       read_error = excluded.read_error, scanned_at = excluded.scanned_at,
+       -- Only changed files are upserted: their old fingerprint describes other audio.
+       fingerprint = NULL, fingerprint_duration = NULL, acoustid_id = NULL`,
   ).run(
     f.path,
     f.folder,
@@ -286,4 +288,32 @@ export function librarySummary(db: Db): { files: number; releases: number; unrea
             (SELECT count(*) FROM library_file WHERE read_error IS NOT NULL) unreadable`,
   ).get() as { files: number; releases: number; unreadable: number };
   return { ...row };
+}
+
+// ---- fingerprints (§8 order 4)
+
+export interface StoredFingerprint {
+  fingerprint: string;
+  durationSec: number;
+}
+
+export function getFingerprint(db: Db, fileId: number): StoredFingerprint | null {
+  const r = db.prepare("SELECT fingerprint, fingerprint_duration FROM library_file WHERE id = ?").get(fileId) as
+    | { fingerprint: string | null; fingerprint_duration: number | null }
+    | undefined;
+  return r?.fingerprint && r.fingerprint_duration !== null
+    ? { fingerprint: r.fingerprint, durationSec: r.fingerprint_duration }
+    : null;
+}
+
+export function setFingerprint(db: Db, fileId: number, fp: StoredFingerprint): void {
+  db.prepare("UPDATE library_file SET fingerprint = ?, fingerprint_duration = ? WHERE id = ?").run(
+    fp.fingerprint,
+    fp.durationSec,
+    fileId,
+  );
+}
+
+export function setAcoustidId(db: Db, fileId: number, acoustidId: string | null): void {
+  db.prepare("UPDATE library_file SET acoustid_id = ? WHERE id = ?").run(acoustidId, fileId);
 }

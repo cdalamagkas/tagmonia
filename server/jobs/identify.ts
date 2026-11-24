@@ -9,6 +9,7 @@ import type { Db } from "../db/db.ts";
 import { getRelease, type StoredFile } from "../db/repo/library.ts";
 import { markIdentifying, saveIdentifyError, saveIdentifyResult } from "../db/repo/matches.ts";
 import { identify, type IdentifyConfig, type MbSource } from "../identify/identify.ts";
+import type { FingerprintSource } from "../identify/acoustid_source.ts";
 import type { CandidateEvidence } from "../identify/types.ts";
 import type { Logger } from "../log.ts";
 import { type JobQueue, PermanentJobError } from "./queue.ts";
@@ -20,6 +21,8 @@ const payloadSchema = z.object({ candidateId: z.number().int().positive() });
 export interface IdentifyJobDeps {
   db: Db;
   mb: MbSource;
+  /** Null when no AcoustID key is configured (D37). */
+  fingerprints?: FingerprintSource | null;
   /** Read per run so settings edits apply to the next identification. */
   config: () => IdentifyConfig;
   logger: Logger;
@@ -83,7 +86,15 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
     markIdentifying(deps.db, candidateId);
     try {
       const ev = buildEvidence(found.release.mbid, found.files);
-      const result = await identify(ev, deps.mb, found.release.folder, deps.config(), signal);
+      const result = await identify(
+        ev,
+        deps.mb,
+        found.release.folder,
+        deps.config(),
+        signal,
+        deps.fingerprints ?? undefined,
+      );
+      if (result.fingerprintError) deps.logger.warn("fingerprinting skipped", { error: result.fingerprintError });
       saveIdentifyResult(deps.db, candidateId, contentHash, result, now());
       if (result.skipped.length) deps.logger.warn("releases skipped", { candidateId, skipped: result.skipped });
       return {

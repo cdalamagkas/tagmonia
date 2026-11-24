@@ -34,4 +34,4 @@ EXPOSE 8080
 VOLUME ["/config"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD ["deno", "eval", "const r = await fetch('http://127.0.0.1:8080/api/health'); Deno.exit(r.ok ? 0 : 1)"]
-CMD ["deno", "run", "--cached-only", "--node-modules-dir=none", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=python3", "server/main.ts"]
+CMD ["deno", "run", "--cached-only", "--node-modules-dir=none", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run=python3,fpcalc", "server/main.ts"]

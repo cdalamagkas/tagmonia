@@ -11,8 +11,15 @@ services:
       - PGID=1000
       - TAGMONIA_PUBLIC_URL=https://tagmonia.home.example
       - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
+      # Optional: fingerprint identification. Get a free application key at https://acoustid.org/new-application
+      #- TAGMONIA_ACOUSTID_KEY_FILE=/run/secrets/acoustid_key
+    #secrets:
+    #  - acoustid_key
     volumes:
       - /mnt/c/Users/Public/Music:/music:ro
       - tagmonia-config:/config
 volumes:
   tagmonia-config:
+#secrets:
+#  acoustid_key:
+#    file: ./acoustid_key.txt

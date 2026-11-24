@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { bootstrapAdmin } from "./auth/bootstrap.ts";
 import { LoginThrottle } from "./auth/ratelimit.ts";
 import { SessionStore } from "./auth/sessions.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, resolveAcoustidKey } from "./config.ts";
 import { openMigratedDb } from "./db/db.ts";
 import { createApp } from "./http/app.ts";
 import { JobQueue } from "./jobs/queue.ts";
@@ -11,9 +11,13 @@ import { enqueueIdentify, registerIdentifyJob } from "./jobs/identify.ts";
 import { registerScanJob } from "./jobs/scan.ts";
 import { createLogger } from "./log.ts";
 import { createMusicBrainzClient } from "./providers/musicbrainz/mod.ts";
+import { createAcoustIdSource } from "./identify/acoustid_source.ts";
+import { AcoustIdClient } from "./providers/acoustid.ts";
+import { RateLimiter } from "./providers/ratelimit.ts";
+import { SnapshotCache } from "./providers/snapshots.ts";
 import { identifyConfig, loadSettings } from "./settings.ts";
 import { createTagIO } from "./tagio/mod.ts";
-import { VERSION } from "./version.ts";
+import { USER_AGENT, VERSION } from "./version.ts";
 
 async function main() {
   const config = loadConfig();
@@ -33,8 +37,27 @@ async function main() {
     logger,
     onCandidatesTouched: (ids) => enqueueIdentify(queue, ids),
   });
+  const acoustidKey = await resolveAcoustidKey(config);
+  if (!acoustidKey) logger.info("no AcoustID key: fingerprint identification is off (set TAGMONIA_ACOUSTID_KEY)");
+  const fingerprints = acoustidKey
+    ? createAcoustIdSource({
+      db,
+      musicDir: config.musicDir,
+      logger,
+      minScore: settings.providers.acoustid.minScore,
+      acoustid: new AcoustIdClient({
+        apiKey: acoustidKey,
+        cache: new SnapshotCache(db, join(config.configDir, "snaps")),
+        http: {
+          userAgent: USER_AGENT,
+          limiter: new RateLimiter({ requests: 1, perMs: 1000 / settings.providers.acoustid.requestsPerSecond }),
+        },
+      }),
+    })
+    : null;
   registerIdentifyJob(queue, {
     db,
+    fingerprints,
     mb: createMusicBrainzClient(db, config.configDir, settings),
     config: () => identifyConfig(settings),
     logger,

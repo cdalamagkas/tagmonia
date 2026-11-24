@@ -178,6 +178,11 @@ def main():
             write_id3(v23, mapping, tags, front, back, version=3)
         else:
             write_mp4(tagged, mapping, tags, front, back)
+    # Long and varied enough for Chromaprint (a 2 s sine gives an empty fingerprint).
+    # Seeded noise, so the fingerprint is identical on every run.
+    run("ffmpeg", "-y", "-f", "lavfi", "-i", "anoisesrc=d=15:c=pink:seed=42:a=0.5", "-f", "lavfi",
+        "-i", "sine=f=440:d=15", "-filter_complex", "amix=inputs=2", "-ac", "2", "-ar", "44100",
+        os.path.join(out_dir, "fingerprint.flac"))
     print(f"fixtures written to {out_dir}")
 
 
