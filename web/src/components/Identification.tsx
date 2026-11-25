@@ -221,11 +221,13 @@ function emptyMessage(d: IdentificationDto): string {
 }
 
 export function Identification(
-  { releaseId, files, onChoose }: {
+  { releaseId, files, onChoose, onChooseProvider }: {
     releaseId: number;
     files: LibraryFileDto[];
     /** Builds a proposal from the chosen release; rejects with the server's message (e.g. busy). */
     onChoose?: (mbid: string) => Promise<void>;
+    /** Builds a proposal from a provider album link, for a release not on MusicBrainz (§10.4). */
+    onChooseProvider?: (url: string) => Promise<void>;
   },
 ) {
   const [data, setData] = useState<IdentificationDto | null>(null);
@@ -258,6 +260,23 @@ export function Identification(
       // Bad links and busy releases are the user's to fix; keep the rest of the panel.
       if (releaseUrl) setUrlError((e as Error).message);
       else setError((e as Error).message);
+    }
+  };
+
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [sourceBusy, setSourceBusy] = useState(false);
+  const fromProvider = async () => {
+    if (!onChooseProvider) return;
+    setSourceError(null);
+    setSourceBusy(true);
+    try {
+      await onChooseProvider(sourceUrl.trim());
+      setSourceUrl("");
+    } catch (e) {
+      setSourceError((e as Error).message);
+    } finally {
+      setSourceBusy(false);
     }
   };
 
@@ -317,6 +336,30 @@ export function Identification(
           <button type="submit" class="tm-button tm-secondary" disabled={busy || !url.trim()}>Use this release</button>
           {urlError && <p class="tm-error" role="alert">{urlError}</p>}
         </form>
+        {onChooseProvider && (
+          <form
+            class="tm-manual"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (sourceUrl.trim()) fromProvider();
+            }}
+          >
+            <label>
+              Not on MusicBrainz? Build the tags from an album page
+              <input
+                type="url"
+                placeholder="https://www.deezer.com/album/… · iTunes · Discogs · Bandcamp"
+                value={sourceUrl}
+                onInput={(e) => setSourceUrl(e.currentTarget.value)}
+                disabled={sourceBusy}
+              />
+            </label>
+            <button type="submit" class="tm-button tm-secondary" disabled={sourceBusy || !sourceUrl.trim()}>
+              Use this album
+            </button>
+            {sourceError && <p class="tm-error" role="alert">{sourceError}</p>}
+          </form>
+        )}
       </section>
 
       {data.editions.length > 1 && (

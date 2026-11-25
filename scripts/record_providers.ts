@@ -8,7 +8,7 @@
  */
 import { dirname } from "node:path";
 import { openMigratedDb } from "../server/db/db.ts";
-import { findOnProviders, linksOf } from "../server/providers/enrichment.ts";
+import { findOnProviders, linksOf, targetOfMb } from "../server/providers/enrichment.ts";
 import { createHarmonyRegistry } from "../server/providers/harmony_adapter.ts";
 import { MusicBrainzClient } from "../server/providers/musicbrainz/client.ts";
 import { RateLimiter } from "../server/providers/ratelimit.ts";
@@ -52,7 +52,7 @@ try {
   for (const id of Deno.args) {
     const rel = (await mb.lookupRelease(id))!.value;
     const extras = (await mb.lookupReleaseExtras(id))?.value ?? null;
-    const matches = await findOnProviders({ registry, enabled: () => true }, rel, linksOf(extras));
+    const matches = await findOnProviders({ registry, enabled: () => true }, targetOfMb(rel), linksOf(extras));
     console.log(`${rel.title} (${rel.country}, barcode ${rel.barcode ?? "-"})`);
     for (const m of matches) {
       console.log(`  ${m.provider.padEnd(8)} ${m.status.padEnd(17)} ${m.via ?? ""} ${m.reason ?? ""} ${m.url ?? ""}`);

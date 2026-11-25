@@ -9,12 +9,14 @@ import type { MbRelease } from "./musicbrainz/schema.ts";
 import type { HarmonizedRelease, HarmonyRegistry, HarmonyReleaseOptions } from "./harmony_adapter.ts";
 
 export type EnrichmentProvider = "deezer" | "itunes" | "discogs";
+/** Providers a proposal can start from (§10.4): the enrichment ones, and Bandcamp when switched on (D16). */
+export type SourceProvider = EnrichmentProvider | "bandcamp";
 export const ENRICHMENT_PROVIDERS: readonly EnrichmentProvider[] = ["deezer", "itunes", "discogs"];
 
 export type MatchStatus = "found" | "different_edition" | "not_found" | "skipped" | "error";
 
 export interface ProviderMatch {
-  provider: EnrichmentProvider;
+  provider: SourceProvider;
   status: MatchStatus;
   via: "link" | "barcode" | null;
   /** The release's page on the provider. */
@@ -52,16 +54,46 @@ function trackCount(r: { media: { tracklist: unknown[] }[] }): number {
   return r.media.reduce((n, m) => n + m.tracklist.length, 0);
 }
 
-/** iTunes and Deezer have region-specific catalogues: the release's own country first. */
-function regions(mb: MbRelease): HarmonyReleaseOptions {
-  const set = new Set<string>();
-  if (mb.country && /^[A-Z]{2}$/.test(mb.country)) set.add(mb.country);
-  for (const r of ["US", "GB"]) set.add(r);
-  return { regions: set } as HarmonyReleaseOptions;
+/** What is looked for: a MusicBrainz release, or a release found on a provider (§10.4). */
+export interface EnrichmentTarget {
+  barcode: string | null;
+  country: string | null;
+  trackCount: number;
 }
 
-export async function findOnProviders(deps: EnrichmentDeps, mb: MbRelease, links: string[]): Promise<ProviderMatch[]> {
-  const mbTracks = mb.media.reduce((n, m) => n + (m.tracks?.length ?? m["track-count"]), 0);
+export function targetOfMb(mb: MbRelease): EnrichmentTarget {
+  return {
+    barcode: mb.barcode || null,
+    country: mb.country ?? null,
+    trackCount: mb.media.reduce((n, m) => n + (m.tracks?.length ?? m["track-count"]), 0),
+  };
+}
+
+export function targetOfHarmony(r: HarmonizedRelease): EnrichmentTarget {
+  return { barcode: r.gtin ? String(r.gtin) : null, country: null, trackCount: trackCount(r) };
+}
+
+/**
+ * Every provider lookup asks for ISRCs (Deezer's album response has none; Harmony
+ * fetches them per track only when asked, D51), all track artists and separate
+ * media, as Harmony's own release lookups do.
+ */
+export const LOOKUP_OPTIONS = { withISRC: true, withAllTrackArtists: true, withSeparateMedia: true } as const;
+
+/** iTunes and Deezer have region-specific catalogues: the release's own country first. */
+function regions(t: EnrichmentTarget): HarmonyReleaseOptions {
+  const set = new Set<string>();
+  if (t.country && /^[A-Z]{2}$/.test(t.country)) set.add(t.country);
+  for (const r of ["US", "GB"]) set.add(r);
+  return { ...LOOKUP_OPTIONS, regions: set } as HarmonyReleaseOptions;
+}
+
+export async function findOnProviders(
+  deps: EnrichmentDeps,
+  target: EnrichmentTarget,
+  links: string[],
+): Promise<ProviderMatch[]> {
+  const mbTracks = target.trackCount;
   const urls = links.flatMap((l) => {
     try {
       return [new URL(l)];
@@ -81,15 +113,15 @@ export async function findOnProviders(deps: EnrichmentDeps, mb: MbRelease, links
       continue;
     }
     const link = urls.find((u) => deps.registry.providerForUrl(u) === provider);
-    const via = link ? "link" : mb.barcode ? "barcode" : null;
+    const via = link ? "link" : target.barcode ? "barcode" : null;
     if (!via) {
-      out.push({ ...base, status: "skipped", reason: "no link on MusicBrainz and no barcode" });
+      out.push({ ...base, status: "skipped", reason: "no link and no barcode" });
       continue;
     }
     try {
       const release = link
-        ? await lookupLink(deps, link, regions(mb))
-        : await lookupBarcode(deps, provider, mb.barcode!, regions(mb));
+        ? await lookupLink(deps, link, regions(target))
+        : await lookupBarcode(deps, provider, target.barcode!, regions(target));
       const url = release.info?.providers?.[0]?.url ?? link?.href ?? null;
       const n = trackCount(release);
       out.push(
@@ -116,7 +148,7 @@ export async function findOnProviders(deps: EnrichmentDeps, mb: MbRelease, links
 }
 
 /** By link; once more at the new address when the provider has moved the release. */
-async function lookupLink(deps: EnrichmentDeps, link: URL, options: HarmonyReleaseOptions) {
+export async function lookupLink(deps: EnrichmentDeps, link: URL, options: HarmonyReleaseOptions) {
   try {
     return await deps.registry.lookupByUrl(link, options);
   } catch (e) {

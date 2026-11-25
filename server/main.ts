@@ -95,7 +95,8 @@ async function main() {
   const harmony = await createHarmonyRegistry({
     app: { name: "Tagmonia", version: VERSION, contact: PROJECT_URL },
     snapsDir: join(config.configDir, "snaps", "harmony"),
-    providers: ["deezer", "itunes", ...(discogsReady ? ["discogs" as const] : [])],
+    // Bandcamp is registered but used only from a link, and only while its switch is on (D16, D51).
+    providers: ["deezer", "itunes", ...(discogsReady ? ["discogs" as const] : []), "bandcamp"],
     credentials: discogsReady
       ? { discogsConsumerKey: discogs.consumerKey, discogsConsumerSecret: discogs.consumerSecret }
       : undefined,
@@ -147,7 +148,18 @@ async function main() {
   });
   const purge = setInterval(() => sessions.purgeExpired(), 3_600_000);
 
-  const app = createApp({ config, settings, db, queue, sessions, throttle: new LoginThrottle(), logger, creds, tagio });
+  const app = createApp({
+    config,
+    settings,
+    db,
+    queue,
+    sessions,
+    throttle: new LoginThrottle(),
+    logger,
+    creds,
+    tagio,
+    harmony,
+  });
   const server = Deno.serve({
     port: config.port,
     onListen: ({ hostname, port }) =>

@@ -153,6 +153,10 @@ export function ReleasePage({ id }: { id: number }) {
           await api.propose(release.id, { releaseMbid });
           setVersion((v) => v + 1);
         }}
+        onChooseProvider={async (providerUrl) => {
+          await api.propose(release.id, { providerUrl });
+          setVersion((v) => v + 1);
+        }}
       />
       <Review releaseId={release.id} files={files} version={version} onFilesChanged={reload} />
 

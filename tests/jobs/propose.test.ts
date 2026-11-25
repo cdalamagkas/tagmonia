@@ -6,7 +6,13 @@ import { getCover } from "../../server/db/repo/covers.ts";
 import { reconcileUnit, upsertFile } from "../../server/db/repo/library.ts";
 import { latestProposal, providerMatches } from "../../server/db/repo/proposals.ts";
 import { enqueueIdentify, registerIdentifyJob } from "../../server/jobs/identify.ts";
-import { autoPropose, enqueuePropose, PROPOSE_JOB, registerProposeJob } from "../../server/jobs/propose.ts";
+import {
+  autoPropose,
+  enqueuePropose,
+  enqueueProviderPropose,
+  PROPOSE_JOB,
+  registerProposeJob,
+} from "../../server/jobs/propose.ts";
 import { JobQueue } from "../../server/jobs/queue.ts";
 import { nullLogger } from "../../server/log.ts";
 import type { HarmonizedRelease } from "../../server/providers/harmony_adapter.ts";
@@ -275,4 +281,67 @@ Deno.test("the cover is chosen, compared with the files and folder, and stored w
   } finally {
     await Deno.remove(music, { recursive: true });
   }
+});
+
+Deno.test("a release not on MusicBrainz: built from the linked album, others found by barcode fill gaps (D51)", async () => {
+  const { db, id } = await setup();
+  const q2 = new JobQueue(db, { logger: nullLogger });
+  const album = (name: string, internalName: string, extra: Record<string, unknown> = {}) =>
+    ({
+      title: "Fifth Symphony (Live)",
+      artists: [{ name: "Some Orchestra" }],
+      gtin: "0123456789012",
+      externalLinks: [],
+      media: [{
+        format: "Digital Media",
+        tracklist: release.media[0].tracks!.map((t) => ({ title: t.title, length: t.length, ...extra })),
+      }],
+      info: {
+        providers: [{ name, internalName, id: `${internalName}-1`, url: `https://www.${internalName}.com/album/1` }],
+        messages: [],
+      },
+    }) as unknown as HarmonizedRelease;
+  const asked: string[] = [];
+  const mb = new FakeMb([]);
+  registerProposeJob(q2, {
+    db,
+    mb,
+    settings: () => ({ genres: "musicbrainz", maxGenres: 5 }),
+    logger: nullLogger,
+    enrichment: {
+      registry: {
+        providerIds: ["deezer", "itunes"],
+        providerForUrl: (u) => (u.host.includes("deezer") ? "deezer" : undefined),
+        lookupByUrl: (u) => {
+          asked.push(`url ${u.href}`);
+          return Promise.resolve(album("Deezer", "deezer"));
+        },
+        lookupByGtin: (p, g) => {
+          asked.push(`gtin ${p} ${g}`);
+          return Promise.resolve(album("iTunes", "itunes", { isrc: "ITX000000001" }));
+        },
+      },
+      enabled: () => true,
+    },
+  });
+  enqueueProviderPropose(q2, id, "https://www.deezer.com/album/1");
+  await q2.drain();
+  const p = latestProposal(db, id)!;
+  assertEquals([p.releaseMbid, p.sourceUrl, p.chosenBy], [null, "https://www.deezer.com/album/1", "user"]);
+  assertEquals(asked.filter((a) => a.startsWith("gtin")), ["gtin itunes 0123456789012"]);
+  // Every file mapped by title and length; no MusicBrainz identifiers proposed.
+  assertEquals(p.unmappedFiles, []);
+  assertEquals(p.fields.some((f) => f.field.startsWith("musicbrainz_")), false);
+  const row = (field: string) => p.fields.find((f) => f.field === field)!;
+  assertEquals([row("album").proposed, row("album").origin], ["Fifth Symphony (Live)", "deezer"]);
+  assertEquals([row("deezer_album_id").proposed, row("isrc").proposed, row("isrc").origin], [
+    "deezer-1",
+    ["ITX000000001"],
+    "itunes",
+  ]);
+  assertEquals(
+    providerMatches(db, p.id).map((m) => [m.provider, m.status, m.via]),
+    [["deezer", "found", "link"], ["itunes", "found", "barcode"], ["discogs", "skipped", null]],
+  );
+  assertEquals(mb.calls, [], "MusicBrainz is not asked");
 });

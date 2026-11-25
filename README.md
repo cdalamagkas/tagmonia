@@ -3,9 +3,10 @@
 **Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phases 0–4 are done; Phase 5 (MusicBrainz submission) is next.** Tagmonia identifies releases against
-> MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art,
-> writes everything with verification and undo, and tells Jellyfin.
+> **Status: Phases 0–4 are done; Phase 5 (MusicBrainz submission) is in progress.** Tagmonia identifies releases
+> against MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art,
+> writes everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can already be
+> tagged from Deezer, iTunes, Discogs or Bandcamp; submitting them to MusicBrainz comes next.
 > See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
 
@@ -27,6 +28,9 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   label or catalog number from Discogs, missing ISRCs from Deezer or iTunes, and each provider's own ID. Such fields
   are marked "filled by …". Where MusicBrainz and Discogs disagree, the review shows both values and asks you to
   choose before anything is written.
+- **Releases missing from MusicBrainz**: paste a Deezer, iTunes, Discogs or Bandcamp album link on the release page and
+  Tagmonia builds the tags from that album, filled in from the same release on the other providers (by barcode),
+  ready to review and write.
 - **Cover art** from the Cover Art Archive, or else the largest image iTunes, Deezer or Discogs has for the same
   release. The review shows the cover with its source, size and what the files have now. **Settings → Cover art**
   chooses how it is written: embedded at full size (the default), embedded at about 1200 px, only as `cover.jpg` in
@@ -73,6 +77,8 @@ credentials and a **Test** button. Secrets are stored encrypted (AES-256-GCM) an
 - **Jellyfin** (optional): the server URL, an API key (Dashboard → API Keys) and optionally one library; Tagmonia then
   asks Jellyfin to re-read exactly the albums it changed.
 - MusicBrainz, Deezer and iTunes need no credentials.
+- **Bandcamp** needs none either, but it is off unless you switch it on: Bandcamp has no official API, so Tagmonia
+  reads its public album pages, and only when you give it a Bandcamp link.
 
 The same values can come from the environment instead, which wins over the app and suits Docker secrets:
 `TAGMONIA_ACOUSTID_KEY` / `TAGMONIA_ACOUSTID_KEY_FILE`, `TAGMONIA_JELLYFIN_URL`, `TAGMONIA_JELLYFIN_KEY` /

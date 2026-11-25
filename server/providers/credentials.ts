@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { type Vault, VaultError } from "../secrets/vault.ts";
 
-export type ProviderId = "musicbrainz" | "acoustid" | "deezer" | "itunes" | "discogs" | "jellyfin";
+export type ProviderId = "musicbrainz" | "acoustid" | "deezer" | "itunes" | "discogs" | "bandcamp" | "jellyfin";
 
 export interface CredentialField {
   key: string;
@@ -76,6 +76,15 @@ export const PROVIDERS: readonly ProviderDef[] = [
     toggle: true,
     restartRequired: true,
     help: "Labels, catalog numbers and pressings. Create an application at discogs.com → Settings → Developers.",
+  },
+  {
+    id: "bandcamp",
+    name: "Bandcamp",
+    tier: "enrichment",
+    fields: [],
+    toggle: true,
+    help:
+      "Releases missing from MusicBrainz, from a Bandcamp album link. Bandcamp has no official API, so Tagmonia reads its public album pages; off unless you switch it on (D16).",
   },
   {
     id: "jellyfin",

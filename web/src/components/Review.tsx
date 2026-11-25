@@ -25,15 +25,30 @@ const PROVIDERS: Record<string, string> = {
   deezer: "Deezer",
   itunes: "iTunes",
   discogs: "Discogs",
+  bandcamp: "Bandcamp",
 };
 
+/** The provider a "not in MusicBrainz" proposal came from, by its page's host. */
+function sourceName(url: string | null): string {
+  const host = url ? new URL(url).hostname : "";
+  if (host.endsWith("deezer.com")) return "Deezer";
+  if (host.endsWith("apple.com")) return "iTunes";
+  if (host.endsWith("discogs.com")) return "Discogs";
+  if (host.endsWith("bandcamp.com")) return "Bandcamp";
+  return "the provider";
+}
+
 /** "Also found on": where the release is on other providers, and why not when it is not (D47). */
-function ProviderMatches({ matches }: { matches: ProposalDto["providers"] }) {
+function ProviderMatches({ matches, fromLink }: { matches: ProposalDto["providers"]; fromLink: boolean }) {
   if (matches.length === 0) return null;
   const label = (m: ProposalDto["providers"][number]) => {
     switch (m.status) {
       case "found":
-        return m.via === "link" ? "found (linked from MusicBrainz)" : "found (by barcode)";
+        return m.via !== "link"
+          ? "found (by barcode)"
+          : fromLink
+          ? "found (the album you linked)"
+          : "found (linked from MusicBrainz)";
       case "different_edition":
         return `another edition: ${m.reason}`;
       case "not_found":
@@ -214,6 +229,8 @@ function lockLabel(l: LockDto): string {
 
 interface RowProps {
   group: Group;
+  /** The proposal's own source; values from any other are marked "filled by". */
+  primary: string;
   locks: LockDto[];
   releaseId: number;
   busy: boolean;
@@ -231,7 +248,7 @@ function sourceChoices(group: Group): { provider: string; value: unknown }[] {
   return [...seen].map(([provider, value]) => ({ provider, value }));
 }
 
-function FieldRow({ group, locks, releaseId, busy, onDecide, onPick, onLock, onUnlock }: RowProps) {
+function FieldRow({ group, primary, locks, releaseId, busy, onDecide, onPick, onLock, onUnlock }: RowProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const ids = group.rows.map((r) => r.id);
@@ -250,7 +267,7 @@ function FieldRow({ group, locks, releaseId, busy, onDecide, onPick, onLock, onU
   const currents = distinct(group.rows.map((r) => r.current));
   const target = decision === "edited" ? first.edited : first.proposed;
   const sources = [...new Set(group.rows.flatMap((r) => r.sources.map((s) => s.provider)))];
-  const origins = [...new Set(group.rows.map((r) => r.origin).filter((o) => o !== "musicbrainz"))];
+  const origins = [...new Set(group.rows.map((r) => r.origin).filter((o) => o !== primary))];
   const conflict = group.rows.some((r) => r.conflict);
   const unresolved = group.rows.some((r) => r.conflict && r.decision === "auto" && !r.locked);
   const picked = first.resolvedFrom;
@@ -603,6 +620,7 @@ export function Review(
 
   const open = p.state === "needs_review" || p.state === "approved" || p.state === "draft";
   const toWrite = p.fields.filter(writes).length + (p.cover?.writes ? 1 : 0);
+  const rebuild = p.releaseMbid ? { releaseMbid: p.releaseMbid } : { providerUrl: p.sourceUrl! };
   const conflicts = p.counts.conflicts;
   const fileName = new Map(files.map((f) => [f.id, f.tags.title ?? f.path.split("/").pop() ?? f.path]));
   const relGroups: Group[] = RELEASE_FIELDS
@@ -617,6 +635,7 @@ export function Review(
     byFile.set(f.fileId, list);
   }
   const rowProps = {
+    primary: p.primarySource ?? "musicbrainz",
     locks: data.locks,
     releaseId,
     busy: busy || !open,
@@ -641,10 +660,26 @@ export function Review(
               </span>
             </h2>
             <p class="tm-muted tm-section-note">
-              From{" "}
-              <a href={`https://musicbrainz.org/release/${p.releaseMbid}`} target="_blank" rel="noopener noreferrer">
-                this MusicBrainz release
-              </a>
+              From {p.releaseMbid
+                ? (
+                  <a
+                    href={`https://musicbrainz.org/release/${p.releaseMbid}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    this MusicBrainz release
+                  </a>
+                )
+                : (
+                  <>
+                    <a href={p.sourceUrl ?? undefined} target="_blank" rel="noopener noreferrer">
+                      this {sourceName(p.sourceUrl)} album
+                    </a>{" "}
+                    <span class="tm-badge tm-badge-warn tm-inline" title="No MusicBrainz identifiers are written">
+                      not on MusicBrainz
+                    </span>
+                  </>
+                )}
               {p.chosenBy === "user" ? ", chosen by you" : ", matched automatically"} · {p.counts.changed} changed,{" "}
               {p.counts.added} added, {p.counts.unchanged} already right
               {p.counts.locked > 0 && `, ${p.counts.locked} locked`}
@@ -679,7 +714,7 @@ export function Review(
             )}
           </div>
         </div>
-        <ProviderMatches matches={p.providers} />
+        <ProviderMatches matches={p.providers} fromLink={!p.releaseMbid} />
         {conflicts > 0 && open && (
           <p>
             <span class="tm-badge tm-badge-error tm-inline">
@@ -698,7 +733,7 @@ export function Review(
               type="button"
               class="tm-button tm-secondary tm-small"
               disabled={busy || live}
-              onClick={() => act(() => api.propose(releaseId, { releaseMbid: p.releaseMbid! }))}
+              onClick={() => act(() => api.propose(releaseId, rebuild))}
             >
               Build again
             </button>
@@ -711,7 +746,7 @@ export function Review(
               type="button"
               class="tm-button tm-secondary tm-small"
               disabled={busy || live}
-              onClick={() => act(() => api.propose(releaseId, { releaseMbid: p.releaseMbid! }))}
+              onClick={() => act(() => api.propose(releaseId, rebuild))}
             >
               Build again
             </button>

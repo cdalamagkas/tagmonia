@@ -113,3 +113,21 @@ Deno.test({
     }
   },
 });
+
+Deno.test("album pages are told apart from artist and track pages, per provider (D51)", async () => {
+  const harmony = await createHarmonyRegistry({
+    app,
+    snapsDir: await Deno.makeTempDir({ prefix: "tagmonia-snaps-" }),
+    providers: ["deezer", "itunes", "bandcamp"],
+  });
+  const is = (u: string) => harmony.isReleaseUrl(new URL(u));
+  assertEquals(is("https://www.deezer.com/en/album/629506181"), true);
+  assertEquals(is("https://www.deezer.com/en/artist/27"), false);
+  assertEquals(is("https://music.apple.com/us/album/1440857781"), true);
+  assertEquals(is("https://someband.bandcamp.com/album/some-album"), true);
+  // Harmony treats a Bandcamp track page as a release: standalone tracks are sold as singles.
+  assertEquals(is("https://someband.bandcamp.com/track/a-song"), true);
+  assertEquals(is("https://someband.bandcamp.com/"), false);
+  assertEquals(is("https://www.discogs.com/release/1"), false, "Discogs is not registered here");
+  assertEquals(is("http://www.deezer.com/en/album/629506181"), false, "https only");
+});
