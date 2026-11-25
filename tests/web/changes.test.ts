@@ -1,7 +1,7 @@
 /** The Changes tab's grouping and counts (restructure PR 2, D53). */
 import { assert, assertEquals } from "@std/assert";
 import type { FieldProposalDto, LockDto, ProposalDto } from "../../shared/types.ts";
-import { buildChanges, locksOf } from "../../web/src/release/changes.ts";
+import { alreadyRightView, buildChanges, locksOf } from "../../web/src/release/changes.ts";
 import { changesToWrite } from "../../web/src/release/status.ts";
 
 let nextId = 1;
@@ -152,4 +152,37 @@ Deno.test("the locks behind an item: this album's, its files', and global ones f
   assertEquals(locksOf(m.album[0], locks, 9).map((l) => l.id), [1, 2]);
   assertEquals(locksOf(m.grid[1].cells.isrc!, locks, 9).map((l) => l.id), [4]);
   assert(locksOf(m.grid[0].cells.isrc!, locks, 9).length === 0);
+});
+
+Deno.test("already right: album once, the same on every track once, then each track's own, in reading order", () => {
+  const right = (fileId: number, field: FieldProposalDto["field"], value: unknown) =>
+    row(fileId, field, { current: value, proposed: value, status: "unchanged" });
+  const fields = [
+    right(2, "musicbrainz_trackid", "t2"),
+    right(2, "title", "Two"),
+    right(1, "musicbrainz_trackid", "t1"),
+    right(1, "title", "One"),
+    right(1, "totaltracks", 2),
+    right(2, "totaltracks", 2),
+    right(1, "composer", ["Schubert"]),
+    right(2, "composer", ["Liszt"]),
+    right(1, "tracknumber", 1),
+    right(2, "tracknumber", 2),
+    right(1, "label", ["NO SILENCE"]),
+    right(2, "label", ["NO SILENCE"]),
+    right(1, "album", "A"),
+    right(2, "album", "A"),
+    // Changing: never listed as already right.
+    row(1, "date", { current: "2026", proposed: "2026-10-23", status: "changed" }),
+    row(2, "date", { current: "2026", proposed: "2026-10-23", status: "changed" }),
+    row(1, "isrc", { proposed: ["X"] }),
+  ];
+  const v = alreadyRightView(proposal(fields), [1, 2]);
+  assertEquals(v.album.map((f) => f.field), ["album", "label"], "album fields once, in the album order");
+  assertEquals(v.everyTrack, [{ field: "totaltracks", value: 2 }]);
+  assertEquals(v.tracks.map((t) => [t.fileId, t.fields.map((f) => f.field)]), [
+    [1, ["title", "tracknumber", "composer", "musicbrainz_trackid"]],
+    [2, ["title", "tracknumber", "composer", "musicbrainz_trackid"]],
+  ]);
+  assertEquals(buildChanges(proposal(fields), [1, 2]).alreadyRight, 2 + 8 + 2, "the count still covers them all");
 });

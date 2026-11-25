@@ -186,3 +186,100 @@ export function locksOf(item: ChangeItem, locks: LockDto[], releaseId: number): 
     )
   );
 }
+
+/** Track fields in reading order: what the track is, its numbering, its credits, then identifiers. */
+const TRACK_ORDER = [
+  "title",
+  "artist",
+  "artists",
+  "artistsort",
+  "tracknumber",
+  "totaltracks",
+  "discnumber",
+  "totaldiscs",
+  "media",
+  "work",
+  "movement",
+  "movementnumber",
+  "movementtotal",
+  "showmovement",
+  "composer",
+  "composersort",
+  "lyricist",
+  "arranger",
+  "conductor",
+  "performer",
+  "isrc",
+];
+
+/** Known fields first in their order; then the rest alphabetically, MusicBrainz identifiers last. */
+export function fieldRank(field: string, order: readonly string[]): [number, number, string] {
+  const i = order.indexOf(field);
+  if (i >= 0) return [0, i, field];
+  return [field.startsWith("musicbrainz_") ? 2 : 1, 0, field];
+}
+
+function byRank(order: readonly string[]) {
+  return (a: { field: string }, b: { field: string }) => {
+    const [x, y] = [fieldRank(a.field, order), fieldRank(b.field, order)];
+    return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]);
+  };
+}
+
+export interface RightField {
+  field: FieldProposalDto["field"];
+  value: unknown;
+}
+
+export interface AlreadyRightView {
+  album: RightField[];
+  /** Track fields with the same value on every track, once (needs at least two tracks). */
+  everyTrack: RightField[];
+  /** Each track's other fields, in the files' order. */
+  tracks: { fileId: number; fields: RightField[] }[];
+}
+
+/** "N fields already right", organised like the changes: album, the same on every track, then per track. */
+export function alreadyRightView(p: ProposalDto, fileOrder: number[]): AlreadyRightView {
+  const right = p.fields.filter((r) => !proposes(r));
+  const changingAlbum = new Set(p.fields.filter((r) => RELEASE.has(r.field) && proposes(r)).map((r) => r.field));
+  const album = new Map<string, RightField>();
+  for (const r of right) {
+    if (RELEASE.has(r.field) && !changingAlbum.has(r.field) && !album.has(r.field)) {
+      album.set(r.field, { field: r.field, value: r.current });
+    }
+  }
+
+  const trackFiles = [...new Set(p.fields.filter((r) => !RELEASE.has(r.field)).map((r) => r.fileId))];
+  const order = new Map(fileOrder.map((id, i) => [id, i]));
+  trackFiles.sort((a, b) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9));
+  const perTrack = new Map<number, Map<string, unknown>>(trackFiles.map((id) => [id, new Map()]));
+  for (const r of right) if (!RELEASE.has(r.field)) perTrack.get(r.fileId)!.set(r.field, r.current);
+
+  const everyTrack: RightField[] = [];
+  if (trackFiles.length > 1) {
+    const fields = new Set([...perTrack.values()].flatMap((m) => [...m.keys()]));
+    for (const field of fields) {
+      const values = [...perTrack.values()].map((m) => (m.has(field) ? json(m.get(field)) : undefined));
+      if (values.every((v) => v !== undefined && v === values[0])) {
+        everyTrack.push({ field: field as RightField["field"], value: perTrack.get(trackFiles[0])!.get(field) });
+      }
+    }
+  }
+  const shared = new Set(everyTrack.map((f) => f.field));
+  const tracks = trackFiles
+    .map((fileId) => ({
+      fileId,
+      fields: [...perTrack.get(fileId)!]
+        .filter(([field]) => !shared.has(field as RightField["field"]))
+        .map(([field, value]) => ({ field: field as RightField["field"], value }))
+        .sort(byRank(TRACK_ORDER)),
+    }))
+    .filter((t) => t.fields.length > 0);
+
+  return {
+    album: [...album.values()].sort(byRank(RELEASE_FIELDS)),
+    everyTrack: everyTrack.sort(byRank(TRACK_ORDER)),
+    tracks,
+  };
+}

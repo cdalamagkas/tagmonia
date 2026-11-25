@@ -285,7 +285,15 @@ Each PR is checked in headless Chromium at desktop and phone width, with the mea
   outside click or Escape.
 - Track grid: each cell has its checkbox and ⋯; the column header's checkbox switches that field on every track.
 - Cover: one line with the current and proposed pictures, their sizes, and where it goes.
-- "N fields already right" opens a plain list; "Discard these changes" moved into the write bar.
+- "N fields already right" opens in three parts, organised like the changes above it:
+  - **Album**: in the album field order;
+  - **The same on every track**: shown once;
+  - **Each track**: one closed line per track ("1-1 · title · 19 fields") with its fields in reading order: title and
+    artists, numbering, work and movement, credits, ISRC, then MusicBrainz identifiers.
+
+  It was one flat table, 359 rows for the 17-track album, with tracks interleaved (`alreadyRightView` in
+  `changes.ts`, tested).
+- "Discard these changes" moved into the write bar.
 - Phone width (settled): the grid keeps its columns and scrolls sideways inside its box; the page itself does not.
 - Measured after PR 2 (1280 × 900):
   - EP from Deezer, 41 changes: the Changes tab is 1,853 px (2.1 screens), with album fields once, 5 "all 5 tracks"

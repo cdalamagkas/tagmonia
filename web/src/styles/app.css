@@ -806,3 +806,20 @@ td.tm-change-off .tm-change-new {
 .tm-fold[open] > summary {
   margin-bottom: 8px;
 }
+/* "N fields already right": album, the same on every track, then each track */
+.tm-right h4 {
+  margin: 14px 0 4px;
+  font-size: 0.9rem;
+  color: var(--tm-slate);
+}
+.tm-right-track {
+  margin: 0;
+  border-bottom: 1px solid var(--tm-rule);
+}
+.tm-right-track > summary {
+  font-weight: var(--tm-weight-value);
+  padding: 8px 0;
+}
+.tm-right-track[open] > summary {
+  margin-bottom: 4px;
+}
