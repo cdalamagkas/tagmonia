@@ -128,6 +128,12 @@ Deno.test("undo puts every file's tags back exactly, removing fields the write a
   const batch = s.db.prepare("SELECT status FROM write_batch WHERE id = ?").get(w.batchId) as { status: string };
   assertEquals(batch.status, "undone");
   assertEquals(latestProposal(s.db, s.candidateId)!.state, "needs_review", "can be reviewed and written again");
+  // The undo put back exactly the tags the proposal was built from: it is not "stale" because the files'
+  // mtimes changed (D53: the header offers writing again, not "Build again").
+  const { content_hash } = s.db.prepare("SELECT content_hash FROM candidate WHERE id = ?").get(s.candidateId) as {
+    content_hash: string;
+  };
+  assertEquals(latestProposal(s.db, s.candidateId)!.basedOnHash, content_hash);
   assertEquals((await s.scan()).candidatesTouched, []);
   await assertRejects(() => undoBatch(s.deps, w.batchId), Error, "cannot be undone");
 });

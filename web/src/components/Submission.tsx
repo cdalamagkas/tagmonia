@@ -4,7 +4,7 @@
  * MusicBrainz sends the new release back. The user reviews and submits on
  * MusicBrainz, from their own account; Tagmonia never submits anything.
  */
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import type { ProposalDto, SubmissionDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 
@@ -241,42 +241,18 @@ function Duplicates({ s, onUse }: { s: SubmissionDto; onUse: (mbid: string) => v
 }
 
 export function Submission(
-  { releaseId, version, onProposalChanged }: {
+  { releaseId, proposal, submission: sub, onReload }: {
     releaseId: number;
-    /** Bumped by the page when the proposal changes. */
-    version: number;
-    onProposalChanged: () => void;
+    /** Both loaded and kept live by the release page (D53): it polls while a check or verification runs. */
+    proposal: ProposalDto | null;
+    submission: SubmissionDto | null;
+    onReload: () => Promise<void>;
   },
 ) {
-  const [proposal, setProposal] = useState<ProposalDto | null>(null);
-  const [sub, setSub] = useState<SubmissionDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState("");
-
-  const load = async () => {
-    try {
-      const [p, s] = await Promise.all([api.proposal(releaseId), api.submission(releaseId)]);
-      setProposal(p.proposal);
-      setSub(s.submission);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-  useEffect(() => {
-    load();
-  }, [releaseId, version]);
-  const working = sub?.state === "checking" || sub?.state === "verifying";
-  useEffect(() => {
-    if (!working) return;
-    const t = setTimeout(async () => {
-      const before = sub?.state;
-      await load();
-      // A verified release builds its MusicBrainz proposal: the review above shows it.
-      if (before === "verifying") onProposalChanged();
-    }, 1500);
-    return () => clearTimeout(t);
-  }, [sub]);
+  const load = onReload;
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -297,7 +273,7 @@ export function Submission(
   const testServer = sub?.server === TEST;
 
   return (
-    <section class="tm-card">
+    <section class="tm-card" id="tm-add-to-musicbrainz">
       <h2>Add to MusicBrainz</h2>
       {error && <p class="tm-error" role="alert">{error}</p>}
       {(!active || sub.state === "failed") && proposal && (
@@ -339,7 +315,6 @@ export function Submission(
               act(async () => {
                 await api.propose(releaseId, { releaseMbid: mbid, ...(testServer ? { server: TEST } : {}) });
                 await api.abandonSubmission(sub.id);
-                onProposalChanged();
               })}
           />
           <p>

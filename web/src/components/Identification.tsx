@@ -5,7 +5,7 @@
  * tags is the review step.
  */
 import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import type { EditionDto, IdentificationDto, LibraryFileDto, MatchDto, SignalName } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { METHOD_LABELS, percent, SIGNAL_LABELS, statusOf, when } from "../format.ts";
@@ -221,31 +221,22 @@ function emptyMessage(d: IdentificationDto): string {
 }
 
 export function Identification(
-  { releaseId, files, onChoose, onChooseProvider }: {
+  { releaseId, data, files, onReload, onChoose, onChooseProvider }: {
     releaseId: number;
+    /** Loaded and kept live by the release page (D53). */
+    data: IdentificationDto;
     files: LibraryFileDto[];
+    onReload: () => Promise<void>;
     /** Builds a proposal from the chosen release; rejects with the server's message (e.g. busy). */
     onChoose?: (mbid: string) => Promise<void>;
     /** Builds a proposal from a provider album link, for a release not on MusicBrainz (§10.4). */
     onChooseProvider?: (url: string) => Promise<void>;
   },
 ) {
-  const [data, setData] = useState<IdentificationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const load = () => api.identification(releaseId).then(setData, (e) => setError((e as Error).message));
-  useEffect(() => {
-    setData(null);
-    load();
-  }, [releaseId]);
-
-  // Poll while a job is queued or running; MusicBrainz's 1 request per second makes it take a few seconds.
-  const busy = !!data?.job || data?.status === "identifying";
-  useEffect(() => {
-    if (!busy) return;
-    const t = setTimeout(load, 2000);
-    return () => clearTimeout(t);
-  }, [data]);
+  const load = onReload;
+  // MusicBrainz's 1 request per second makes identification take a few seconds; the page polls meanwhile.
+  const busy = !!data.job || data.status === "identifying";
 
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -287,12 +278,11 @@ export function Identification(
       onChoose(mbid).catch((e) => setChooseError((e as Error).message));
     });
 
-  if (error) return <p class="tm-error" role="alert">{error}</p>;
-  if (!data) return <p class="tm-muted">Loading…</p>;
   const best = data.matches[0];
   const others = data.matches.slice(0, 5);
   return (
     <>
+      {error && <p class="tm-error" role="alert">{error}</p>}
       <section class="tm-card">
         <div class="tm-toolbar">
           <div>

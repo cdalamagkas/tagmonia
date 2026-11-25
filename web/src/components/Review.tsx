@@ -1,24 +1,23 @@
 /**
- * Review and write (§10, §11.3): what each field would become, where the value
- * comes from, the user's decision per field, locks, and writing with undo.
- * Release-level fields are decided once for every file of the release.
+ * Review (§10): what each field would become, where the value comes from, the
+ * user's decision per field, and locks. Release-level fields are decided once for
+ * every file of the release. Writing and undo are the release page's (D53).
  */
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import type {
   CoverImageDto,
   CoverProposalDto,
   DecisionRequest,
   FieldDecision,
   FieldProposalDto,
-  HistoryResponse,
   LibraryFileDto,
   LockDto,
   ProposalDto,
   ProposalResponse,
-  WriteBatchDto,
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
-import { RELEASE_FIELDS, tagValue, when } from "../format.ts";
+import { RELEASE_FIELDS, tagValue } from "../format.ts";
+import { isOpen, sourceName, writes } from "../release/status.ts";
 
 const PROVIDERS: Record<string, string> = {
   musicbrainz: "MusicBrainz",
@@ -27,16 +26,6 @@ const PROVIDERS: Record<string, string> = {
   discogs: "Discogs",
   bandcamp: "Bandcamp",
 };
-
-/** The provider a "not in MusicBrainz" proposal came from, by its page's host. */
-function sourceName(url: string | null): string {
-  const host = url ? new URL(url).hostname : "";
-  if (host.endsWith("deezer.com")) return "Deezer";
-  if (host.endsWith("apple.com")) return "iTunes";
-  if (host.endsWith("discogs.com")) return "Discogs";
-  if (host.endsWith("bandcamp.com")) return "Bandcamp";
-  return "the provider";
-}
 
 /** "Also found on": where the release is on other providers, and why not when it is not (D47). */
 function ProviderMatches({ matches, fromLink }: { matches: ProposalDto["providers"]; fromLink: boolean }) {
@@ -185,12 +174,6 @@ interface Group {
   key: string;
   field: FieldProposalDto["field"];
   rows: FieldProposalDto[];
-}
-
-/** A row that the write will change. */
-function writes(r: FieldProposalDto): boolean {
-  if (r.locked || r.decision === "kept_current") return false;
-  return r.status !== "unchanged" || r.decision === "edited";
 }
 
 /** Shown without "show unchanged": it changes something, or its sources disagree. */
@@ -466,7 +449,7 @@ function FieldTable({ groups, ...props }: { groups: Group[] } & Omit<RowProps, "
         <thead>
           <tr>
             <th>Field</th>
-            <th>In the files now</th>
+            <th>Current</th>
             <th>Proposed</th>
             <th>Decision</th>
           </tr>
@@ -479,117 +462,25 @@ function FieldTable({ groups, ...props }: { groups: Group[] } & Omit<RowProps, "
   );
 }
 
-function History(
-  { data, readOnly, onUndo }: { data: HistoryResponse; readOnly: boolean; onUndo: (b: WriteBatchDto) => void },
-) {
-  const [open, setOpen] = useState<number | null>(null);
-  if (data.batches.length === 0) return null;
-  return (
-    <section class="tm-card">
-      <h2>History</h2>
-      <div class="tm-table-wrap">
-        <table class="tm-table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>What</th>
-              <th>Result</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.batches.map((b) => (
-              <>
-                <tr key={b.id} class="tm-clickable" onClick={() => setOpen(open === b.id ? null : b.id)}>
-                  <td>{when(b.finishedAt ?? b.startedAt)}</td>
-                  <td>{b.kind === "write" ? "Wrote tags" : "Undid a write"}</td>
-                  <td>
-                    <span
-                      class={`tm-badge tm-inline ${
-                        b.status === "done" ? "tm-badge-ok" : b.status === "undone" ? "" : "tm-badge-warn"
-                      }`}
-                    >
-                      {b.status}
-                    </span>{" "}
-                    {b.counts.written} written
-                    {b.counts.skipped > 0 && `, ${b.counts.skipped} skipped`}
-                    {b.counts.failed > 0 && `, ${b.counts.failed} failed`}
-                  </td>
-                  <td>
-                    {b.undoable && !readOnly && (
-                      <button
-                        type="button"
-                        class="tm-button tm-secondary tm-small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onUndo(b);
-                        }}
-                      >
-                        Undo
-                      </button>
-                    )}
-                  </td>
-                </tr>
-                {open === b.id && (
-                  <tr key={`${b.id}-files`} class="tm-detail-row">
-                    <td colSpan={4}>
-                      <ul class="tm-values">
-                        {b.files.map((f) => (
-                          <li key={f.path}>
-                            <span class="tm-path">{f.path}</span> — {f.status.replace("_", " ")}
-                            {f.error && <span class="tm-muted">: {f.error}</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                  </tr>
-                )}
-              </>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
+/**
+ * The proposed changes (the Changes tab, D53). Writing, building again and the proposal's state are the
+ * page header's; this card is what would change and the per-field decisions.
+ */
 export function Review(
-  { releaseId, files, version, onFilesChanged }: {
+  { releaseId, data, files, live, onReload }: {
     releaseId: number;
+    /** Loaded and kept live by the release page. */
+    data: ProposalResponse;
     files: LibraryFileDto[];
-    /** Bumped by the page when the user picks a release, so the panel reloads. */
-    version: number;
-    onFilesChanged: () => void;
+    /** A job for the release runs: no decisions meanwhile. */
+    live: boolean;
+    onReload: () => Promise<void>;
   },
 ) {
-  const [data, setData] = useState<ProposalResponse | null>(null);
-  const [hist, setHist] = useState<HistoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showUnchanged, setShowUnchanged] = useState(false);
-
-  const load = async () => {
-    try {
-      const [p, h] = await Promise.all([api.proposal(releaseId), api.history(releaseId)]);
-      // A batch that finished since the last load changed the files on disk.
-      if (hist && hist.job && !h.job) onFilesChanged();
-      setData(p);
-      setHist(h);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-  useEffect(() => {
-    load();
-  }, [releaseId, version]);
-
-  // Poll while a proposal is being built or a write/undo runs.
-  const live = !!data?.job || !!hist?.job;
-  useEffect(() => {
-    if (!live) return;
-    const t = setTimeout(load, 1500);
-    return () => clearTimeout(t);
-  }, [data, hist]);
+  const load = onReload;
 
   /** Runs an action, then reloads; errors (409 etc.) are shown, not thrown. */
   const act = async (fn: () => Promise<unknown>) => {
@@ -605,22 +496,18 @@ export function Review(
     }
   };
 
-  if (!data || !hist) return null;
   const p = data.proposal;
   if (!p) {
-    return data.job
-      ? (
-        <section class="tm-card">
-          <h2>Proposed tags</h2>
-          <p class="tm-muted">Building the proposal…</p>
-        </section>
-      )
-      : <History data={hist} readOnly={data.readOnly} onUndo={(b) => act(() => api.undo(b.id))} />;
+    return (
+      <section class="tm-card">
+        <p class="tm-muted">
+          {data.job ? "Preparing the changes…" : "No changes proposed yet: choose a release in the Match tab."}
+        </p>
+      </section>
+    );
   }
 
-  const open = p.state === "needs_review" || p.state === "approved" || p.state === "draft";
-  const toWrite = p.fields.filter(writes).length + (p.cover?.writes ? 1 : 0);
-  const rebuild = p.releaseMbid ? { releaseMbid: p.releaseMbid } : { providerUrl: p.sourceUrl! };
+  const open = isOpen(p);
   const conflicts = p.counts.conflicts;
   const fileName = new Map(files.map((f) => [f.id, f.tags.title ?? f.path.split("/").pop() ?? f.path]));
   const relGroups: Group[] = RELEASE_FIELDS
@@ -638,7 +525,7 @@ export function Review(
     primary: p.primarySource ?? "musicbrainz",
     locks: data.locks,
     releaseId,
-    busy: busy || !open,
+    busy: busy || live || !open,
     onDecide: (ids: number[], decision: FieldDecision, edited?: unknown) =>
       act(() => api.decide(p.id, { fieldIds: ids, decision, ...(edited !== undefined ? { edited } : {}) })),
     onPick: (ids: number[], source: NonNullable<DecisionRequest["source"]>) =>
@@ -653,12 +540,7 @@ export function Review(
       <section class="tm-card">
         <div class="tm-toolbar">
           <div>
-            <h2>
-              Proposed tags{" "}
-              <span class={`tm-badge tm-inline ${p.state === "written" ? "tm-badge-ok" : ""}`}>
-                {p.state.replace("_", " ")}
-              </span>
-            </h2>
+            <h2>Proposed changes</h2>
             <p class="tm-muted tm-section-note">
               From {p.releaseMbid
                 ? (
@@ -701,32 +583,17 @@ export function Review(
               <button
                 type="button"
                 class="tm-button tm-secondary"
-                disabled={busy}
+                disabled={busy || live}
                 onClick={() => act(() => api.discard(p.id))}
               >
                 Discard
-              </button>
-            )}
-            {open && (
-              <button
-                type="button"
-                class="tm-button"
-                disabled={busy || live || data.readOnly || p.stale || toWrite === 0 || conflicts > 0}
-                title={data.readOnly
-                  ? "Read-only mode: nothing is written"
-                  : conflicts > 0
-                  ? "Choose a value for each field whose sources disagree first"
-                  : undefined}
-                onClick={() => act(() => api.write(p.id))}
-              >
-                {hist.job ? "Writing…" : `Write ${toWrite} change${toWrite === 1 ? "" : "s"} to files`}
               </button>
             )}
           </div>
         </div>
         <ProviderMatches matches={p.providers} fromLink={!p.releaseMbid} />
         {conflicts > 0 && open && (
-          <p>
+          <p id="tm-conflicts">
             <span class="tm-badge tm-badge-error tm-inline">
               {conflicts} field{conflicts === 1 ? "" : "s"} where MusicBrainz and another provider disagree
             </span>{" "}
@@ -735,32 +602,6 @@ export function Review(
         )}
         {data.readOnly && (
           <p class="tm-badge tm-badge-warn tm-inline">Read-only mode: you can review, but nothing is written.</p>
-        )}
-        {p.stale && open && (
-          <p>
-            <span class="tm-badge tm-badge-warn tm-inline">The files changed since this proposal was built.</span>{" "}
-            <button
-              type="button"
-              class="tm-button tm-secondary tm-small"
-              disabled={busy || live}
-              onClick={() => act(() => api.propose(releaseId, rebuild))}
-            >
-              Build again
-            </button>
-          </p>
-        )}
-        {p.state === "discarded" && (
-          <p class="tm-muted">
-            Discarded.{" "}
-            <button
-              type="button"
-              class="tm-button tm-secondary tm-small"
-              disabled={busy || live}
-              onClick={() => act(() => api.propose(releaseId, rebuild))}
-            >
-              Build again
-            </button>
-          </p>
         )}
         {error && <p class="tm-error" role="alert">{error}</p>}
         {p.unmappedFiles.length > 0 && (
@@ -771,7 +612,7 @@ export function Review(
         )}
         <label class="tm-check">
           <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.currentTarget.checked)} />
-          Show fields that are already right
+          Show all fields
         </label>
 
         {p.cover && (
@@ -799,7 +640,6 @@ export function Review(
           </div>
         ))}
       </section>
-      <History data={hist} readOnly={data.readOnly} onUndo={(b) => act(() => api.undo(b.id))} />
     </>
   );
 }
