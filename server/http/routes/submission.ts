@@ -17,6 +17,7 @@ import {
   updateSubmission,
 } from "../../db/repo/submissions.ts";
 import { enqueueSubmissionCheck, enqueueSubmissionVerify } from "../../jobs/submission.ts";
+import { NO_MATCH } from "../../submission/artists.ts";
 import type { JobQueue } from "../../jobs/queue.ts";
 import type { AuthEnv } from "../auth.ts";
 
@@ -34,7 +35,10 @@ const MBID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 const callbackBody = z.object({ release: z.string().max(300) }).strict();
 
-/** An artist the user matched by hand: an MBID or a MusicBrainz artist link; null forgets the choice. */
+/**
+ * An artist the user matched by hand: an MBID or a MusicBrainz artist link; "none" rejects a name
+ * match (the artist stays unlinked); null forgets the choice.
+ */
 const artistBody = z.object({ name: z.string().min(1).max(500), artist: z.string().max(300).nullable() }).strict();
 
 /** Where to add cover art and ISRCs once the release exists (§12.2: follow-ups, never automated). */
@@ -151,6 +155,7 @@ export function submissionRoutes(deps: SubmissionRouteDeps) {
       }
       const choices = { ...s.artistChoices };
       if (body.data.artist === null) delete choices[body.data.name];
+      else if (body.data.artist === NO_MATCH) choices[body.data.name] = NO_MATCH;
       else {
         const mbid = MBID.exec(body.data.artist)?.[0]?.toLowerCase();
         if (!mbid) return c.json({ error: "No MusicBrainz artist id in that" }, 400);

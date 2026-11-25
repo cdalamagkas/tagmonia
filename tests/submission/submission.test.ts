@@ -2,7 +2,13 @@
 import { assert, assertEquals } from "@std/assert";
 import type { ReleaseQuery } from "../../server/providers/musicbrainz/client.ts";
 import { findDuplicates } from "../../server/submission/duplicates.ts";
-import { artistCreateUrl, collectArtists, resolveArtists, withArtistMbids } from "../../server/submission/artists.ts";
+import {
+  artistCreateUrl,
+  collectArtists,
+  NO_MATCH,
+  resolveArtists,
+  withArtistMbids,
+} from "../../server/submission/artists.ts";
 import { editNote, mergedFromMatches, seedFor } from "../../server/submission/seed.ts";
 import { VERSION } from "../../server/version.ts";
 import { MATCHES } from "./helpers.ts";
@@ -176,4 +182,41 @@ Deno.test("the test server's search misses an artist: musicbrainz.org's search s
     chosen: {},
   });
   assertEquals(plain.suggestions, []);
+});
+
+Deno.test("the only artist with exactly this name is linked, for checking; namesakes stay a choice; a rejection sticks", async () => {
+  const KRAUSS = "a0de8661-3d7c-4373-8971-7f429235d141";
+  const server = (hits: { id: string; name: string; score: number }[]) => ({
+    artistsForUrl: () => Promise.resolve({ value: [], snapshotId: 0 }),
+    searchArtists: () => Promise.resolve({ value: hits, snapshotId: 0 }),
+    lookupArtist: (mbid: string) => Promise.resolve({ id: mbid, name: "x" }),
+  });
+  const run = (hits: { id: string; name: string; score: number }[], chosen: Record<string, string> = {}) =>
+    resolveArtists(server(hits), [{
+      name: "Matthias Krauss",
+      links: [{ url: "https://www.deezer.com/artist/5", linkTypeIds: [194] }],
+    }], {
+      server: "https://test.musicbrainz.org",
+      releaseUrl: "https://www.deezer.com/album/1",
+      chosen,
+    }).then((r) => r[0]);
+
+  const unique = await run([{ id: KRAUSS, name: "matthias krauss", score: 100 }, {
+    id: "x",
+    name: "Matthias Kraus",
+    score: 90,
+  }]);
+  assertEquals([unique.mbid, unique.via, unique.createUrl], [KRAUSS, "name", null]);
+  assert(unique.addLinksUrl?.includes(`/artist/${KRAUSS}/edit?`), "offered: add the Deezer page to the artist");
+
+  const namesakes = await run([{ id: KRAUSS, name: "Matthias Krauss", score: 100 }, {
+    id: "y",
+    name: "Matthias Krauss",
+    score: 100,
+  }]);
+  assertEquals([namesakes.mbid, namesakes.suggestions.length], [null, 2]);
+
+  const rejected = await run([{ id: KRAUSS, name: "Matthias Krauss", score: 100 }], { "Matthias Krauss": NO_MATCH });
+  assertEquals([rejected.mbid, rejected.suggestions.map((g) => g.mbid)], [null, [KRAUSS]]);
+  assert(rejected.createUrl, "rejected: can still be added");
 });

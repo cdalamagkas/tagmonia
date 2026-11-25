@@ -30,8 +30,11 @@ export interface ArtistResolution {
   name: string;
   links: ArtistLink[];
   mbid: string | null;
-  /** How the MBID was found: by a provider page linked on MusicBrainz, or the user's choice. */
-  via: "link" | "chosen" | null;
+  /**
+   * How the MBID was found: by a provider page linked on MusicBrainz, the user's choice, or the only
+   * artist with exactly this name (to be checked by the user, who can reject it).
+   */
+  via: "link" | "chosen" | "name" | null;
   /** When not found: artists with this name, for the user to check. */
   suggestions: ArtistSuggestion[];
   /** When not found: MusicBrainz's "Add artist" form, filled in. */
@@ -42,6 +45,9 @@ export interface ArtistResolution {
    */
   addLinksUrl: string | null;
 }
+
+/** Stored as the user's choice when they reject a name match ("Not this artist"). */
+export const NO_MATCH = "none";
 
 /** Every artist credited on the release or a track, once, with all its provider pages. */
 export function collectArtists(
@@ -129,7 +135,9 @@ export async function resolveArtists(
         break;
       }
     }
-    if (!mbid && opts.chosen[a.name]) {
+    // "none": the user rejected the name match; the artist stays unlinked until chosen or added.
+    const rejected = opts.chosen[a.name] === NO_MATCH;
+    if (!mbid && opts.chosen[a.name] && !rejected) {
       mbid = opts.chosen[a.name];
       via = "chosen";
     }
@@ -142,13 +150,26 @@ export async function resolveArtists(
         country: h.country ?? null,
         score: h.score ?? null,
       });
-      const good = (hits: Awaited<ReturnType<typeof mb.searchArtists>>["value"]) =>
-        hits.filter((h) => (h.score ?? 0) >= 80).slice(0, 3);
-      suggestions = good((await mb.searchArtists(a.name, { ...fresh, limit: 5 })).value).map(toSuggestion);
+      type Hits = Awaited<ReturnType<typeof mb.searchArtists>>["value"];
+      const good = (hits: Hits) => hits.filter((h) => (h.score ?? 0) >= 80).slice(0, 3);
+      const same = (n: string) => n.normalize("NFC").toLowerCase() === a.name.normalize("NFC").toLowerCase();
+      let hits = (await mb.searchArtists(a.name, { ...fresh, limit: 10 })).value;
+      suggestions = good(hits).map(toSuggestion);
       if (suggestions.length === 0 && opts.fallbackSearch) {
-        for (const h of good((await opts.fallbackSearch.searchArtists(a.name, { ...fresh, limit: 5 })).value)) {
+        hits = (await opts.fallbackSearch.searchArtists(a.name, { ...fresh, limit: 10 })).value;
+        for (const h of good(hits)) {
           if (await mb.lookupArtist(h.id, fresh)) suggestions.push(toSuggestion(h));
         }
+      }
+      // Exactly one artist with exactly this name (among all hits, not only those shown): linked, for the
+      // user to check. Two artists with the name stay a choice, so a namesake is never linked silently.
+      const exact = hits.filter((h) => same(h.name));
+      const only = exact.length === 1 && (exact[0].score ?? 0) >= 100
+        ? suggestions.find((g) => g.mbid === exact[0].id)
+        : undefined;
+      if (only && !rejected) {
+        mbid = only.mbid;
+        via = "name";
       }
     }
     out.push({
@@ -158,7 +179,10 @@ export async function resolveArtists(
       via,
       suggestions,
       createUrl: mbid ? null : artistCreateUrl(opts.server, a, opts.releaseUrl),
-      addLinksUrl: via === "chosen" && mbid ? artistAddLinksUrl(opts.server, mbid, a.links, opts.releaseUrl) : null,
+      // Not found by its pages: offer to add them to the artist, so later releases find it by them.
+      addLinksUrl: (via === "chosen" || via === "name") && mbid
+        ? artistAddLinksUrl(opts.server, mbid, a.links, opts.releaseUrl)
+        : null,
     });
   }
   return out;

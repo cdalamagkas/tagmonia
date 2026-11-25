@@ -348,7 +348,8 @@ export interface SubmissionArtistDto {
   name: string;
   links: { url: string; linkTypeIds: number[] }[];
   mbid: string | null;
-  via: "link" | "chosen" | null;
+  /** "name": the only artist with exactly this name, linked for the user to check (they can reject it). */
+  via: "link" | "chosen" | "name" | null;
   suggestions: {
     mbid: string;
     name: string;

@@ -70,9 +70,26 @@ function Artists(
                 <>
                   <span class="tm-badge tm-badge-ok tm-inline">on {host(s.server)}</span>{" "}
                   <a href={`${s.server}/artist/${a.mbid}`} target="_blank" rel="noopener noreferrer">
-                    {a.via === "chosen" ? "your choice" : "found by its provider page"}
+                    {a.via === "chosen"
+                      ? "your choice"
+                      : a.via === "name"
+                      ? "same name: check it is the same artist"
+                      : "found by its provider page"}
                   </a>
-                  {a.via === "chosen" && a.addLinksUrl && (
+                  {a.via === "name" && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        class="tm-linklike tm-small-link"
+                        disabled={busy}
+                        onClick={() => onChoose(a.name, "none")}
+                      >
+                        not this artist
+                      </button>
+                    </>
+                  )}
+                  {a.addLinksUrl && (
                     <>
                       {" · "}
                       <a href={a.addLinksUrl} target="_blank" rel="noopener noreferrer">
@@ -97,7 +114,9 @@ function Artists(
               )
               : (
                 <>
-                  <span class="tm-badge tm-badge-warn tm-inline">not found on {host(s.server)}</span>{" "}
+                  <span class="tm-badge tm-badge-warn tm-inline">
+                    {a.suggestions.length > 0 ? "not linked yet" : `not on ${host(s.server)}`}
+                  </span>{" "}
                   {a.suggestions.length > 0 && (
                     <div>
                       Is it {a.suggestions.length === 1 ? "this artist" : "one of these"}?{" "}
