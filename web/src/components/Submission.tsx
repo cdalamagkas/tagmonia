@@ -1,24 +1,28 @@
 /**
- * Adding a release that MusicBrainz lacks (§12, D52): check for duplicates, open
- * MusicBrainz's release editor pre-filled in a new tab, and follow up once
- * MusicBrainz sends the new release back. The user reviews and submits on
+ * Adding a release that MusicBrainz lacks (§12, D52), as a step panel launched from the release page's
+ * header (D53, PR 4): check for duplicates and artists, open MusicBrainz's release editor pre-filled in a
+ * new tab, and follow up once MusicBrainz sends the new release back. The user reviews and submits on
  * MusicBrainz, from their own account; Tagmonia never submits anything.
  */
 import { useState } from "preact/hooks";
-import type { ProposalDto, SubmissionDto } from "../../../shared/types.ts";
+import type { ProposalDto, SubmissionArtistDto, SubmissionDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
-
-const TEST = "https://test.musicbrainz.org";
-
-function host(server: string): string {
-  return new URL(server).host;
-}
+import {
+  activeSubmission,
+  artistRow,
+  artistsToLink,
+  serverHost,
+  STEPS,
+  type StepsView,
+  stepsView,
+  TEST_SERVER,
+} from "../release/submission.ts";
 
 /**
  * Posts the seed to the release editor in a new tab. The tab is opened before the
  * request, while the click still counts as the user's, so it is not blocked as a pop-up.
  */
-async function openEditor(id: number): Promise<void> {
+export async function openEditor(id: number): Promise<void> {
   const tab = globalThis.open("", "tagmonia-mb-editor");
   try {
     const { action, fields } = await api.openSubmission(id);
@@ -46,122 +50,119 @@ async function openEditor(id: number): Promise<void> {
 }
 
 /**
- * §12.3: the editor links an artist only by MBID. Found artists are listed as linked; the others
- * get MusicBrainz's "Add artist" form (filled in, opening in a new tab) and name suggestions.
+ * §12.3: the editor links an artist only by MBID. One row per credited artist, in one format:
+ * name — status — link to the artist — one action, the action following the status.
  */
-function Artists(
-  { s, busy, onChoose, onRecheck }: {
-    s: SubmissionDto;
+function ArtistLine(
+  { a, server, busy, onChoose }: {
+    a: SubmissionArtistDto;
+    server: string;
     busy: boolean;
     onChoose: (name: string, artist: string | null) => void;
-    onRecheck: () => void;
+  },
+) {
+  const row = artistRow(a, server);
+  return (
+    <li class="tm-artist-row">
+      <strong>{row.name}</strong>
+      <span class={`tm-badge tm-inline ${row.ok ? "tm-badge-ok" : "tm-badge-warn"}`}>{row.label}</span>
+      {row.url && <a href={row.url} target="_blank" rel="noopener noreferrer">on {serverHost(server)}</a>}
+      {row.status === "chosen" && (
+        <button
+          type="button"
+          class="tm-linklike tm-small-link"
+          disabled={busy}
+          onClick={() => onChoose(a.name, null)}
+        >
+          undo
+        </button>
+      )}
+      {row.status === "name" && (
+        <button
+          type="button"
+          class="tm-linklike tm-small-link"
+          disabled={busy}
+          onClick={() => onChoose(a.name, "none")}
+        >
+          not this artist
+        </button>
+      )}
+      {a.addLinksUrl && (
+        <a class="tm-small-link" href={a.addLinksUrl} target="_blank" rel="noopener noreferrer">
+          add its {a.links.length === 1 ? "provider page" : "provider pages"}
+        </a>
+      )}
+      {!row.ok && (
+        <div class="tm-artist-fix">
+          {a.suggestions.map((g) => (
+            <div key={g.mbid}>
+              <a href={`${server}/artist/${g.mbid}`} target="_blank" rel="noopener noreferrer">{g.name}</a>
+              {(g.disambiguation || g.country) && (
+                <span class="tm-muted">{` (${[g.disambiguation, g.country].filter(Boolean).join(", ")})`}</span>
+              )}{" "}
+              <button
+                type="button"
+                class="tm-button tm-secondary tm-small"
+                disabled={busy}
+                onClick={() => onChoose(a.name, g.mbid)}
+              >
+                Use this artist
+              </button>
+            </div>
+          ))}
+          <details class="tm-fold" open={a.suggestions.length === 0}>
+            <summary>
+              {a.suggestions.length > 0 ? "None of these?" : `Add it, or paste its ${serverHost(server)} link`}
+            </summary>
+            <PasteArtist server={server} busy={busy} onUse={(link) => onChoose(a.name, link)} />
+            {a.createUrl && (
+              <p class="tm-small-note">
+                <a href={a.createUrl} target="_blank" rel="noopener noreferrer">
+                  Add this artist on {serverHost(server)}
+                </a>{" "}
+                <span class="tm-muted">(the form is filled in with its provider pages)</span>
+              </p>
+            )}
+          </details>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function Artists(
+  { s, busy, skipped, onChoose }: {
+    s: SubmissionDto;
+    busy: boolean;
+    skipped: boolean;
+    onChoose: (name: string, artist: string | null) => void;
   },
 ) {
   if (s.artists.length === 0) return null;
-  const missing = s.artists.filter((a) => !a.mbid);
+  if (skipped) {
+    return (
+      <p class="tm-step-line">
+        <strong>Artists:</strong> {s.artists.map((a, i) => (
+          <>
+            {i > 0 && ", "}
+            <a href={`${s.server}/artist/${a.mbid}`} target="_blank" rel="noopener noreferrer">{a.name}</a>
+          </>
+        ))} <span class="tm-muted">found on {serverHost(s.server)} by their provider pages</span>
+      </p>
+    );
+  }
+  const missing = artistsToLink(s);
   return (
-    <div class="tm-sub-artists">
+    <div class="tm-step-section">
       <h3>Artists</h3>
-      <ul class="tm-values">
-        {s.artists.map((a) => (
-          <li key={a.name}>
-            <strong>{a.name}</strong> {a.mbid
-              ? (
-                <>
-                  <span class="tm-badge tm-badge-ok tm-inline">on {host(s.server)}</span>{" "}
-                  <a href={`${s.server}/artist/${a.mbid}`} target="_blank" rel="noopener noreferrer">
-                    {a.via === "chosen"
-                      ? "your choice"
-                      : a.via === "name"
-                      ? "same name: check it is the same artist"
-                      : "found by its provider page"}
-                  </a>
-                  {a.via === "name" && (
-                    <>
-                      {" · "}
-                      <button
-                        type="button"
-                        class="tm-linklike tm-small-link"
-                        disabled={busy}
-                        onClick={() => onChoose(a.name, "none")}
-                      >
-                        not this artist
-                      </button>
-                    </>
-                  )}
-                  {a.addLinksUrl && (
-                    <>
-                      {" · "}
-                      <a href={a.addLinksUrl} target="_blank" rel="noopener noreferrer">
-                        add its {a.links.length === 1 ? "provider page" : "provider pages"} on {host(s.server)}
-                      </a>
-                    </>
-                  )}
-                  {a.via === "chosen" && (
-                    <>
-                      {" · "}
-                      <button
-                        type="button"
-                        class="tm-linklike tm-small-link"
-                        disabled={busy}
-                        onClick={() => onChoose(a.name, null)}
-                      >
-                        undo
-                      </button>
-                    </>
-                  )}
-                </>
-              )
-              : (
-                <>
-                  <span class="tm-badge tm-badge-warn tm-inline">
-                    {a.suggestions.length > 0 ? "not linked yet" : `not on ${host(s.server)}`}
-                  </span>{" "}
-                  {a.suggestions.length > 0 && (
-                    <div>
-                      Is it {a.suggestions.length === 1 ? "this artist" : "one of these"}?{" "}
-                      {a.suggestions.map((g, i) => (
-                        <span key={g.mbid}>
-                          {i > 0 && " · "}
-                          <a href={`${s.server}/artist/${g.mbid}`} target="_blank" rel="noopener noreferrer">
-                            {g.name}
-                          </a>
-                          {(g.disambiguation || g.country) &&
-                            ` (${[g.disambiguation, g.country].filter(Boolean).join(", ")})`}{" "}
-                          <button
-                            type="button"
-                            class="tm-button tm-secondary tm-small"
-                            disabled={busy}
-                            onClick={() => onChoose(a.name, g.mbid)}
-                          >
-                            Use this artist
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <PasteArtist server={s.server} busy={busy} onUse={(link) => onChoose(a.name, link)} />
-                  {a.createUrl && (
-                    <div class="tm-small-note">
-                      {a.suggestions.length > 0 ? "None of these? " : ""}
-                      <a href={a.createUrl} target="_blank" rel="noopener noreferrer">
-                        Add this artist on {host(s.server)}
-                      </a>
-                    </div>
-                  )}
-                </>
-              )}
-          </li>
-        ))}
+      <ul class="tm-artist-rows">
+        {s.artists.map((a) => <ArtistLine key={a.name} a={a} server={s.server} busy={busy} onChoose={onChoose} />)}
       </ul>
-      {missing.length > 0 && (
-        <p class="tm-muted">
-          The release editor links an artist only when it already exists on{" "}
-          {host(s.server)}. Use the matching artist, or add {missing.length === 1 ? "it" : "them"}{" "}
-          with the link above (the form is filled in with the provider pages, so Tagmonia can find{" "}
-          {missing.length === 1 ? "it" : "them"} afterwards), then{" "}
-          <button type="button" class="tm-linklike" disabled={busy} onClick={onRecheck}>check again</button>. You can
-          also open the editor now and choose or add artists there.
+      {missing > 0 && (
+        <p class="tm-muted tm-small-note">
+          The release editor links an artist only when it already exists on {serverHost(s.server)}. Add{" "}
+          {missing === 1 ? "it" : "them"}, then Check again below; or open the editor now and add{" "}
+          {missing === 1 ? "it" : "them"} there.
         </p>
       )}
     </div>
@@ -181,7 +182,7 @@ function PasteArtist({ server, busy, onUse }: { server: string; busy: boolean; o
     >
       <input
         type="url"
-        placeholder={`or paste the artist's ${host(server)} link`}
+        placeholder={`the artist's ${serverHost(server)} link`}
         aria-label="MusicBrainz artist link"
         value={link}
         onInput={(e) => setLink(e.currentTarget.value)}
@@ -191,15 +192,24 @@ function PasteArtist({ server, busy, onUse }: { server: string; busy: boolean; o
   );
 }
 
-function Duplicates({ s, onUse }: { s: SubmissionDto; onUse: (mbid: string) => void }) {
+function Duplicates({ s, busy, onUse }: { s: SubmissionDto; busy: boolean; onUse: (mbid: string) => void }) {
   if (s.duplicates.length === 0) {
-    return <p class="tm-muted">{host(s.server)} has nothing with this barcode, these provider pages, or this title.</p>;
+    return (
+      <p class="tm-step-line">
+        <strong>Duplicates:</strong>{" "}
+        <span class="tm-muted">
+          none on {serverHost(s.server)} (nothing with this barcode, these provider pages, or this title)
+        </span>
+      </p>
+    );
   }
   return (
-    <>
-      <p>
-        <span class="tm-badge tm-badge-warn tm-inline">check first</span> {host(s.server)}{" "}
-        may already have this release. If one of these is it, use it instead of adding a duplicate.
+    <div class="tm-step-section">
+      <h3>Possible duplicates</h3>
+      <p class="tm-muted tm-small-note">
+        {serverHost(s.server)}{" "}
+        may already have this release. If one of these is it, use it instead of adding a duplicate: the tags are then
+        proposed from it.
       </p>
       <div class="tm-table-wrap">
         <table class="tm-table">
@@ -227,7 +237,12 @@ function Duplicates({ s, onUse }: { s: SubmissionDto; onUse: (mbid: string) => v
                 <td class="tm-num">{d.trackCount ?? "–"}</td>
                 <td class="tm-muted">{d.reasons.join("; ")}</td>
                 <td>
-                  <button type="button" class="tm-button tm-secondary tm-small" onClick={() => onUse(d.mbid)}>
+                  <button
+                    type="button"
+                    class="tm-button tm-secondary tm-small"
+                    disabled={busy}
+                    onClick={() => onUse(d.mbid)}
+                  >
                     Use this
                   </button>
                 </td>
@@ -236,30 +251,169 @@ function Duplicates({ s, onUse }: { s: SubmissionDto; onUse: (mbid: string) => v
           </tbody>
         </table>
       </div>
-    </>
+    </div>
   );
 }
 
-export function Submission(
-  { releaseId, proposal, submission: sub, onReload }: {
+function Progress({ view }: { view: StepsView }) {
+  return (
+    <ol class="tm-steps" aria-label="Steps">
+      {STEPS.map((step, i) => {
+        const st = view.states[step.id];
+        return (
+          <li
+            key={step.id}
+            class={`tm-step tm-step-${st}`}
+            aria-current={st === "current" ? "step" : undefined}
+            title={st === "skipped" ? "Nothing to do here" : undefined}
+          >
+            <span class="tm-step-n" aria-hidden="true">{st === "done" || st === "skipped" ? "✓" : i + 1}</span>
+            {step.label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Step 4: the editor, then the wait for MusicBrainz to send the browser back. */
+function Editor(
+  { s, busy, act }: { s: SubmissionDto; busy: boolean; act: (fn: () => Promise<unknown>) => Promise<void> },
+) {
+  const [link, setLink] = useState("");
+  const host = serverHost(s.server);
+  if (s.state === "verifying") return <p class="tm-muted">Checking the new release on {host}…</p>;
+  return (
+    <div class="tm-step-section">
+      <h3>Release editor</h3>
+      <p>
+        <button type="button" class="tm-button" disabled={busy} onClick={() => act(() => openEditor(s.id))}>
+          {s.state === "seeded" ? "Open the release editor again" : `Open the ${host} release editor`}
+        </button>
+      </p>
+      {s.state === "ready" && (
+        <p class="tm-muted tm-small-note">
+          It opens in a new tab, filled in from the providers. You check it and submit it from your own MusicBrainz
+          account; nothing is submitted for you.
+        </p>
+      )}
+      {s.state === "seeded" && (
+        <>
+          <p role="status">
+            Waiting for you to submit on{" "}
+            {host}. Check every tab of the editor first; MusicBrainz then sends you back here.
+          </p>
+          {s.error && <p class="tm-error">{s.error}</p>}
+          <p class="tm-muted tm-small-note">Not sent back? Paste the new release's link:</p>
+          <form
+            class="tm-inline-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              act(() => api.submissionCallback(s.id, link.trim())).then(() => setLink(""));
+            }}
+          >
+            <input
+              type="url"
+              placeholder={`${s.server}/release/…`}
+              aria-label={`The new release on ${host}`}
+              value={link}
+              onInput={(e) => setLink(e.currentTarget.value)}
+            />
+            <button type="submit" class="tm-button tm-secondary tm-small" disabled={busy || !link.trim()}>
+              Use this release
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Step 5: the release is on MusicBrainz; a checklist of what finishes the job. */
+function Done(
+  { s, proposal, changes, building, onShowChanges }: {
+    s: SubmissionDto;
+    proposal: ProposalDto | null;
+    changes: number;
+    building: boolean;
+    onShowChanges: () => void;
+  },
+) {
+  const host = serverHost(s.server);
+  const f = s.followUps;
+  const ours = proposal?.releaseMbid === s.releaseMbid;
+  const written = ours && changes === 0 && !building;
+  return (
+    <div class="tm-step-section">
+      <p>
+        <span class="tm-badge tm-badge-ok tm-inline">added</span> The release is on {host}
+        {f && (
+          <>
+            {": "}
+            <a href={f.release} target="_blank" rel="noopener noreferrer">{s.releaseMbid}</a>
+          </>
+        )}.
+      </p>
+      <ul class="tm-checklist">
+        <li class={written ? "tm-check-done" : ""}>
+          <strong>Write the MusicBrainz IDs</strong> {building || !ours
+            ? <span class="tm-muted">preparing the changes from the new release…</span>
+            : written
+            ? <span class="tm-muted">written</span>
+            : (
+              <>
+                <span class="tm-muted">{changes === 1 ? "1 change" : `${changes} changes`} ready</span>{" "}
+                <button type="button" class="tm-button tm-small" onClick={onShowChanges}>Review the changes</button>
+              </>
+            )}
+        </li>
+        {f && (
+          <li>
+            <a href={f.addCoverArt} target="_blank" rel="noopener noreferrer">Add cover art</a>{" "}
+            <span class="tm-muted">(Tagmonia cannot upload it; use the cover in the header)</span>
+          </li>
+        )}
+        {f?.isrcs
+          ? (
+            <li>
+              <a href={f.isrcs} target="_blank" rel="noopener noreferrer">Submit the ISRCs</a>{" "}
+              <span class="tm-muted">(with MagicISRC, from your MusicBrainz account)</span>
+            </li>
+          )
+          : s.server === TEST_SERVER && <li class="tm-muted">ISRCs can be submitted only to musicbrainz.org.</li>}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The Add to MusicBrainz panel (D52, D53 PR 4): launched from the header, over the tabs, closable at any
+ * point. The submission keeps its state when closed, and the header shows it.
+ */
+export function AddToMusicBrainz(
+  { releaseId, proposal, submission, changes, building, onReload, onClose, onShowChanges }: {
     releaseId: number;
-    /** Both loaded and kept live by the release page (D53): it polls while a check or verification runs. */
+    /** Both loaded and kept live by the release page: it polls while a check or verification runs. */
     proposal: ProposalDto | null;
     submission: SubmissionDto | null;
+    /** Changes the proposal would write, counted as the header counts them. */
+    changes: number;
+    /** A proposal is being built (after the return: from the new release). */
+    building: boolean;
     onReload: () => Promise<void>;
+    onClose: () => void;
+    onShowChanges: () => void;
   },
 ) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [link, setLink] = useState("");
-  const load = onReload;
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
-      await load();
+      await onReload();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -267,132 +421,99 @@ export function Submission(
     }
   };
 
-  const fromProvider = !!proposal && !proposal.releaseMbid && !!proposal.sourceUrl;
-  const active = sub && sub.state !== "abandoned";
-  if (!fromProvider && !(active && sub.state === "returned")) return null;
-  const testServer = sub?.server === TEST;
+  const sub = activeSubmission(submission);
+  const view = stepsView(sub);
+  const testServer = sub?.server === TEST_SERVER;
+  const working = sub && (sub.state === "ready" || sub.state === "seeded");
 
   return (
-    <section class="tm-card" id="tm-add-to-musicbrainz">
-      <h2>Add to MusicBrainz</h2>
-      {error && <p class="tm-error" role="alert">{error}</p>}
-      {(!active || sub.state === "failed") && proposal && (
-        <>
-          <p class="tm-muted tm-section-note">
-            MusicBrainz does not have this release. Tagmonia can open MusicBrainz's release editor filled in from the
-            providers; you check it and submit it from your own MusicBrainz account. Nothing is submitted for you.
-          </p>
-          {sub?.state === "failed" && sub.error && <p class="tm-error">{sub.error}</p>}
-          <button
-            type="button"
-            class="tm-button"
-            disabled={busy}
-            onClick={() => act(() => api.prepareSubmission(proposal.id))}
-          >
-            Check MusicBrainz and prepare the editor
-          </button>
-        </>
-      )}
-      {active && testServer && sub.state !== "failed" && (
-        <p>
+    <section class="tm-card tm-mb-panel" aria-labelledby="tm-mb-panel-title" id="tm-add-to-musicbrainz">
+      <div class="tm-mb-panel-head">
+        <h2 id="tm-mb-panel-title">Add to MusicBrainz</h2>
+        <button type="button" class="tm-icon-button" aria-label="Close" title="Close" onClick={onClose}>✕</button>
+      </div>
+      <Progress view={view} />
+      {testServer && (
+        <p class="tm-small-note">
           <span class="tm-badge tm-badge-warn tm-inline">test server</span>{" "}
-          This goes to test.musicbrainz.org (Settings → MusicBrainz submissions): it exists only there, and its
-          identifiers mean nothing on musicbrainz.org.
+          Releases added here exist only on test.musicbrainz.org (Settings → MusicBrainz submissions); their identifiers
+          mean nothing on musicbrainz.org.
         </p>
       )}
-      {sub?.state === "checking" && <p class="tm-muted">Checking {host(sub.server)} for this release…</p>}
-      {sub && (sub.state === "ready" || sub.state === "seeded") && (
+      {error && <p class="tm-error" role="alert">{error}</p>}
+
+      {view.current === "check" && (
+        sub?.state === "checking"
+          ? <p class="tm-muted">Checking {serverHost(sub.server)} for this release and its artists…</p>
+          : (
+            <div class="tm-step-section">
+              <p class="tm-muted tm-small-note">
+                MusicBrainz does not have this release. Tagmonia looks for it and its artists there first, then opens
+                MusicBrainz's release editor filled in from the providers. You check it and submit it from your own
+                MusicBrainz account.
+              </p>
+              {sub?.state === "failed" && sub.error && <p class="tm-error">{sub.error}</p>}
+              {proposal && (
+                <button
+                  type="button"
+                  class="tm-button"
+                  disabled={busy}
+                  onClick={() => act(() => api.prepareSubmission(proposal.id))}
+                >
+                  {sub?.state === "failed" ? "Try again" : "Check MusicBrainz and prepare the editor"}
+                </button>
+              )}
+            </div>
+          )
+      )}
+
+      {sub && (working || sub.state === "verifying") && (
         <>
           <Artists
             s={sub}
             busy={busy}
+            skipped={view.states.artists === "skipped"}
             onChoose={(name, artist) => act(() => api.chooseSubmissionArtist(sub.id, name, artist))}
-            onRecheck={() => act(() => api.recheckSubmission(sub.id))}
           />
           <Duplicates
             s={sub}
+            busy={busy}
             onUse={(mbid) =>
               act(async () => {
-                await api.propose(releaseId, { releaseMbid: mbid, ...(testServer ? { server: TEST } : {}) });
+                await api.propose(releaseId, { releaseMbid: mbid, ...(testServer ? { server: TEST_SERVER } : {}) });
                 await api.abandonSubmission(sub.id);
+                onClose();
+                onShowChanges();
               })}
           />
-          <p>
-            <button type="button" class="tm-button" disabled={busy} onClick={() => act(() => openEditor(sub.id))}>
-              {sub.state === "seeded" ? "Open the release editor again" : `Open the ${host(sub.server)} release editor`}
-            </button>{" "}
-            <button
-              type="button"
-              class="tm-button tm-secondary"
-              disabled={busy}
-              onClick={() => act(() => api.recheckSubmission(sub.id))}
-              title="Look for the release and its artists on MusicBrainz again, e.g. after adding an artist"
-            >
-              Check again
-            </button>{" "}
-            <button
-              type="button"
-              class="tm-button tm-secondary"
-              disabled={busy}
-              onClick={() => act(() => api.abandonSubmission(sub.id))}
-            >
-              Cancel
-            </button>
-          </p>
-          {sub.state === "seeded" && (
-            <>
-              <p class="tm-muted">
-                Check every tab of the editor, then submit. MusicBrainz sends you back here with the new release. If it
-                does not, paste the new release's link:
-              </p>
-              {sub.error && <p class="tm-error">{sub.error}</p>}
-              <form
-                class="tm-manual"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  act(() => api.submissionCallback(sub.id, link.trim())).then(() => setLink(""));
-                }}
-              >
-                <label>
-                  The new release on {host(sub.server)}
-                  <input
-                    type="url"
-                    placeholder={`${sub.server}/release/…`}
-                    value={link}
-                    onInput={(e) => setLink(e.currentTarget.value)}
-                  />
-                </label>
-                <button type="submit" class="tm-button tm-secondary" disabled={busy || !link.trim()}>
-                  Use this release
-                </button>
-              </form>
-            </>
-          )}
+          <Editor s={sub} busy={busy} act={act} />
         </>
       )}
-      {sub?.state === "verifying" && <p class="tm-muted">Checking the new release on {host(sub.server)}…</p>}
-      {sub?.state === "returned" && sub.followUps && (
-        <>
-          <p>
-            <span class="tm-badge tm-badge-ok tm-inline">added</span> The release is on {host(sub.server)}:{" "}
-            <a href={sub.followUps.release} target="_blank" rel="noopener noreferrer">{sub.releaseMbid}</a>. Its
-            MusicBrainz identifiers are in the proposal above: write them to the files to finish.
-          </p>
-          <ul class="tm-values">
-            <li>
-              <a href={sub.followUps.addCoverArt} target="_blank" rel="noopener noreferrer">Add cover art</a>{" "}
-              <span class="tm-muted">(cover art cannot be filled in by Tagmonia; upload the cover shown above)</span>
-            </li>
-            {sub.followUps.isrcs
-              ? (
-                <li>
-                  <a href={sub.followUps.isrcs} target="_blank" rel="noopener noreferrer">Submit the ISRCs</a>{" "}
-                  <span class="tm-muted">(with MagicISRC, from your MusicBrainz account)</span>
-                </li>
-              )
-              : testServer && <li class="tm-muted">ISRCs can be submitted only to musicbrainz.org.</li>}
-          </ul>
-        </>
+
+      {sub?.state === "returned" && (
+        <Done s={sub} proposal={proposal} changes={changes} building={building} onShowChanges={onShowChanges} />
+      )}
+
+      {working && (
+        <div class="tm-mb-panel-foot">
+          <button
+            type="button"
+            class="tm-button tm-secondary"
+            disabled={busy}
+            onClick={() => act(() => api.recheckSubmission(sub.id))}
+            title="Look for the release and its artists on MusicBrainz again, e.g. after adding an artist"
+          >
+            Check again
+          </button>
+          <button
+            type="button"
+            class="tm-button tm-secondary"
+            disabled={busy}
+            onClick={() => act(() => api.abandonSubmission(sub.id))}
+          >
+            Cancel the submission
+          </button>
+        </div>
       )}
     </section>
   );

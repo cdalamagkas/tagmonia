@@ -1,6 +1,6 @@
 # Release page restructure
 
-**Status:** accepted 2026-11-25, not started; next after Phase 5 (D53). Updated 2026-11-25 to cover the UI added
+**Status:** accepted 2026-11-25 (D53); built 2026-11-25 in four PRs, all done. Updated 2026-11-25 to cover the UI added
 after the proposal was written: the artist step of Add to MusicBrainz, its "Check again", the callback page and the
 test-server marking (D52).
 **Decided by the maintainer:** tabs (not collapsible sections); checkboxes replace "Use proposed / Keep current", with
@@ -228,7 +228,8 @@ The same EP, Add to MusicBrainz open at the artist step (test server):
 
 ## Plan
 
-Progress: PR 1 done (header, live updates, tabs); PR 2 done (the Changes tab); PR 3 done (the Match tab).
+Progress: PR 1 done (header, live updates, tabs); PR 2 done (the Changes tab); PR 3 done (the Match tab); PR 4 done
+(Add to MusicBrainz as a step panel).
 
 Four PRs, each usable on its own:
 
@@ -329,6 +330,41 @@ Each PR is checked in headless Chromium at desktop and phone width, with the mea
   - partial album (4 of 8 tracks): 1.4 screens, with the 4 missing tracks listed;
   - EP not on MusicBrainz: one card and a fold. Before, the "CD 1 — Niklas" guess at 47%, its weak mapping and the
     candidates filled the tab.
+
+## PR 4 as built
+
+- `web/src/release/submission.ts` gives the panel's model; it is pure and unit-tested
+  (`tests/web/submission.test.ts`, and the header states in `tests/web/status.test.ts`):
+  - the current step:
+    - **Check** before a check or after a failure;
+    - **Artists** while an artist has no MBID;
+    - **Duplicates** while there are possible duplicates;
+    - **Editor** once ready, while waiting and while verifying;
+    - **Done** once returned.
+
+    Artists and Duplicates are not gates: the editor stays one click away, since it can add artists itself. A step
+    with nothing to do shows as skipped. An artist still missing keeps its step's number, not a tick, once the editor
+    is open.
+  - one row per artist: its name, its status, the artist's page on the server, and the action that follows (undo; not
+    this artist; Use this artist per suggestion; under "None of these?" the paste box and "Add this artist");
+  - the header's sentence and action for each submission state, as in the table above. A returned submission speaks
+    only while the proposal is from the new release and nothing else comes first (files changed, an open choice). "Write
+    N changes" stays available as a secondary action while a submission is under way.
+- The panel (`components/Submission.tsx`) replaces the tabs while open, and its state is in the URL
+  (`?panel=musicbrainz`). Close (✕) keeps the submission as it is. The header's Add to MusicBrainz →, Continue and
+  Follow-ups open it; Open the release editor and Try again act directly.
+- One Check again and Cancel the submission, in the panel's footer. The inline "check again" in the artist note went.
+- "Use this" on a duplicate proposes from that release, cancels the submission, closes the panel and opens Changes.
+- Done: "added" with the new release's link, then a checklist. Write the MusicBrainz IDs shows "N changes ready" with
+  Review the changes (opens Changes), or "written". Then Add cover art and Submit the ISRCs.
+- The callback page now opens the release page with the panel at Done.
+- Checked in headless Chromium on silent stand-ins for a 3-track Deezer album missing from test.musicbrainz.org, whose
+  artist is missing there too. The test server was read only: the editor's form post was blocked, and step 5 was
+  reached with the callback page and an existing test-server release. Measured at 1280 × 900:
+  - artist step: the page is 1,046 px (1.2 screens), with 8 controls in the panel;
+  - phone width (390 px): no sideways scroll; the step line wraps without its connectors.
+
+  Before, the card sat at the top of the Changes tab (after PR 1), and below History before that (4,357 px down).
 
 ## Still to settle while building
 
