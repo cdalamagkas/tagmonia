@@ -295,6 +295,15 @@ export function Submission(
               type="button"
               class="tm-button tm-secondary"
               disabled={busy}
+              onClick={() => act(() => api.recheckSubmission(sub.id))}
+              title="Look for the release and its artists on MusicBrainz again, e.g. after adding an artist"
+            >
+              Check again
+            </button>{" "}
+            <button
+              type="button"
+              class="tm-button tm-secondary"
+              disabled={busy}
               onClick={() => act(() => api.abandonSubmission(sub.id))}
             >
               Cancel
