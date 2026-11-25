@@ -20,3 +20,33 @@ export function createMusicBrainzClient(db: Db, configDir: string, settings: Set
     },
   });
 }
+
+/**
+ * Clients for the servers releases can be submitted to (§12, D52). musicbrainz.org reuses the
+ * main client when that is what it talks to, so the two never exceed 1 request per second
+ * together; behind a mirror, and for the test server, each gets its own client and limiter.
+ */
+export function createSubmissionClients(
+  db: Db,
+  configDir: string,
+  main: MusicBrainzClient,
+): (server: string) => MusicBrainzClient {
+  const cache = new SnapshotCache(db, join(configDir, "snaps"));
+  const clients = new Map<string, MusicBrainzClient>();
+  if (main.baseUrl.hostname === "musicbrainz.org") clients.set("https://musicbrainz.org", main);
+  return (server) => {
+    let c = clients.get(server);
+    if (!c) {
+      if (server !== "https://musicbrainz.org" && server !== "https://test.musicbrainz.org") {
+        throw new Error(`not a MusicBrainz server Tagmonia submits to: ${server}`);
+      }
+      c = new MusicBrainzClient({
+        baseUrl: `${server}/ws/2/`,
+        cache,
+        http: { userAgent: USER_AGENT, limiter: new RateLimiter({ requests: 1, perMs: 1000 }) },
+      });
+      clients.set(server, c);
+    }
+    return c;
+  };
+}

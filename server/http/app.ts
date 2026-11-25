@@ -22,13 +22,14 @@ import { healthRoutes } from "./routes/health.ts";
 import { jobRoutes, libraryRoutes } from "./routes/library.ts";
 import { writeRoutes } from "./routes/writes.ts";
 import { reviewRoutes } from "./routes/review.ts";
+import { submissionRoutes } from "./routes/submission.ts";
 import { providerRoutes } from "./routes/providers.ts";
 import type { CredentialStore } from "../providers/credentials.ts";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy":
     "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; " +
-    "form-action 'self' https://musicbrainz.org; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+    "form-action 'self' https://musicbrainz.org https://test.musicbrainz.org; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "same-origin",
   "X-Frame-Options": "DENY",
@@ -112,6 +113,15 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
   );
   app.route("/api/jobs", jobRoutes(queue));
   app.route("/api", writeRoutes({ db, queue, readOnly: config.readOnly }));
+  app.route(
+    "/api",
+    submissionRoutes({
+      db,
+      queue,
+      server: () => ctx.settings.submission.server,
+      publicUrl: config.publicUrl,
+    }),
+  );
   app.route("/api", reviewRoutes({ db, coverDir: join(config.configDir, "covers") }));
   app.route(
     "/api",

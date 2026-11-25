@@ -49,6 +49,29 @@ export const RELEASE_INC = [
 /** Parent works and their composer, for `work` and movement fields (§6.3). */
 export const WORK_INC = ["work-rels", "artist-rels"].join("+");
 
+const urlRelsSchema = z.looseObject({
+  id: z.string(),
+  relations: z.array(z.looseObject({
+    release: z.looseObject({ id: z.string(), title: z.string() }).optional(),
+    artist: z.looseObject({ id: z.string(), name: z.string() }).optional(),
+  })).optional(),
+});
+
+const artistSchema = z.looseObject({ id: z.string(), name: z.string() });
+
+const artistSearchSchema = z.looseObject({
+  artists: z.array(z.looseObject({
+    id: z.string(),
+    name: z.string(),
+    score: z.number().optional(),
+    disambiguation: z.string().optional(),
+    country: z.string().nullable().optional(),
+    type: z.string().nullable().optional(),
+  })).default([]),
+});
+
+export type MbArtistHit = z.infer<typeof artistSearchSchema>["artists"][number];
+
 export interface Ttl {
   lookupMs: number;
   searchMs: number;
@@ -122,13 +145,13 @@ export class MusicBrainzClient {
 
   async searchReleases(
     q: ReleaseQuery,
-    opts: { limit?: number; signal?: AbortSignal } = {},
+    opts: { limit?: number; signal?: AbortSignal; maxAgeMs?: number } = {},
   ): Promise<Cited<MbReleaseSearch["releases"]>> {
     const query = buildReleaseQuery(q);
     if (!query) throw new Error("empty MusicBrainz release query");
     const limit = Math.min(100, Math.max(1, opts.limit ?? 25));
     const url = this.#url("release/", { query, limit: String(limit) });
-    const got = await this.#get(url, this.#ttl.searchMs, releaseSearchSchema, opts.signal);
+    const got = await this.#get(url, opts.maxAgeMs ?? this.#ttl.searchMs, releaseSearchSchema, opts.signal);
     if (!got) throw new ProviderHttpError(404, url.href);
     return { value: got.value.releases, snapshotId: got.snapshotId };
   }
@@ -180,6 +203,65 @@ export class MusicBrainzClient {
     const id = mbidSchema.parse(mbid);
     const url = this.#url(`release/${id}`, { inc: "genres+release-groups+url-rels" });
     return await this.#get(url, this.#ttl.lookupMs, releaseExtrasSchema, signal);
+  }
+
+  /**
+   * The releases a URL is linked to on MusicBrainz (e.g. a Deezer album page), for the
+   * duplicate check before seeding (§12.1); empty when MusicBrainz does not know the URL.
+   */
+  async releasesForUrl(
+    resource: string,
+    opts: { signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<Cited<{ id: string; title: string }[]>> {
+    const url = this.#url("url", { resource, inc: "release-rels" });
+    const got = await this.#get(url, opts.maxAgeMs ?? this.#ttl.searchMs, urlRelsSchema, opts.signal);
+    if (!got) return { value: [], snapshotId: 0 };
+    const releases = (got.value.relations ?? []).flatMap((r) => (r.release ? [r.release] : []));
+    return { value: releases, snapshotId: got.snapshotId };
+  }
+
+  /** The artists a URL is linked to (e.g. a Deezer artist page): finding a release's artists (D52). */
+  async artistsForUrl(
+    resource: string,
+    opts: { signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<Cited<{ id: string; name: string }[]>> {
+    const url = this.#url("url", { resource, inc: "artist-rels" });
+    const got = await this.#get(url, opts.maxAgeMs ?? this.#ttl.searchMs, urlRelsSchema, opts.signal);
+    if (!got) return { value: [], snapshotId: 0 };
+    const artists = (got.value.relations ?? []).flatMap((r) => (r.artist ? [r.artist] : []));
+    return { value: [...new Map(artists.map((a) => [a.id, a])).values()], snapshotId: got.snapshotId };
+  }
+
+  /** Whether an artist exists on this server (checked fresh): verifying suggestions from another server (D52). */
+  async lookupArtist(
+    mbid: string,
+    opts: { signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<{ id: string; name: string } | null> {
+    const id = mbidSchema.parse(mbid);
+    const got = await this.#get(
+      this.#url(`artist/${id}`, {}),
+      opts.maxAgeMs ?? this.#ttl.lookupMs,
+      artistSchema,
+      opts.signal,
+    );
+    return got ? { id: got.value.id, name: got.value.name } : null;
+  }
+
+  /** Artists by name, best first: suggestions when an artist could not be found by its pages (D52). */
+  async searchArtists(
+    name: string,
+    opts: { limit?: number; signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<Cited<MbArtistHit[]>> {
+    const query = `artist:${phrase(name)}`;
+    const url = this.#url("artist/", { query, limit: String(Math.min(25, Math.max(1, opts.limit ?? 5))) });
+    const got = await this.#get(url, opts.maxAgeMs ?? this.#ttl.searchMs, artistSearchSchema, opts.signal);
+    return { value: got?.value.artists ?? [], snapshotId: got?.snapshotId ?? 0 };
+  }
+
+  /** A release fetched now, never from the cache: verifying a just-submitted release (§12.2). */
+  async lookupReleaseFresh(mbid: string, signal?: AbortSignal): Promise<Cited<MbRelease> | null> {
+    const id = mbidSchema.parse(mbid);
+    return await this.#get(this.#url(`release/${id}`, { inc: RELEASE_INC }), 0, releaseSchema, signal, assertComplete);
   }
 
   async lookupWork(mbid: string, signal?: AbortSignal): Promise<Cited<MbWork> | null> {

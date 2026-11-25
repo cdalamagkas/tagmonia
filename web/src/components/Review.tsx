@@ -662,13 +662,23 @@ export function Review(
             <p class="tm-muted tm-section-note">
               From {p.releaseMbid
                 ? (
-                  <a
-                    href={`https://musicbrainz.org/release/${p.releaseMbid}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    this MusicBrainz release
-                  </a>
+                  <>
+                    <a
+                      href={`${p.mbServer ?? "https://musicbrainz.org"}/release/${p.releaseMbid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      this MusicBrainz release
+                    </a>
+                    {p.mbServer && (
+                      <span
+                        class="tm-badge tm-badge-warn tm-inline"
+                        title="These identifiers exist only on the test server"
+                      >
+                        {new URL(p.mbServer).host}
+                      </span>
+                    )}
+                  </>
                 )
                 : (
                   <>

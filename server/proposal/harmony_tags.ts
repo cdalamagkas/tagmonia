@@ -22,7 +22,7 @@ export function providerTrackId(medium: number, position: number): string {
 
 type Credit = HarmonizedRelease["artists"];
 
-function creditText(c: Credit | undefined): string {
+export function creditText(c: Credit | undefined): string {
   return (c ?? []).map((a, i, all) => (a.creditedName || a.name) + (a.joinPhrase ?? (i < all.length - 1 ? ", " : "")))
     .join("");
 }

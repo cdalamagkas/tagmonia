@@ -69,6 +69,13 @@ export const settingsSchema = z.object({
     genres: z.enum(["musicbrainz", "none"]).default("musicbrainz"),
     maxGenres: z.number().int().min(1).max(20).default(5),
   }).prefault({}),
+  submission: z.object({
+    /**
+     * Where releases missing from MusicBrainz are seeded (§12, D52). The test server is for trying
+     * Tagmonia out: what is added there exists only there, and its MBIDs mean nothing elsewhere.
+     */
+    server: z.enum(["https://musicbrainz.org", "https://test.musicbrainz.org"]).default("https://musicbrainz.org"),
+  }).prefault({}),
   covers: z.object({
     /**
      * D46, D49: embed about 1200 px, embed full size, only save cover.jpg in the album folder,

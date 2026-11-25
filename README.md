@@ -5,8 +5,9 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 
 > **Status: Phases 0–4 are done; Phase 5 (MusicBrainz submission) is in progress.** Tagmonia identifies releases
 > against MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art,
-> writes everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can already be
-> tagged from Deezer, iTunes, Discogs or Bandcamp; submitting them to MusicBrainz comes next.
+> writes everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can be tagged
+> from Deezer, iTunes, Discogs or Bandcamp and added to MusicBrainz through its release editor (checked end to end on
+> test.musicbrainz.org); what remains of Phase 5 is one real submission to musicbrainz.org.
 > See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
 
@@ -31,6 +32,13 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 - **Releases missing from MusicBrainz**: paste a Deezer, iTunes, Discogs or Bandcamp album link on the release page and
   Tagmonia builds the tags from that album, filled in from the same release on the other providers (by barcode),
   ready to review and write.
+- **Adds them to MusicBrainz, with you in charge**: Tagmonia checks MusicBrainz for the release first (barcode, linked
+  pages, title), then opens MusicBrainz's release editor filled in, with an edit note naming its sources. You review
+  and submit from your own account; MusicBrainz sends you back, Tagmonia checks the new release exists, and its
+  MusicBrainz IDs are proposed for the files. Artists MusicBrainz does not have yet are listed first, each with a
+  filled-in "Add artist" link. Then: links to add the cover art and submit the ISRCs. **Settings →
+  MusicBrainz submissions** can point this at test.musicbrainz.org for trying it out. Nothing is ever submitted
+  automatically.
 - **Cover art** from the Cover Art Archive, or else the largest image iTunes, Deezer or Discogs has for the same
   release. The review shows the cover with its source, size and what the files have now. **Settings → Cover art**
   chooses how it is written: embedded at full size (the default), embedded at about 1200 px, only as `cover.jpg` in

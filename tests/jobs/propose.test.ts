@@ -345,3 +345,26 @@ Deno.test("a release not on MusicBrainz: built from the linked album, others fou
   );
   assertEquals(mb.calls, [], "MusicBrainz is not asked");
 });
+
+Deno.test("a release on the test server is read from there, and the proposal says so (D52)", async () => {
+  const { db, id } = await setup();
+  const q2 = new JobQueue(db, { logger: nullLogger });
+  const main = new FakeMb([]);
+  const test = new FakeMb([release]);
+  const servers: string[] = [];
+  registerProposeJob(q2, {
+    db,
+    mb: main,
+    mbFor: (server) => {
+      servers.push(server);
+      return test;
+    },
+    settings: () => ({ genres: "none", maxGenres: 5 }),
+    logger: nullLogger,
+  });
+  enqueuePropose(q2, id, BEETHOVEN_5, "user", "https://test.musicbrainz.org");
+  await q2.drain();
+  const p = latestProposal(db, id)!;
+  assertEquals([p.releaseMbid, p.mbServer], [BEETHOVEN_5, "https://test.musicbrainz.org"]);
+  assertEquals([main.calls, test.calls[0], servers[0]], [[], `lookup ${BEETHOVEN_5}`, "https://test.musicbrainz.org"]);
+});
