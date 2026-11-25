@@ -2,7 +2,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { ReleaseQuery } from "../../server/providers/musicbrainz/client.ts";
 import { findDuplicates } from "../../server/submission/duplicates.ts";
-import { artistCreateUrl, collectArtists, withArtistMbids } from "../../server/submission/artists.ts";
+import { artistCreateUrl, collectArtists, resolveArtists, withArtistMbids } from "../../server/submission/artists.ts";
 import { editNote, mergedFromMatches, seedFor } from "../../server/submission/seed.ts";
 import { VERSION } from "../../server/version.ts";
 import { MATCHES } from "./helpers.ts";
@@ -106,7 +106,15 @@ Deno.test("artists: collected once across release and tracks, linked by MBID in 
   ]]);
 
   const linked = withArtistMbids(withGuest, [
-    { name: "Niklas Blumenthaler", links: [], mbid: "m1", via: "link", suggestions: [], createUrl: null },
+    {
+      name: "Niklas Blumenthaler",
+      links: [],
+      mbid: "m1",
+      via: "link",
+      suggestions: [],
+      createUrl: null,
+      addLinksUrl: null,
+    },
   ]);
   const seed = seedFor(linked, { returnUrl: new URL("https://t.example/mb/callback/1"), fetchedAt: 0 });
   assertEquals(seed["artist_credit.names.0.mbid"], "m1");
@@ -128,4 +136,44 @@ Deno.test("artists: collected once across release and tracks, linked by MBID in 
     "edit-artist.url.1.text",
     "edit-artist.edit_note",
   ]);
+});
+
+Deno.test("the test server's search misses an artist: musicbrainz.org's search suggests it if the test server has it", async () => {
+  // Seen live: test.musicbrainz.org's search found 0 for "Matthias Krauss"; musicbrainz.org found him, same MBID.
+  const KRAUSS = "a0de8661-3d7c-4373-8971-7f429235d141";
+  const asked: string[] = [];
+  const test = {
+    artistsForUrl: () => Promise.resolve({ value: [], snapshotId: 0 }),
+    searchArtists: () => Promise.resolve({ value: [], snapshotId: 0 }),
+    lookupArtist: (mbid: string) => {
+      asked.push(`exists ${mbid}`);
+      return Promise.resolve(mbid === KRAUSS ? { id: KRAUSS, name: "Matthias Krauss" } : null);
+    },
+  };
+  const production = {
+    searchArtists: () =>
+      Promise.resolve({
+        value: [
+          { id: KRAUSS, name: "Matthias Krauss", score: 100, country: "DE" },
+          { id: "only-on-production", name: "Matthias Krauss", score: 95 },
+        ],
+        snapshotId: 0,
+      }),
+  };
+  const [r] = await resolveArtists(test, [{ name: "Matthias Krauss", links: [] }], {
+    server: "https://test.musicbrainz.org",
+    releaseUrl: "https://www.deezer.com/album/1",
+    chosen: {},
+    fallbackSearch: production,
+  });
+  assertEquals(r.suggestions.map((g) => [g.mbid, g.country]), [[KRAUSS, "DE"]]);
+  assertEquals(asked, [`exists ${KRAUSS}`, "exists only-on-production"]);
+
+  // Without the fallback (musicbrainz.org itself), nothing extra is asked.
+  const [plain] = await resolveArtists(test, [{ name: "Matthias Krauss", links: [] }], {
+    server: "https://musicbrainz.org",
+    releaseUrl: "https://www.deezer.com/album/1",
+    chosen: {},
+  });
+  assertEquals(plain.suggestions, []);
 });

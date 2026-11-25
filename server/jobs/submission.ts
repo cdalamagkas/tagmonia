@@ -26,7 +26,7 @@ export const SUBMISSION_VERIFY_JOB = "submission_verify";
 
 export type SubmissionClient = Pick<
   MusicBrainzClient,
-  "searchReleases" | "releasesForUrl" | "lookupReleaseFresh" | "artistsForUrl" | "searchArtists"
+  "searchReleases" | "releasesForUrl" | "lookupReleaseFresh" | "artistsForUrl" | "searchArtists" | "lookupArtist"
 >;
 
 export interface SubmissionJobDeps {
@@ -80,7 +80,15 @@ export function registerSubmissionJobs(queue: JobQueue, deps: SubmissionJobDeps)
       const artists = await resolveArtists(
         deps.client(s.server),
         collectArtists(merged, deps.artistLinks),
-        { server: s.server, releaseUrl: proposal.sourceUrl, chosen: s.artistChoices, signal },
+        {
+          server: s.server,
+          releaseUrl: proposal.sourceUrl,
+          chosen: s.artistChoices,
+          fallbackSearch: s.server === "https://test.musicbrainz.org"
+            ? deps.client("https://musicbrainz.org")
+            : undefined,
+          signal,
+        },
       );
       const seed = seedFor(withArtistMbids(merged, artists), {
         returnUrl: new URL(`/mb/callback/${s.id}`, s.returnBase),

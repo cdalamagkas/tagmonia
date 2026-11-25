@@ -57,6 +57,8 @@ const urlRelsSchema = z.looseObject({
   })).optional(),
 });
 
+const artistSchema = z.looseObject({ id: z.string(), name: z.string() });
+
 const artistSearchSchema = z.looseObject({
   artists: z.array(z.looseObject({
     id: z.string(),
@@ -228,6 +230,21 @@ export class MusicBrainzClient {
     if (!got) return { value: [], snapshotId: 0 };
     const artists = (got.value.relations ?? []).flatMap((r) => (r.artist ? [r.artist] : []));
     return { value: [...new Map(artists.map((a) => [a.id, a])).values()], snapshotId: got.snapshotId };
+  }
+
+  /** Whether an artist exists on this server (checked fresh): verifying suggestions from another server (D52). */
+  async lookupArtist(
+    mbid: string,
+    opts: { signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<{ id: string; name: string } | null> {
+    const id = mbidSchema.parse(mbid);
+    const got = await this.#get(
+      this.#url(`artist/${id}`, {}),
+      opts.maxAgeMs ?? this.#ttl.lookupMs,
+      artistSchema,
+      opts.signal,
+    );
+    return got ? { id: got.value.id, name: got.value.name } : null;
   }
 
   /** Artists by name, best first: suggestions when an artist could not be found by its pages (D52). */

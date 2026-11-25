@@ -206,3 +206,15 @@ Deno.test("artistsForUrl and searchArtists: a release's artists by their provide
   assertEquals((await s.client.searchArtists('Say "Hi"')).value.map((a) => a.id), ["a2"]);
   assertEquals(asked[1].searchParams.get("query"), 'artist:"Say \\"Hi\\""');
 });
+
+Deno.test("lookupArtist: an artist's existence on this server; null when it has none", async () => {
+  const fetchImpl: typeof fetch = (input) =>
+    Promise.resolve(
+      String(input).includes("a0de8661-3d7c-4373-8971-7f429235d141")
+        ? Response.json({ id: "a0de8661-3d7c-4373-8971-7f429235d141", name: "Matthias Krauss" })
+        : Response.json({ error: "Not Found" }, { status: 404 }),
+    );
+  await using s = await setup(fetchImpl);
+  assertEquals((await s.client.lookupArtist("a0de8661-3d7c-4373-8971-7f429235d141"))?.name, "Matthias Krauss");
+  assertEquals(await s.client.lookupArtist(MISSING), null);
+});
