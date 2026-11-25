@@ -471,29 +471,114 @@ a:focus-visible {
   width: 56px;
   padding-right: 0;
 }
-.tm-release-head {
+/* Release page header (D53): cover, title, source, status with the next action */
+.tm-release-header {
   display: flex;
   gap: 20px;
   align-items: flex-start;
   flex-wrap: wrap;
 }
-.tm-release-head > div {
-  flex: 1 1 260px;
+.tm-release-summary {
+  flex: 1 1 320px;
   min-width: 0;
+}
+.tm-release-summary h1 {
+  margin-bottom: 4px;
 }
 .tm-release-cover {
   margin: 0;
-  width: 200px;
+  width: 140px;
 }
 .tm-release-cover .tm-cover-thumb {
-  width: 200px;
-  height: 200px;
+  width: 140px;
+  height: 140px;
   /* The whole cover, even when it is not square; list thumbnails crop instead. */
   object-fit: contain;
 }
 .tm-release-cover figcaption {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   margin-top: 6px;
+}
+.tm-source {
+  margin: 6px 0 12px;
+  overflow-wrap: anywhere;
+}
+.tm-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius);
+  background: var(--tm-mist);
+}
+.tm-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tm-slate);
+  flex: none;
+}
+.tm-status-sentence {
+  font-weight: var(--tm-weight-label);
+  flex: 1 1 200px;
+}
+.tm-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.tm-status-attention .tm-status-dot {
+  background: var(--tm-orange);
+}
+.tm-status-ok .tm-status-dot {
+  background: #1a6b3c;
+}
+.tm-status-error .tm-status-dot {
+  background: #b42318;
+}
+.tm-status-busy .tm-status-dot {
+  background: var(--tm-orange);
+  animation: tm-pulse 1.2s ease-in-out infinite;
+}
+@keyframes tm-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-status-busy .tm-status-dot {
+    animation: none;
+  }
+}
+/* Tabs: Changes, Match, Files, History */
+.tm-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--tm-rule);
+  overflow-x: auto;
+}
+.tm-tabs button {
+  appearance: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: var(--tm-weight-label);
+  color: var(--tm-slate);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tm-tabs button:hover {
+  color: var(--tm-navy);
+}
+.tm-tabs button.tm-on {
+  color: var(--tm-navy);
+  border-bottom-color: var(--tm-orange);
 }
 .tm-sr {
   position: absolute;

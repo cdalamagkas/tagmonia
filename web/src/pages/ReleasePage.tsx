@@ -1,12 +1,31 @@
+/**
+ * One release (docs/proposals/release-page-restructure.md, D53): a header that says where the release
+ * stands and what to do next, then four tabs: Changes, Match, Files, History. The page loads everything
+ * once and keeps it live while jobs run (useRelease).
+ */
 import { useEffect, useState } from "preact/hooks";
-import type { CurrentCoverDto, LibraryFileDto, ReleaseDetail } from "../../../shared/types.ts";
-import { api, ApiRequestError } from "../api.ts";
-import { bytes, duration, RELEASE_FIELDS, tagValue } from "../format.ts";
+import type { CurrentCoverDto, LibraryFileDto } from "../../../shared/types.ts";
+import { api } from "../api.ts";
+import { bytes, duration, METHOD_LABELS, RELEASE_FIELDS, tagValue } from "../format.ts";
 import { onLinkClick } from "../router.ts";
 import { Identification } from "../components/Identification.tsx";
 import { Review } from "../components/Review.tsx";
+import { History } from "../components/History.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
 import { Submission } from "../components/Submission.tsx";
+import {
+  type Action,
+  changesToWrite,
+  isOpen,
+  type ReleaseStatus,
+  releaseStatus,
+  sourceLine,
+  undoableBatch,
+} from "../release/status.ts";
+import { isLive, type LoadedRelease, useRelease } from "../release/useRelease.ts";
+
+type Tab = "changes" | "match" | "files" | "history";
+const TABS: Tab[] = ["changes", "match", "files", "history"];
 
 function coverCaption(c: CurrentCoverDto): string {
   const kb = c.size >= 1024 * 1024 ? `${(c.size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(c.size / 1024)} KB`;
@@ -60,75 +79,18 @@ function FileTags({ file }: { file: LibraryFileDto }) {
   );
 }
 
-export function ReleasePage({ id }: { id: number }) {
-  const [data, setData] = useState<ReleaseDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+/** The Files tab: tags shared by the release's files, then each file, expandable to all its tags. */
+function FilesTab({ files }: { files: LibraryFileDto[] }) {
   const [open, setOpen] = useState<number | null>(null);
-
-  const [version, setVersion] = useState(0);
-  const [cover, setCover] = useState<CurrentCoverDto | null | undefined>(undefined);
-  const [coverVersion, setCoverVersion] = useState(0);
-  const reload = () => {
-    // The files may have changed (a write or undo): ask for the cover again too.
-    setCoverVersion((v) => v + 1);
-    api.coverInfo(id).then((r) => setCover(r.cover), () => setCover(null));
-    return api.release(id).then(
-      setData,
-      (e) => setError(e instanceof ApiRequestError && e.status === 404 ? "This release no longer exists." : e.message),
-    );
-  };
-  useEffect(() => {
-    setData(null);
-    reload();
-  }, [id]);
-
-  if (error) {
-    return (
-      <main>
-        <a href="/" onClick={onLinkClick}>← Library</a>
-        <p class="tm-error">{error}</p>
-      </main>
-    );
-  }
-  if (!data) {
-    return (
-      <main>
-        <p class="tm-muted">Loading…</p>
-      </main>
-    );
-  }
-
-  const { release, files } = data;
   const multiDisc = new Set(files.map((f) => f.tags.discnumber ?? 1)).size > 1;
+  const tags = releaseTags(files);
   return (
-    <main>
-      <a href="/" onClick={onLinkClick}>← Library</a>
-      <section class="tm-card">
-        <div class="tm-release-head">
-          <figure class="tm-release-cover">
-            <CoverImage
-              releaseId={release.id}
-              size="large"
-              px={200}
-              version={coverVersion}
-              alt={`Cover of ${release.album ?? "this release"}`}
-            />
-            <figcaption class="tm-muted">
-              {cover === undefined ? "" : cover ? coverCaption(cover) : "No cover in the files or the folder."}
-            </figcaption>
-          </figure>
-          <div>
-            <h1>{release.album ?? "Loose files"}</h1>
-            <p class="tm-muted">
-              {release.artist ?? "Unknown artist"} · {release.trackCount} files ·{" "}
-              <span class="tm-path">{release.folder || "/"}</span>
-            </p>
-          </div>
-        </div>
-        <h2>Release tags</h2>
+    <section class="tm-card">
+      <h2>Album tags in the files</h2>
+      {tags.length === 0 ? <p class="tm-muted">No album tags.</p> : (
         <table class="tm-table tm-kv">
           <tbody>
-            {releaseTags(files).map(({ field, distinct, missing }) => (
+            {tags.map(({ field, distinct, missing }) => (
               <tr key={field}>
                 <th>{field}</th>
                 <td>
@@ -145,72 +107,297 @@ export function ReleasePage({ id }: { id: number }) {
             ))}
           </tbody>
         </table>
-      </section>
-
-      <Identification
-        releaseId={release.id}
-        files={files}
-        onChoose={async (releaseMbid) => {
-          await api.propose(release.id, { releaseMbid });
-          setVersion((v) => v + 1);
-        }}
-        onChooseProvider={async (providerUrl) => {
-          await api.propose(release.id, { providerUrl });
-          setVersion((v) => v + 1);
-        }}
-      />
-      <Review releaseId={release.id} files={files} version={version} onFilesChanged={reload} />
-      <Submission releaseId={release.id} version={version} onProposalChanged={() => setVersion((v) => v + 1)} />
-
-      <section class="tm-card">
-        <h2>Tracks</h2>
-        <div class="tm-table-wrap">
-          <table class="tm-table">
-            <thead>
-              <tr>
-                <th class="tm-num tm-col-narrow">#</th>
-                <th>Title</th>
-                <th>Artist</th>
-                <th class="tm-num">Length</th>
-                <th>Format</th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.map((f) => (
-                <>
-                  <tr
-                    key={f.id}
-                    class={`tm-clickable${open === f.id ? " tm-open" : ""}`}
-                    onClick={() => setOpen(open === f.id ? null : f.id)}
-                  >
-                    <td class="tm-num tm-col-narrow">
-                      {multiDisc && f.tags.discnumber ? `${f.tags.discnumber}-` : ""}
-                      {f.tags.tracknumber ?? ""}
+      )}
+      <h2>Files</h2>
+      <div class="tm-table-wrap">
+        <table class="tm-table">
+          <thead>
+            <tr>
+              <th class="tm-num tm-col-narrow">#</th>
+              <th>Title</th>
+              <th>Artist</th>
+              <th class="tm-num">Length</th>
+              <th>Format</th>
+            </tr>
+          </thead>
+          <tbody>
+            {files.map((f) => (
+              <>
+                <tr
+                  key={f.id}
+                  class={`tm-clickable${open === f.id ? " tm-open" : ""}`}
+                  onClick={() => setOpen(open === f.id ? null : f.id)}
+                >
+                  <td class="tm-num tm-col-narrow">
+                    {multiDisc && f.tags.discnumber ? `${f.tags.discnumber}-` : ""}
+                    {f.tags.tracknumber ?? ""}
+                  </td>
+                  <td>
+                    <button type="button" class="tm-linklike" aria-expanded={open === f.id}>
+                      {f.tags.title ?? <span class="tm-muted">{f.path.split("/").pop()}</span>}
+                    </button>
+                    {f.readError && <span class="tm-badge tm-badge-error" title={f.readError}>unreadable</span>}
+                  </td>
+                  <td>{f.tags.artist ?? ""}</td>
+                  <td class="tm-num">{duration(f.durationMs)}</td>
+                  <td>{f.format ?? "–"}</td>
+                </tr>
+                {open === f.id && (
+                  <tr key={`${f.id}-detail`} class="tm-detail-row">
+                    <td colSpan={5}>
+                      {f.readError && <p class="tm-error">{f.readError}</p>}
+                      <FileTags file={f} />
                     </td>
-                    <td>
-                      <button type="button" class="tm-linklike" aria-expanded={open === f.id}>
-                        {f.tags.title ?? <span class="tm-muted">{f.path.split("/").pop()}</span>}
-                      </button>
-                      {f.readError && <span class="tm-badge tm-badge-error" title={f.readError}>unreadable</span>}
-                    </td>
-                    <td>{f.tags.artist ?? ""}</td>
-                    <td class="tm-num">{duration(f.durationMs)}</td>
-                    <td>{f.format ?? "–"}</td>
                   </tr>
-                  {open === f.id && (
-                    <tr key={`${f.id}-detail`} class="tm-detail-row">
-                      <td colSpan={5}>
-                        {f.readError && <p class="tm-error">{f.readError}</p>}
-                        <FileTags file={f} />
-                      </td>
-                    </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
+                )}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ActionButton(
+  { a, primary, busy, onAction }: { a: Action; primary: boolean; busy: boolean; onAction: (a: Action) => void },
+) {
+  if (a.id === "submission" && !primary) {
+    return (
+      <button type="button" class="tm-linklike" disabled={busy} onClick={() => onAction(a)}>
+        {a.label}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      class={`tm-button${primary ? "" : " tm-secondary"}`}
+      disabled={busy || !!a.disabled}
+      title={a.disabled}
+      onClick={() => onAction(a)}
+    >
+      {a.label}
+    </button>
+  );
+}
+
+/** Cover, title, where the tags come from, and where the release stands with what to do next. */
+function Header(
+  { data, status, busy, error, onAction, onSource }: {
+    data: LoadedRelease;
+    status: ReleaseStatus;
+    busy: boolean;
+    error: string | null;
+    onAction: (a: Action) => void;
+    onSource: () => void;
+  },
+) {
+  const { release, files } = data.detail;
+  const source = sourceLine(data, (m) => METHOD_LABELS[m as keyof typeof METHOD_LABELS] ?? m);
+  const formats = [...new Set(files.map((f) => f.format?.toUpperCase()).filter(Boolean))].join(", ");
+  return (
+    <section class="tm-card tm-release-header">
+      <figure class="tm-release-cover">
+        <CoverImage
+          releaseId={release.id}
+          size="large"
+          px={140}
+          version={data.filesVersion}
+          alt={`Cover of ${release.album ?? "this release"}`}
+        />
+        <figcaption class="tm-muted">
+          {data.cover ? coverCaption(data.cover) : "No cover in the files or the folder."}
+        </figcaption>
+      </figure>
+      <div class="tm-release-summary">
+        <h1>{release.album ?? "Loose files"}</h1>
+        <p class="tm-muted">
+          {release.artist ?? "Unknown artist"} · {release.trackCount} {formats} files ·{" "}
+          <span class="tm-path">{release.folder || "/"}</span>
+        </p>
+        <p class="tm-source">
+          <span class="tm-muted">Source:</span>{" "}
+          {source.url
+            ? <a href={source.url} target="_blank" rel="noopener noreferrer">{source.label}</a>
+            : source.label}
+          {source.details.length > 0 && <span class="tm-muted">{` · ${source.details.join(" · ")}`}</span>}{" "}
+          <button type="button" class="tm-linklike tm-small-link" onClick={onSource}>Change</button>
+        </p>
+        <div class={`tm-status tm-status-${status.tone}`} role="status" aria-live="polite">
+          <span class="tm-status-dot" aria-hidden="true" />
+          <span class="tm-status-sentence">{status.sentence}</span>
+          <span class="tm-status-actions">
+            {status.primary && <ActionButton a={status.primary} primary busy={busy} onAction={onAction} />}
+            {status.secondary.map((a) => (
+              <ActionButton key={a.id} a={a} primary={false} busy={busy} onAction={onAction} />
+            ))}
+          </span>
         </div>
-      </section>
+        {data.proposal.readOnly && (
+          <p class="tm-muted tm-small-note">Read-only mode: you can review, but nothing is written.</p>
+        )}
+        {error && <p class="tm-error" role="alert">{error}</p>}
+      </div>
+    </section>
+  );
+}
+
+function initialTab(): Tab | null {
+  const t = new URLSearchParams(location.search).get("tab");
+  return TABS.includes(t as Tab) ? (t as Tab) : null;
+}
+
+export function ReleasePage({ id }: { id: number }) {
+  const { data, error: loadError, reload } = useRelease(id);
+  const [chosenTab, setChosenTab] = useState<Tab | null>(initialTab);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setChosenTab(initialTab()), [id]);
+
+  if (loadError && !data) {
+    return (
+      <main>
+        <a href="/" onClick={onLinkClick}>← Library</a>
+        <p class="tm-error">{loadError}</p>
+      </main>
+    );
+  }
+  if (!data) {
+    return (
+      <main>
+        <p class="tm-muted">Loading…</p>
+      </main>
+    );
+  }
+
+  const p = data.proposal.proposal;
+  // Changes when there is something proposed; otherwise Match, where a release is chosen.
+  const tab: Tab = chosenTab ?? (p ? "changes" : "match");
+  const selectTab = (t: Tab) => {
+    setChosenTab(t);
+    const url = new URL(location.href);
+    url.searchParams.set("tab", t);
+    history.replaceState(null, "", url.pathname + url.search);
+  };
+  const scrollTo = (elementId: string) =>
+    requestAnimationFrame(() => document.getElementById(elementId)?.scrollIntoView({ behavior: "smooth" }));
+
+  /** Runs an action, then reloads; errors (409 etc.) are shown in the header. */
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAction = (a: Action) => {
+    switch (a.id) {
+      case "write":
+        return act(() => api.write(p!.id));
+      case "build":
+        return act(() =>
+          api.propose(id, p!.releaseMbid ? { releaseMbid: p!.releaseMbid } : { providerUrl: p!.sourceUrl! })
+        );
+      case "prepare":
+        return act(() => api.propose(id, { releaseMbid: data.identification.matches[0].releaseMbid }));
+      case "identify":
+        return act(() => api.identify(id, {}));
+      case "undo": {
+        const batch = undoableBatch(data.history);
+        return batch && act(() => api.undo(batch.id));
+      }
+      case "match":
+        return selectTab("match");
+      case "resolve":
+        selectTab("changes");
+        return scrollTo("tm-conflicts");
+      case "submission":
+        selectTab("changes");
+        return scrollTo("tm-add-to-musicbrainz");
+    }
+  };
+
+  const status = releaseStatus(data);
+  const live = isLive(data);
+  const { files } = data.detail;
+  const changes = p && isOpen(p) ? changesToWrite(p) : 0;
+  const tabLabel: Record<Tab, string> = {
+    changes: changes > 0 ? `Changes (${changes})` : "Changes",
+    match: "Match",
+    files: `Files (${files.length})`,
+    history: data.history.batches.length ? `History (${data.history.batches.length})` : "History",
+  };
+  const propose = async (body: Parameters<typeof api.propose>[1]) => {
+    await api.propose(id, body);
+    await reload();
+    selectTab("changes");
+  };
+
+  return (
+    <main>
+      <a href="/" onClick={onLinkClick}>← Library</a>
+      <Header
+        data={data}
+        status={status}
+        busy={busy || live}
+        error={error ?? loadError}
+        onAction={onAction}
+        onSource={() => selectTab("match")}
+      />
+      <div class="tm-tabs" role="tablist" aria-label="Release">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            id={`tm-tab-${t}`}
+            aria-selected={tab === t}
+            aria-controls={`tm-panel-${t}`}
+            class={tab === t ? "tm-on" : ""}
+            onClick={() => selectTab(t)}
+          >
+            {tabLabel[t]}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`tm-panel-${tab}`} aria-labelledby={`tm-tab-${tab}`}>
+        {tab === "changes" && (
+          <>
+            <Submission
+              releaseId={id}
+              proposal={p}
+              submission={data.submission}
+              onReload={reload}
+            />
+            <Review releaseId={id} data={data.proposal} files={files} live={live} onReload={reload} />
+          </>
+        )}
+        {tab === "match" && (
+          <Identification
+            releaseId={id}
+            data={data.identification}
+            files={files}
+            onReload={reload}
+            onChoose={(releaseMbid) => propose({ releaseMbid })}
+            onChooseProvider={(providerUrl) => propose({ providerUrl })}
+          />
+        )}
+        {tab === "files" && <FilesTab files={files} />}
+        {tab === "history" && (
+          <History
+            data={data.history}
+            readOnly={data.proposal.readOnly}
+            onUndo={(b) => act(() => api.undo(b.id))}
+          />
+        )}
+      </div>
     </main>
   );
 }

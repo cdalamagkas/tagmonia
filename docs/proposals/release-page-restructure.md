@@ -228,6 +228,8 @@ The same EP, Add to MusicBrainz open at the artist step (test server):
 
 ## Plan
 
+Progress: PR 1 done (header, live updates, tabs).
+
 Four PRs, each usable on its own:
 
 1. **Header and tabs:** status sentence, primary action, live updates, today's cards moved into tabs, duplicates
@@ -244,6 +246,27 @@ Each PR is checked in headless Chromium at desktop and phone width, with the mea
 - **Not on MusicBrainz:** a release on a provider but missing from MusicBrainz, with silent stand-in files of the real
   track lengths. The EP used so far, *Ambient Piano Vol.1*, is now on test.musicbrainz.org, and its stand-in files were
   deleted. PR 4 needs one still missing from the test server, and an artist missing there.
+
+## PR 1 as built
+
+- `web/src/release/status.ts` computes the status sentence and actions; it is pure and unit-tested
+  (`tests/web/status.test.ts`).
+  - The header's change count matches the Changes tab: an album field once, a track field per track, the cover as one.
+    It no longer counts album fields once per file.
+- `web/src/release/useRelease.ts` loads the release, identification, proposal, history, submission and current cover
+  together, and polls while any job for the release runs. The cards no longer fetch or poll on their own.
+- The review card lost its Write button, state badge and "files changed / discarded" notices: the header has them.
+  Discard stays in the card.
+- Add to MusicBrainz sits at the top of the Changes tab until PR 4. The header's "Add to MusicBrainz →" opens that tab
+  and scrolls to it.
+- The selected tab is in the URL (`?tab=match`). Without one, Changes opens when there is a proposal, Match otherwise.
+- Found while checking: after an undo, the proposal read as "the files changed since…", so the header offered "Build
+  again". The undo rewrites the files (new mtimes) but restores exactly the tags the proposal was built from. A
+  complete undo now refreshes the proposal's file hash (`server/write/apply.ts`, with a test).
+- Measured after PR 1 (1280 × 900):
+  - matched album, one cover upgrade: the Changes tab is 1,029 px (1.1 screens), 9 buttons, and the status line sits
+    at 249 px (was 4,080 px, 24 buttons, action at 2,525 px);
+  - EP from Deezer: the Changes tab is still 4,209 px and 211 buttons, which is PR 2's work.
 
 ## Still to settle while building
 
