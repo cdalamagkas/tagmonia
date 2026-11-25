@@ -801,6 +801,7 @@ Tagmonia has **read-write access to the user's entire music library** and stores
 
 - Pin Deno, npm and Harmony versions; commit `deno.lock`.
 - Dependabot/Renovate on the repo; image built in CI with SBOM generation and an image vulnerability scan.
+- Done so far: Dependabot (`.github/dependabot.yml`) proposes weekly updates for GitHub Actions (pinned to commits) and the Deno base image of both Dockerfiles, grouped so they stay on one version. Imports in `deno.json` and the Harmony submodule are updated by hand, since each needs `deno.lock` regenerated or Harmony re-checked in the dev container.
 
 ---
 
