@@ -18,7 +18,7 @@ import { REFRESH_JOB } from "../../jobs/refresh.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
-import { latestProposal, locksFor, providerMatches } from "../../db/repo/proposals.ts";
+import { isUnresolved, latestProposal, locksFor, providerMatches } from "../../db/repo/proposals.ts";
 import { enqueuePropose, proposeDedupeKey } from "../../jobs/propose.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
@@ -188,6 +188,8 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
             added: count("added"),
             unchanged: count("unchanged"),
             locked: p.fields.filter((f) => f.locked).length,
+            filled: p.fields.filter((f) => f.origin !== "musicbrainz").length,
+            conflicts: p.fields.filter(isUnresolved).length,
           },
           unmappedFiles: p.unmappedFiles,
           // The provider's own data stays server-side; the UI needs only the outcome.

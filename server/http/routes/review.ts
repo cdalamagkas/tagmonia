@@ -14,7 +14,9 @@ const decisionBody = z.object({
   fieldIds: z.array(z.number().int().positive()).min(1).max(5000),
   decision: z.enum(["auto", "accepted", "edited", "kept_current"]),
   edited: z.unknown().optional(),
-}).strict();
+  /** Settle a field with one source's value (D48); goes with decision "accepted". */
+  source: z.enum(["musicbrainz", "deezer", "itunes", "discogs"]).optional(),
+}).strict().refine((b) => b.source === undefined || b.decision === "accepted");
 
 const lockBody = z.object({
   scope: z.enum(["file", "release", "global_field"]),
@@ -29,7 +31,7 @@ export function reviewRoutes(deps: { db: Db; now?: () => number }) {
     .post("/proposals/:id{[0-9]+}/decisions", async (c) => {
       const body = decisionBody.safeParse(await c.req.json().catch(() => null));
       if (!body.success) return c.json({ error: "invalid decision" }, 400);
-      const { fieldIds, decision, edited } = body.data;
+      const { fieldIds, decision, edited, source } = body.data;
       if (decision === "edited") {
         // The edited value must be valid for every field it is applied to (they share one field name in the UI).
         const fields = db.prepare(
@@ -42,7 +44,7 @@ export function reviewRoutes(deps: { db: Db; now?: () => number }) {
         }
       }
       try {
-        setDecisions(db, Number(c.req.param("id")), fieldIds, decision, edited, now());
+        setDecisions(db, Number(c.req.param("id")), fieldIds, decision, edited, now(), source);
       } catch (e) {
         if (e instanceof ReviewError) return c.json({ error: e.message }, e.message.includes("not found") ? 404 : 409);
         throw e;

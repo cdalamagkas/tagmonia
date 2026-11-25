@@ -272,7 +272,7 @@ erDiagram
 | `candidate` | A group of files believed to form one release (usually a folder) | `id`, `group_key` (stable across rescans), `folder`, `hint_artist`, `hint_album`, `hint_mbid`, `hint_track_count`, `content_hash`, `status` (`new`, `changed`, `identifying`, `matched`, `needs_review`, `no_match`, `error`), `identified_at`, `identified_hash`, `identify_error`, `unexamined_editions` (JSON, for the edition picker); member files point to it via `library_file.candidate_id` |
 | `match` | A scored MusicBrainz release for a candidate; an identify run replaces the candidate's matches | `candidate_id`, `rank`, `release_mbid`, `release_group_mbid`, `score`, `method` (`existing_mbid`, `barcode`, `catno`, `text`, `fingerprint`, `manual`), `signals` (JSON, per signal), `track_mapping` (JSON), `summary` (JSON, for the edition picker), `snapshot_id` |
 | `proposal` | Merged metadata for one candidate + chosen match | `id`, `candidate_id`, `release_mbid` (nullable for not-in-MB), `state` (`draft`, `needs_review`, `approved`, `written`, `discarded`), `created_at` |
-| `field_proposal` | One canonical field of one file (D40: per file, since writes are per file; release-level fields repeat on each file) | `proposal_id`, `file_id`, `field`, `current_value`, `proposed_value`, `status` (`unchanged`, `changed`, `added`), `decision` (`auto`, `accepted`, `edited`, `kept_current`), `locked` |
+| `field_proposal` | One canonical field of one file (D40: per file, since writes are per file; release-level fields repeat on each file) | `proposal_id`, `file_id`, `field`, `current_value`, `proposed_value`, `status` (`unchanged`, `changed`, `added`), `decision` (`auto`, `accepted`, `edited`, `kept_current`), `edited_value`, `locked`, `origin` (whose value is proposed), `conflict`, `resolved_from` (D48) |
 | `field_source` | Provenance for a field value | `field_proposal_id`, `provider`, `value`, `snapshot_id`, `agrees_with_proposed` |
 | `write_batch` | One user-approved write operation | `id`, `proposal_id`, `started_at`, `finished_at`, `status`, `error` |
 | `file_backup` | Pre-write tag snapshot for undo | `write_batch_id`, `file_id`, `tags_before` (JSON), `pictures_before` (blob refs) |
@@ -541,7 +541,7 @@ Harmony has no merged YouTube Music provider, so Tagmonia implements a minimal o
 ```mermaid
 flowchart LR
   A[Matched MB release<br/>or provider set] --> B[Fetch from enabled providers<br/>via cache]
-  B --> C[Harmony merge<br/>-> merged release]
+  B --> C[Precedence merge<br/>-> merged tags, D48]
   C --> D[Field-level diff vs<br/>current file tags]
   D --> E[Apply policy:<br/>precedence, locks]
   E --> F[Proposal with<br/>provenance + conflicts]
@@ -570,7 +570,7 @@ Default policy, configurable per field in settings:
 | Label, catalog number, barcode, country, media | MusicBrainz → Discogs | Discogs is strongest for physical pressings |
 | Genre | **MusicBrainz genres** by default (D27): release-group and release genres merged by vote count, up to 5, written to `genre`. Configurable: Discogs genres/styles, or none | Maintainer choice; MusicBrainz genres are a curated list, not free-form tags |
 | Cover art | Cover Art Archive → largest available from other providers | Show resolution and source in the UI |
-| ISRC | MusicBrainz → Deezer → Spotify | |
+| ISRC | MusicBrainz → Deezer → iTunes, per track; filled only, never a conflict | A recording legitimately has several ISRCs. Spotify joins in Phase 6 |
 | Provider IDs | Each provider for its own ID | |
 
 **Rules**
@@ -579,6 +579,8 @@ Default policy, configurable per field in settings:
 2. A field whose current value already agrees with the proposed value (after normalization) is marked "unchanged" and not rewritten.
 3. If the highest-precedence provider has no value, fall through to the next one, and mark the field as "filled by fallback" in the UI.
 4. When two or more providers disagree and none is authoritative for the field, mark the field as a **conflict**; the proposal cannot be auto-approved while it has unresolved conflicts.
+
+**As implemented (D48).** `server/proposal/merge.ts` applies the table to MusicBrainz's tags and the providers whose release matched (`found`, same track count; another edition never contributes; tracks align by position). Conflicts arise only between MusicBrainz and Discogs: on release date (a different year) and on label, catalog number and barcode between MusicBrainz and Discogs; catalog numbers compare like identifiers (`2542105` = `2542 105`). A year-only date is refined by a full date for the same year from any listed provider (Deezer and iTunes only refine: their other years are kept as sources, not conflicts), and that counts as a change worth writing; a file's more precise date is never cut back. Each field row stores its `origin` and `conflict`; every source's value is kept with whether it agrees. A conflict is settled by any decision (picking a source's value, keeping, editing) or a lock; `POST /api/proposals/:id/write` answers 409 while one is unsettled.
 
 ### 10.4 "Not in MusicBrainz" proposals
 
@@ -902,6 +904,8 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Done when:** fields filled by fallback providers are marked as such, and conflicts between MusicBrainz and Discogs are shown and resolvable.
 
+**Progress:** credentials and the providers page (D46); provider lookups (D47); merging values with fallback marks and resolvable conflicts (D48). Cover art next.
+
 ### Phase 5 — MusicBrainz submission
 
 - Duplicate check, seeding, edit note, callback, follow-ups (§12).
@@ -967,6 +971,7 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 | D45 | 2026-11-25 | **Partial albums score well:** files not on the release are penalised as before, tracks missing from the folder only lightly (half an album without "of N" tags: 0.75 on the count signal); durations and titles are averaged over the files; the files' own "track N of M" / "disc N of M" tags, when present, decide which edition size fits; a title that clearly contradicts a track (below 0.3, no agreeing track number) blocks mapping on duration alone; the identifier floor needs at most one file not on the release instead of a plausible track count; pre-ranking uses the same count rule. Corpus: 9 partial cases (half albums, a second disc, random subsets, single tracks, the second half of *Piano Trios*) | Keep penalising missing tracks fully; a separate "partial" mode | Maintainer request: partial downloads are common. The maintainer's 4-of-8 *Piano Trios* folder scored 0.49 ("no match") despite its correct MBID; now matched at 1.0. Without the declared totals, partial cases fell to 89.6% ranked first: a single title track preferred a 2-track single, and a hidden track mapped by duration onto a 21-track edition's bonus track. Corpus (70 cases, 67 identifiable): 0 wrong auto-matches, 94.0% ranked first, 98.5% shown (from 0, 91.4%, 98.3% on 61 cases). |
 | D46 | 2026-11-25 | **Credentials and the providers page:** the §14.3 store (AES-256-GCM, HKDF from `TAGMONIA_SECRET_KEY` or a generated `0600` key file, values bound to their slot); `GET /api/providers` reports only set/not set and the source, never a secret; environment variables win. Health checks are jobs with one cheap request each (AcoustID: an invalid fingerprint tells whether the key is accepted). UI-managed settings: `PATCH /api/settings`, validated, written atomically, applied in place, with startup-only paths reported as needing a restart; first switches: Deezer, iTunes, Discogs. Cover art will be a setting with four choices, default "embed full size" | Keep env-only credentials; a separate approve-to-save flow | §14.3 and D37 deferred the store to the providers page. Maintainer choices: Discogs credentials through the page; covers configurable with full-size embedding as default. |
 | D47 | 2026-11-25 | **Provider lookups:** for a proposal's release, Deezer, iTunes and Discogs are looked up through Harmony by MusicBrainz link, else by barcode (with its other spellings after a miss); a moved release is followed once; a different track count is "another edition", kept for display only. The MusicBrainz extras request is `inc=genres+release-groups+url-rels` (genres and links in one). Harmony's Discogs provider is registered only with saved credentials; its response cache lives in `/config/snaps/harmony`. Results are stored per proposal (`provider_release`) and shown as "Also on" in the review; merging values into fields is part 3. Rejected AcoustID keys now say that lookups need an application key | Barcode only; merge in the same PR | Checked live on *Is This It* and *1989*: Deezer answers an unknown barcode with "no data (code 800)", serves a linked album under a new ID, iTunes Japan has a 16-track deluxe for the 13-track release, and Discogs does not find MusicBrainz's 14-digit GTIN. Harmony's Discogs header is `Authentication`, not `Authorization`, but Discogs currently answers anonymously. The maintainer's AcoustID key was a user key. |
+| D48 | 2026-11-25 | **Merging providers into proposals:** Tagmonia's own precedence merge (`mergeProviders`), not Harmony's merger, since §10.3 decides per field and MusicBrainz stays the only identity source. Release date, label, catalog number, barcode, ISRCs (fill only) and provider IDs; values only from providers whose release matched. Field rows carry `origin` (shown as "filled by …") and `conflict`; the review lists each source's value with a button to use it; writing is refused (409) while a conflict has no decision. A date that refines the file's year-only date is now a change | Use Harmony's merged release; let conflicts through with MusicBrainz's value | Harmony's merger picks one provider per property and would also merge titles and artists, which §10.3 keeps MusicBrainz-only. Letting a conflict through silently would defeat rule 4. Without the refinement rule a filled day-level date compared equal to the file's year and was never written. Checked live: *Is This It* (iTunes and Discogs found, all agreeing; Discogs ID filled) and the 2025 Japanese *1989*, whose MusicBrainz-linked Deezer album carries the 2014 original date, so store dates refine but never conflict. |
 
 ---
 

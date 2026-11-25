@@ -13,6 +13,7 @@ import { toReleaseView } from "../identify/release.ts";
 import { DEFAULT_SCORING, scoreRelease } from "../identify/score.ts";
 import type { Logger } from "../log.ts";
 import { buildFieldProposals } from "../proposal/build.ts";
+import { mergeProviders } from "../proposal/merge.ts";
 import { missingParentWorks, tagsFromMusicBrainz } from "../proposal/musicbrainz_tags.ts";
 import type { Cited } from "../providers/musicbrainz/client.ts";
 import { mbidSchema, type MbRelease, type MbReleaseExtras, type MbWork } from "../providers/musicbrainz/schema.ts";
@@ -108,13 +109,19 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       parentWorks: parents,
       maxGenres: settings.maxGenres,
     });
+    // The same release on other providers (D47), merged into the fields by precedence (D48).
+    const matches = deps.enrichment
+      ? await findOnProviders(deps.enrichment, rel.value, linksOf(extras?.value ?? null))
+      : null;
+    const merged = mergeProviders(proposed, rel.value, matches ?? []);
     const build = buildFieldProposals({
       candidateId,
       files: files.map((f) => ({ id: f.id, tags: f.tags })),
       mapping: mapping.pairs,
-      proposed,
+      proposed: merged,
       snapshotId: rel.snapshotId,
       locks: listLocks(deps.db),
+      provenance: merged.provenance,
     });
     const proposalId = saveProposal(deps.db, {
       candidateId,
@@ -127,11 +134,7 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
         unmappedFiles: [...build.unmappedFiles, ...found.files.filter((f) => f.readError).map((f) => f.id)],
       },
     }, now());
-    // The same release on other providers (D47). Shown now; merged into the fields in part 3.
-    if (deps.enrichment) {
-      const matches = await findOnProviders(deps.enrichment, rel.value, linksOf(extras?.value ?? null));
-      saveProviderMatches(deps.db, proposalId, matches, now());
-    }
+    if (matches) saveProviderMatches(deps.db, proposalId, matches, now());
     const count = (s: string) => build.fields.filter((f) => f.status === s).length;
     return {
       proposalId,

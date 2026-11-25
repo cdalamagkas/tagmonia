@@ -61,7 +61,8 @@ Deno.test("fields are unchanged, changed or added; unmapped files are left out",
   assertEquals(Object.fromEntries(f1), {
     // "album" → "Album": MusicBrainz's case is proposed (D43).
     album: "changed",
-    date: "unchanged",
+    // "2019" → "2019-05-03": a more precise date is written (D48).
+    date: "changed",
     genre: "added",
     title: "changed",
     tracknumber: "added",

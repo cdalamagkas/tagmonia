@@ -227,8 +227,20 @@ a:focus-visible {
   border-color: #b9e2c8;
   background: #effaf3;
 }
+.tm-badge-info {
+  color: #1d4f91;
+  border-color: #bcd3f2;
+  background: #eff5fd;
+}
 .tm-badge.tm-inline {
   margin-left: 0;
+}
+.tm-row-conflict td,
+.tm-row-conflict th {
+  background: #fdf6f4;
+}
+.tm-conflict {
+  margin-top: 6px;
 }
 .tm-best td {
   background: #fff7f1;

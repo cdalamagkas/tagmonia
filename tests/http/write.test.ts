@@ -5,7 +5,8 @@ import { getProposal, saveProposal } from "../../server/db/repo/proposals.ts";
 import type { HistoryResponse, JobDto } from "../../shared/types.ts";
 import { makeTestApp, signIn, type TestApp } from "../helpers/app.ts";
 
-function seed(t: TestApp): { candidateId: number; proposalId: number } {
+/** With `conflict`, MusicBrainz and Discogs also disagree on the date (D48). */
+function seed(t: TestApp, opts: { conflict?: boolean } = {}): { candidateId: number; proposalId: number } {
   upsertFile(t.db, {
     path: "A/01.flac",
     folder: "A",
@@ -38,15 +39,35 @@ function seed(t: TestApp): { candidateId: number; proposalId: number } {
     basedOnHash: "h1",
     snapshotIds: [],
     build: {
-      fields: [{
-        fileId,
-        field: "title",
-        current: "Old",
-        proposed: "New",
-        status: "changed",
-        locked: false,
-        sources: [],
-      }],
+      fields: [
+        {
+          fileId,
+          field: "title",
+          current: "Old",
+          proposed: "New",
+          status: "changed",
+          locked: false,
+          sources: [],
+          origin: "musicbrainz",
+          conflict: false,
+        },
+        ...(opts.conflict
+          ? [{
+            fileId,
+            field: "date" as const,
+            current: null,
+            proposed: "1978",
+            status: "added" as const,
+            locked: false,
+            sources: [
+              { provider: "musicbrainz", value: "1978", snapshotId: null, agreesWithProposed: true },
+              { provider: "discogs", value: "1977", snapshotId: null, agreesWithProposed: false },
+            ],
+            origin: "musicbrainz" as const,
+            conflict: true,
+          }]
+          : []),
+      ],
       unmappedFiles: [],
     },
   }, 1);
@@ -76,6 +97,34 @@ Deno.test("writing a proposal approves it and queues one write per release", () 
     assertEquals([job.kind, t.queue.get(job.id)!.payload], ["write", { proposalId }]);
     assertEquals(getProposal(t.db, proposalId)!.state, "approved");
     assertEquals((await t.request(path, { method: "POST", cookie, csrf })).status, 409, "one write at a time");
+  }));
+
+Deno.test("conflicting sources block the write until the user picks one (D48)", () =>
+  withApp(async (t, { cookie, csrf }) => {
+    const { candidateId, proposalId } = seed(t, { conflict: true });
+    const write = () => t.request(`/api/proposals/${proposalId}/write`, { method: "POST", cookie, csrf });
+    const decide = (body: unknown) =>
+      t.request(`/api/proposals/${proposalId}/decisions`, { method: "POST", cookie, csrf, body: JSON.stringify(body) });
+    const dateRow = () => getProposal(t.db, proposalId)!.fields.find((f) => f.field === "date")!;
+
+    let res = await write();
+    assertEquals(res.status, 409);
+    assert(((await res.json()) as { error: string }).error.includes("1 field with conflicting sources"));
+    const summary = await (await t.request(`/api/library/releases/${candidateId}/proposal`, { cookie })).json();
+    assertEquals([summary.proposal.counts.conflicts, summary.proposal.fields[1].conflict], [1, true]);
+
+    // A source that has no value, or a source with another decision, is refused.
+    assertEquals((await decide({ fieldIds: [dateRow().id], decision: "accepted", source: "deezer" })).status, 409);
+    assertEquals((await decide({ fieldIds: [dateRow().id], decision: "edited", source: "discogs" })).status, 400);
+
+    assertEquals((await decide({ fieldIds: [dateRow().id], decision: "accepted", source: "discogs" })).status, 204);
+    assertEquals([dateRow().decision, dateRow().edited, dateRow().resolvedFrom], ["edited", "1977", "discogs"]);
+    // Back to MusicBrainz's value: the proposed one, so plainly accepted.
+    assertEquals((await decide({ fieldIds: [dateRow().id], decision: "accepted", source: "musicbrainz" })).status, 204);
+    assertEquals([dateRow().decision, dateRow().edited, dateRow().resolvedFrom], ["accepted", null, "musicbrainz"]);
+
+    res = await write();
+    assertEquals(res.status, 202);
   }));
 
 Deno.test("a proposal whose files changed since it was built is not written", () =>
