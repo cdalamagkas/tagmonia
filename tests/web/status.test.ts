@@ -237,7 +237,7 @@ Deno.test("a release from a provider link: Add to MusicBrainz follows, until Mus
     proposal: { ...fromDeezer, fields: [field({ status: "unchanged", origin: "deezer" })] },
   }));
   assertEquals(allRight.primary?.id, "submission", "nothing to write: adding to MusicBrainz is the next step");
-  const returned = releaseStatus(state({ proposal: fromDeezer, submission: { state: "returned" } as SubmissionDto }));
+  const returned = releaseStatus(state({ proposal: fromDeezer, submission: sub({ state: "returned" }) }));
   assertEquals(returned.secondary, []);
   const src = sourceLine(state({ proposal: fromDeezer }), (m) => m);
   assertEquals([src.label, src.url, src.details], [
@@ -245,6 +245,89 @@ Deno.test("a release from a provider link: Add to MusicBrainz follows, until Mus
     "https://www.deezer.com/album/1",
     ["filled from iTunes"],
   ]);
+});
+
+function sub(over: Partial<SubmissionDto> = {}): SubmissionDto {
+  return {
+    id: 3,
+    candidateId: 1,
+    proposalId: 7,
+    server: "https://test.musicbrainz.org",
+    state: "ready",
+    duplicates: [],
+    artists: [],
+    releaseMbid: null,
+    error: null,
+    createdAt: 0,
+    updatedAt: 0,
+    followUps: null,
+    ...over,
+  };
+}
+
+Deno.test("a submission under way takes the status line (D52, PR 4)", () => {
+  const fromDeezer = proposal({
+    releaseMbid: null,
+    sourceUrl: "https://www.deezer.com/album/1",
+    primarySource: "deezer",
+  });
+  const at = (s: Partial<SubmissionDto>, p: ProposalDto = fromDeezer) => state({ proposal: p, submission: sub(s) });
+  assertEquals(say(at({ state: "checking" })), ["busy", "Checking test.musicbrainz.org for this release…", null, null]);
+  const artist = { name: "X", links: [], mbid: null, via: null, suggestions: [], createUrl: null, addLinksUrl: null };
+  assertEquals(say(at({ artists: [artist, { ...artist, name: "Y" }] })), [
+    "attention",
+    "2 artists to link before the editor",
+    "submission",
+    "Continue",
+  ]);
+  const dup = { mbid: MBID, title: "T", artist: null, date: null, country: null, barcode: null, trackCount: null };
+  assertEquals(
+    say(at({ duplicates: [{ ...dup, reasons: ["barcode"] }] }))[1],
+    "test.musicbrainz.org may already have this release",
+  );
+  const ready = releaseStatus(at({}));
+  assertEquals(
+    [ready.sentence, ready.primary?.id, ready.secondary.map((a) => a.id)],
+    ["Ready to open the release editor", "editor", ["write"]],
+    "the provider's changes can still be written meanwhile",
+  );
+  assertEquals(say(at({ state: "seeded" }))[1], "Waiting for you to submit on test.musicbrainz.org");
+  assertEquals(say(at({ state: "verifying" }))[0], "busy");
+  assertEquals(say(at({ state: "failed", error: "MusicBrainz is down" })), [
+    "error",
+    "MusicBrainz is down",
+    "retry",
+    "Try again",
+  ]);
+  assertEquals(say(at({ state: "abandoned" }))[2], "write", "a cancelled submission is history");
+  // The source was changed to a MusicBrainz release meanwhile: the submission no longer applies.
+  assertEquals(say(at({ state: "ready" }, proposal()))[2], "write");
+
+  // Returned: Tagmonia proposes from the new release; writing its identifiers finishes the job.
+  const NEW = "11111111-0000-4000-8000-000000000001";
+  const fromNew = proposal({
+    releaseMbid: NEW,
+    mbServer: "https://test.musicbrainz.org",
+    fields: [field({ field: "musicbrainz_albumid", current: null, proposed: NEW, status: "added" })],
+  });
+  const back = {
+    state: "returned" as const,
+    releaseMbid: NEW,
+    followUps: { release: "r", addCoverArt: "c", isrcs: null },
+  };
+  assertEquals(say(at(back, fromNew)), [
+    "attention",
+    "Added to test.musicbrainz.org · 1 change to write, its MusicBrainz IDs among them",
+    "write",
+    "Write 1 change",
+  ]);
+  assertEquals(say(at(back, { ...fromNew, state: "written" })), [
+    "ok",
+    "On test.musicbrainz.org · follow-ups: cover art",
+    "submission",
+    "Follow-ups",
+  ]);
+  assertEquals(say(at(back, { ...fromNew, stale: true }))[2], "build", "a stale proposal comes first");
 });
 
 Deno.test("no proposal yet: identification decides the next action", () => {

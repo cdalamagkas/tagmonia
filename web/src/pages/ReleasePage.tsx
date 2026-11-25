@@ -12,7 +12,7 @@ import { Identification } from "../components/Identification.tsx";
 import { Review } from "../components/Review.tsx";
 import { History } from "../components/History.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
-import { Submission } from "../components/Submission.tsx";
+import { AddToMusicBrainz, openEditor } from "../components/Submission.tsx";
 import {
   type Action,
   changesToWrite,
@@ -23,6 +23,7 @@ import {
   undoableBatch,
 } from "../release/status.ts";
 import { isLive, type LoadedRelease, useRelease } from "../release/useRelease.ts";
+import { activeSubmission } from "../release/submission.ts";
 
 type Tab = "changes" | "match" | "files" | "history";
 const TABS: Tab[] = ["changes", "match", "files", "history"];
@@ -248,12 +249,28 @@ function initialTab(): Tab | null {
   return TABS.includes(t as Tab) ? (t as Tab) : null;
 }
 
+/** `?panel=musicbrainz`: the Add to MusicBrainz panel is open (the callback page links here, at step 5). */
+function initialPanel(): boolean {
+  return new URLSearchParams(location.search).get("panel") === "musicbrainz";
+}
+
+function setSearch(key: string, value: string | null) {
+  const url = new URL(location.href);
+  if (value === null) url.searchParams.delete(key);
+  else url.searchParams.set(key, value);
+  history.replaceState(null, "", url.pathname + url.search);
+}
+
 export function ReleasePage({ id }: { id: number }) {
   const { data, error: loadError, reload } = useRelease(id);
   const [chosenTab, setChosenTab] = useState<Tab | null>(initialTab);
+  const [panel, setPanel] = useState(initialPanel);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => setChosenTab(initialTab()), [id]);
+  useEffect(() => {
+    setChosenTab(initialTab());
+    setPanel(initialPanel());
+  }, [id]);
 
   if (loadError && !data) {
     return (
@@ -276,9 +293,12 @@ export function ReleasePage({ id }: { id: number }) {
   const tab: Tab = chosenTab ?? (p ? "changes" : "match");
   const selectTab = (t: Tab) => {
     setChosenTab(t);
-    const url = new URL(location.href);
-    url.searchParams.set("tab", t);
-    history.replaceState(null, "", url.pathname + url.search);
+    setSearch("tab", t);
+    openPanel(false);
+  };
+  const openPanel = (open: boolean) => {
+    setPanel(open);
+    setSearch("panel", open ? "musicbrainz" : null);
   };
   const scrollTo = (elementId: string) =>
     requestAnimationFrame(() => document.getElementById(elementId)?.scrollIntoView({ behavior: "smooth" }));
@@ -324,8 +344,15 @@ export function ReleasePage({ id }: { id: number }) {
         selectTab("changes");
         return scrollTo("tm-conflicts");
       case "submission":
-        selectTab("changes");
+        openPanel(true);
         return scrollTo("tm-add-to-musicbrainz");
+      case "editor": {
+        // Straight from the click, so the browser lets the editor open in a new tab.
+        const sub = data.submission!;
+        return act(() => openEditor(sub.id));
+      }
+      case "retry":
+        return act(() => api.prepareSubmission(p!.id));
     }
   };
 
@@ -339,6 +366,9 @@ export function ReleasePage({ id }: { id: number }) {
     files: `Files (${files.length})`,
     history: data.history.batches.length ? `History (${data.history.batches.length})` : "History",
   };
+  // The panel applies to a release tagged from a provider, or while a submission is under way or has returned.
+  const canSubmit = (!!p && !p.releaseMbid && !!p.sourceUrl) || !!activeSubmission(data.submission);
+  const showPanel = panel && canSubmit;
   const propose = async (body: Parameters<typeof api.propose>[1]) => {
     await api.propose(id, body);
     await reload();
@@ -356,7 +386,19 @@ export function ReleasePage({ id }: { id: number }) {
         onAction={onAction}
         onSource={() => selectTab("match")}
       />
-      <div class="tm-tabs" role="tablist" aria-label="Release">
+      {showPanel && (
+        <AddToMusicBrainz
+          releaseId={id}
+          proposal={p}
+          submission={data.submission}
+          changes={changes}
+          building={!!data.proposal.job}
+          onReload={reload}
+          onClose={() => openPanel(false)}
+          onShowChanges={() => selectTab("changes")}
+        />
+      )}
+      <div class="tm-tabs" role="tablist" aria-label="Release" hidden={showPanel}>
         {TABS.map((t) => (
           <button
             key={t}
@@ -372,15 +414,9 @@ export function ReleasePage({ id }: { id: number }) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`tm-panel-${tab}`} aria-labelledby={`tm-tab-${tab}`}>
+      <div role="tabpanel" id={`tm-panel-${tab}`} aria-labelledby={`tm-tab-${tab}`} hidden={showPanel}>
         {tab === "changes" && (
           <>
-            <Submission
-              releaseId={id}
-              proposal={p}
-              submission={data.submission}
-              onReload={reload}
-            />
             <Review
               releaseId={id}
               data={data.proposal}

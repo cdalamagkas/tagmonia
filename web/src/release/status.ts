@@ -12,6 +12,7 @@ import type {
   SubmissionDto,
 } from "../../../shared/types.ts";
 import { RELEASE_FIELDS } from "../format.ts";
+import { activeSubmission, submissionHeader } from "./submission.ts";
 
 export const SOURCE_NAMES: Record<string, string> = {
   musicbrainz: "MusicBrainz",
@@ -72,7 +73,9 @@ export type ActionId =
   | "undo" // undo the latest write
   | "match" // open the Match tab
   | "resolve" // open the Changes tab at the conflicts
-  | "submission"; // open Add to MusicBrainz
+  | "submission" // open the Add to MusicBrainz panel
+  | "editor" // open MusicBrainz's release editor (the submission is ready)
+  | "retry"; // check MusicBrainz again after a failed submission check
 
 export interface Action {
   id: ActionId;
@@ -105,11 +108,53 @@ export function undoableBatch(h: HistoryResponse) {
   return h.batches.find((b) => b.kind === "write" && b.undoable) ?? null;
 }
 
-/** Tags from a provider, and the release is not (yet) on MusicBrainz: adding it is the next step after writing. */
+/** Tags from a provider, and the release is not (yet) on MusicBrainz. */
+function fromProvider(p: ProposalDto | null): boolean {
+  return !!p && !p.releaseMbid && !!p.sourceUrl;
+}
+
+/** Adding it to MusicBrainz is the next step after writing, until a submission is under way. */
 function addToMusicBrainz(p: ProposalDto, s: SubmissionDto | null): Action | null {
-  if (p.releaseMbid || !p.sourceUrl) return null;
-  if (s && s.state === "returned") return null;
+  if (!fromProvider(p) || activeSubmission(s)) return null;
   return { id: "submission", label: "Add to MusicBrainz →" };
+}
+
+/**
+ * While a submission is under way (D52), its state takes the status line. A returned one does so only
+ * while nothing else needs the user first (a stale proposal, an open choice).
+ */
+function submissionStatus(s: ReleaseState): ReleaseStatus | null {
+  const pr = s.proposal;
+  const p = pr.proposal;
+  const sub = activeSubmission(s.submission);
+  if (!sub) return null;
+  const open = !!p && isOpen(p);
+  const n = p && open ? changesToWrite(p) : 0;
+  if (sub.state === "returned") {
+    if (p && open && (p.stale || openChoices(p) > 0)) return null;
+  } else if (!fromProvider(p) && sub.state !== "verifying") {
+    // The source was changed to a MusicBrainz release meanwhile: the submission no longer applies.
+    return null;
+  }
+  const h = submissionHeader(sub, p, n);
+  if (!h) return null;
+  const write: Action = {
+    id: "write",
+    label: `Write ${plural(n, "change")}`,
+    ...(pr.readOnly ? { disabled: "Read-only mode: nothing is written" } : {}),
+  };
+  const primary: Action | null = !h.primary
+    ? null
+    : h.primary.id === "write"
+    ? write
+    : { id: h.primary.id === "panel" ? "submission" : h.primary.id, label: h.primary.label };
+  const secondary: Action[] = [];
+  if (n > 0 && primary?.id !== "write" && !p!.stale) secondary.push(write);
+  if (p?.state === "written") {
+    const batch = undoableBatch(s.history);
+    if (batch && !pr.readOnly) secondary.push({ id: "undo", label: "Undo" });
+  }
+  return { tone: h.tone, sentence: h.sentence, primary, secondary };
 }
 
 export function releaseStatus(s: ReleaseState): ReleaseStatus {
@@ -130,6 +175,8 @@ export function releaseStatus(s: ReleaseState): ReleaseStatus {
   if (ident.job || ident.status === "identifying") {
     return { tone: "busy", sentence: "Identifying on MusicBrainz…", primary: null, secondary: [] };
   }
+  const submitting = submissionStatus(s);
+  if (submitting) return submitting;
 
   if (p && isOpen(p)) {
     const extra = [addToMusicBrainz(p, s.submission)].filter((a): a is Action => !!a);

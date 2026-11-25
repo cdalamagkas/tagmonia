@@ -823,3 +823,153 @@ td.tm-change-off .tm-change-new {
 .tm-right-track[open] > summary {
   margin-bottom: 4px;
 }
+
+/* Add to MusicBrainz as a step panel (restructure PR 4) */
+[hidden] {
+  display: none !important;
+}
+.tm-mb-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tm-mb-panel-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.tm-icon-button {
+  border: 0;
+  background: none;
+  color: var(--tm-slate);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: var(--tm-radius);
+}
+.tm-icon-button:hover {
+  color: var(--tm-orange);
+}
+.tm-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 16px;
+  counter-reset: none;
+}
+.tm-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tm-slate);
+  white-space: nowrap;
+}
+.tm-step + .tm-step::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: var(--tm-rule);
+  margin: 0 8px;
+}
+@media (max-width: 600px) {
+  .tm-steps {
+    gap: 6px 14px;
+  }
+  .tm-step + .tm-step::before {
+    display: none;
+  }
+}
+.tm-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--tm-rule);
+  font-size: 0.8rem;
+}
+.tm-step-done .tm-step-n,
+.tm-step-skipped @media (max-width: 600px) {
+  .tm-steps {
+    gap: 6px 14px;
+  }
+  .tm-step + .tm-step::before {
+    display: none;
+  }
+}
+.tm-step-n {
+  border-color: var(--tm-navy);
+  color: var(--tm-navy);
+}
+.tm-step-skipped {
+  opacity: 0.7;
+}
+.tm-step-current {
+  color: var(--tm-navy);
+  font-weight: var(--tm-weight-label);
+}
+.tm-step-current @media (max-width: 600px) {
+  .tm-steps {
+    gap: 6px 14px;
+  }
+  .tm-step + .tm-step::before {
+    display: none;
+  }
+}
+.tm-step-n {
+  background: var(--tm-navy);
+  border-color: var(--tm-navy);
+  color: var(--tm-paper);
+}
+.tm-step-section {
+  margin: 16px 0;
+}
+.tm-step-section h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: var(--tm-weight-name);
+}
+.tm-step-line {
+  margin: 12px 0;
+}
+.tm-artist-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.tm-artist-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--tm-rule);
+}
+.tm-artist-fix {
+  flex: 1 0 100%;
+  padding-left: 16px;
+}
+.tm-artist-fix > div {
+  margin: 4px 0;
+}
+.tm-checklist {
+  padding-left: 20px;
+}
+.tm-checklist li {
+  margin: 6px 0;
+}
+.tm-check-done {
+  list-style: "✓  ";
+}
+.tm-mb-panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--tm-rule);
+  padding-top: 12px;
+  margin-top: 16px;
+}

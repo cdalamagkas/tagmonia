@@ -939,9 +939,9 @@ The maintainer chose the test server for the "Done when"; submitting to musicbra
 - Inbox/watch folder; rename/move templates; OIDC and trusted-header auth.
 - Docker image hardening, SBOM, multi-arch release.
 
-### Release page restructure (planned, outside the phases)
+### Release page restructure (done, outside the phases)
 
-Accepted 2026-11-25, to follow Phase 5 part 2 as its own PRs: a header with one status and next action, then tabs (Changes, Match, Files, History), checkbox decisions, one track grid, one link box. See [proposals/release-page-restructure.md](proposals/release-page-restructure.md) (D53).
+Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs: a header with one status and next action, then tabs (Changes, Match, Files, History), checkbox decisions, one track grid, one link box, and Add to MusicBrainz as a step panel launched from the header. See [proposals/release-page-restructure.md](proposals/release-page-restructure.md) (D53).
 
 ---
 

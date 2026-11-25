@@ -17,7 +17,7 @@ export function MbCallbackPage({ submission }: { submission: number }) {
     api.submissionCallback(submission, mbid).then(setSub, (e) => setError((e as Error).message));
   }, [submission]);
 
-  // Poll until MusicBrainz confirmed the release, then go to the release page.
+  // Poll until MusicBrainz confirmed the release, then go to the release page, at the panel's last step.
   useEffect(() => {
     if (!sub || sub.state !== "verifying") return;
     const t = setTimeout(async () => {
@@ -31,7 +31,7 @@ export function MbCallbackPage({ submission }: { submission: number }) {
     return () => clearTimeout(t);
   }, [sub]);
   useEffect(() => {
-    if (sub?.state === "returned") navigate(`/releases/${sub.candidateId}`);
+    if (sub?.state === "returned") navigate(`/releases/${sub.candidateId}?panel=musicbrainz`);
   }, [sub?.state]);
 
   return (
