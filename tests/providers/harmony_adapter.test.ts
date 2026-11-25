@@ -131,3 +131,20 @@ Deno.test("album pages are told apart from artist and track pages, per provider 
   assertEquals(is("https://www.discogs.com/release/1"), false, "Discogs is not registered here");
   assertEquals(is("http://www.deezer.com/en/album/629506181"), false, "https only");
 });
+
+Deno.test("an artist's provider pages, with MusicBrainz's link types, from Harmony's external IDs (D52)", async () => {
+  const harmony = await createHarmonyRegistry({
+    app,
+    snapsDir: await Deno.makeTempDir({ prefix: "tagmonia-snaps-" }),
+    providers: ["deezer"],
+  });
+  const links = harmony.artistLinks({
+    name: "Niklas Blumenthaler",
+    externalIds: [
+      { provider: "deezer", type: "artist", id: "13537843" },
+      { provider: "itunes", type: "artist", id: "1" }, // not registered here: skipped
+    ],
+  });
+  assertEquals(links.map((l) => l.url), ["https://www.deezer.com/artist/13537843"]);
+  assert(links[0].linkTypeIds.length > 0, "Deezer artist pages have a MusicBrainz link type");
+});

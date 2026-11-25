@@ -53,8 +53,22 @@ const urlRelsSchema = z.looseObject({
   id: z.string(),
   relations: z.array(z.looseObject({
     release: z.looseObject({ id: z.string(), title: z.string() }).optional(),
+    artist: z.looseObject({ id: z.string(), name: z.string() }).optional(),
   })).optional(),
 });
+
+const artistSearchSchema = z.looseObject({
+  artists: z.array(z.looseObject({
+    id: z.string(),
+    name: z.string(),
+    score: z.number().optional(),
+    disambiguation: z.string().optional(),
+    country: z.string().nullable().optional(),
+    type: z.string().nullable().optional(),
+  })).default([]),
+});
+
+export type MbArtistHit = z.infer<typeof artistSearchSchema>["artists"][number];
 
 export interface Ttl {
   lookupMs: number;
@@ -202,6 +216,29 @@ export class MusicBrainzClient {
     if (!got) return { value: [], snapshotId: 0 };
     const releases = (got.value.relations ?? []).flatMap((r) => (r.release ? [r.release] : []));
     return { value: releases, snapshotId: got.snapshotId };
+  }
+
+  /** The artists a URL is linked to (e.g. a Deezer artist page): finding a release's artists (D52). */
+  async artistsForUrl(
+    resource: string,
+    opts: { signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<Cited<{ id: string; name: string }[]>> {
+    const url = this.#url("url", { resource, inc: "artist-rels" });
+    const got = await this.#get(url, opts.maxAgeMs ?? this.#ttl.searchMs, urlRelsSchema, opts.signal);
+    if (!got) return { value: [], snapshotId: 0 };
+    const artists = (got.value.relations ?? []).flatMap((r) => (r.artist ? [r.artist] : []));
+    return { value: [...new Map(artists.map((a) => [a.id, a])).values()], snapshotId: got.snapshotId };
+  }
+
+  /** Artists by name, best first: suggestions when an artist could not be found by its pages (D52). */
+  async searchArtists(
+    name: string,
+    opts: { limit?: number; signal?: AbortSignal; maxAgeMs?: number } = {},
+  ): Promise<Cited<MbArtistHit[]>> {
+    const query = `artist:${phrase(name)}`;
+    const url = this.#url("artist/", { query, limit: String(Math.min(25, Math.max(1, opts.limit ?? 5))) });
+    const got = await this.#get(url, opts.maxAgeMs ?? this.#ttl.searchMs, artistSearchSchema, opts.signal);
+    return { value: got?.value.artists ?? [], snapshotId: got?.snapshotId ?? 0 };
   }
 
   /** A release fetched now, never from the cache: verifying a just-submitted release (§12.2). */

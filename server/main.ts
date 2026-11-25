@@ -124,6 +124,7 @@ async function main() {
     db,
     client: submissionClients,
     providerOf: (url) => harmony.providerForUrl(url) as SourceProvider | undefined,
+    artistLinks: (artist) => harmony.artistLinks(artist),
     onReturned: (candidateId, mbid, server) =>
       enqueuePropose(
         queue,

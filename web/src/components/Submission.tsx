@@ -19,7 +19,7 @@ function host(server: string): string {
  * request, while the click still counts as the user's, so it is not blocked as a pop-up.
  */
 async function openEditor(id: number): Promise<void> {
-  const tab = window.open("", "tagmonia-mb-editor");
+  const tab = globalThis.open("", "tagmonia-mb-editor");
   try {
     const { action, fields } = await api.openSubmission(id);
     // The editor tab must not reach back into Tagmonia.
@@ -43,6 +43,97 @@ async function openEditor(id: number): Promise<void> {
     tab?.close();
     throw e;
   }
+}
+
+/**
+ * §12.3: the editor links an artist only by MBID. Found artists are listed as linked; the others
+ * get MusicBrainz's "Add artist" form (filled in, opening in a new tab) and name suggestions.
+ */
+function Artists(
+  { s, busy, onChoose, onRecheck }: {
+    s: SubmissionDto;
+    busy: boolean;
+    onChoose: (name: string, artist: string | null) => void;
+    onRecheck: () => void;
+  },
+) {
+  if (s.artists.length === 0) return null;
+  const missing = s.artists.filter((a) => !a.mbid);
+  return (
+    <div class="tm-sub-artists">
+      <h3>Artists</h3>
+      <ul class="tm-values">
+        {s.artists.map((a) => (
+          <li key={a.name}>
+            <strong>{a.name}</strong> {a.mbid
+              ? (
+                <>
+                  <span class="tm-badge tm-badge-ok tm-inline">on {host(s.server)}</span>{" "}
+                  <a href={`${s.server}/artist/${a.mbid}`} target="_blank" rel="noopener noreferrer">
+                    {a.via === "chosen" ? "your choice" : "found by its provider page"}
+                  </a>
+                  {a.via === "chosen" && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        class="tm-linklike tm-small-link"
+                        disabled={busy}
+                        onClick={() => onChoose(a.name, null)}
+                      >
+                        undo
+                      </button>
+                    </>
+                  )}
+                </>
+              )
+              : (
+                <>
+                  <span class="tm-badge tm-badge-warn tm-inline">not found on {host(s.server)}</span>{" "}
+                  {a.createUrl && (
+                    <a href={a.createUrl} target="_blank" rel="noopener noreferrer">
+                      Add this artist on {host(s.server)}
+                    </a>
+                  )}
+                  {a.suggestions.length > 0 && (
+                    <div class="tm-muted tm-small-note">
+                      Or is it one of these? {a.suggestions.map((g, i) => (
+                        <span key={g.mbid}>
+                          {i > 0 && " · "}
+                          <a href={`${s.server}/artist/${g.mbid}`} target="_blank" rel="noopener noreferrer">
+                            {g.name}
+                          </a>
+                          {(g.disambiguation || g.country) &&
+                            ` (${[g.disambiguation, g.country].filter(Boolean).join(", ")})`}{" "}
+                          <button
+                            type="button"
+                            class="tm-linklike tm-small-link"
+                            disabled={busy}
+                            onClick={() => onChoose(a.name, g.mbid)}
+                          >
+                            use
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+          </li>
+        ))}
+      </ul>
+      {missing.length > 0 && (
+        <p class="tm-muted">
+          The release editor links an artist only when it already exists on {host(s.server)}. Add{" "}
+          {missing.length === 1 ? "it" : "them"}{" "}
+          with the link above (the form is filled in with the provider pages, so Tagmonia can find{" "}
+          {missing.length === 1 ? "it" : "them"} afterwards), then{" "}
+          <button type="button" class="tm-linklike" disabled={busy} onClick={onRecheck}>check again</button>. You can
+          also open the editor now and choose or add artists there.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function Duplicates({ s, onUse }: { s: SubmissionDto; onUse: (mbid: string) => void }) {
@@ -181,6 +272,12 @@ export function Submission(
       {sub?.state === "checking" && <p class="tm-muted">Checking {host(sub.server)} for this release…</p>}
       {sub && (sub.state === "ready" || sub.state === "seeded") && (
         <>
+          <Artists
+            s={sub}
+            busy={busy}
+            onChoose={(name, artist) => act(() => api.chooseSubmissionArtist(sub.id, name, artist))}
+            onRecheck={() => act(() => api.recheckSubmission(sub.id))}
+          />
           <Duplicates
             s={sub}
             onUse={(mbid) =>

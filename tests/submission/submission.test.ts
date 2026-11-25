@@ -2,6 +2,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { ReleaseQuery } from "../../server/providers/musicbrainz/client.ts";
 import { findDuplicates } from "../../server/submission/duplicates.ts";
+import { artistCreateUrl, collectArtists, withArtistMbids } from "../../server/submission/artists.ts";
 import { editNote, mergedFromMatches, seedFor } from "../../server/submission/seed.ts";
 import { VERSION } from "../../server/version.ts";
 import { MATCHES } from "./helpers.ts";
@@ -84,4 +85,47 @@ Deno.test("duplicates: by barcode (both spellings), by linked provider pages, by
   ]);
   assertEquals(asked.length, 5, "two barcode spellings, two pages, one text search");
   assertEquals(ages.every((a) => a === 0), true, "never answered from the cache");
+});
+
+Deno.test("artists: collected once across release and tracks, linked by MBID in the seed, seeded for creation", () => {
+  const merged = mergedFromMatches(MATCHES, "deezer");
+  const withGuest = {
+    ...merged,
+    media: merged.media.map((m) => ({
+      ...m,
+      tracklist: m.tracklist.map((t, i) =>
+        i === 1 ? { ...t, artists: [...merged.artists, { name: "Guest", creditedName: "Guest" }] } : t
+      ),
+    })),
+  };
+  const links = (a: { name: string }) =>
+    a.name === "Guest" ? [] : [{ url: "https://www.deezer.com/artist/9", linkTypeIds: [194] }];
+  assertEquals(collectArtists(withGuest, links).map((a) => [a.name, a.links.length]), [["Niklas Blumenthaler", 1], [
+    "Guest",
+    0,
+  ]]);
+
+  const linked = withArtistMbids(withGuest, [
+    { name: "Niklas Blumenthaler", links: [], mbid: "m1", via: "link", suggestions: [], createUrl: null },
+  ]);
+  const seed = seedFor(linked, { returnUrl: new URL("https://t.example/mb/callback/1"), fetchedAt: 0 });
+  assertEquals(seed["artist_credit.names.0.mbid"], "m1");
+  assertEquals(seed["mediums.0.track.1.artist_credit.names.0.mbid"], "m1");
+  assertEquals(seed["mediums.0.track.1.artist_credit.names.1.artist.name"], "Guest", "unknown artists stay names");
+
+  const url = new URL(artistCreateUrl("https://test.musicbrainz.org", {
+    name: "Niklas Blumenthaler",
+    links: [{ url: "https://www.deezer.com/artist/9", linkTypeIds: [194] }, {
+      url: "https://x.test/a",
+      linkTypeIds: [],
+    }],
+  }, "https://www.deezer.com/album/1"));
+  assertEquals(url.origin + url.pathname, "https://test.musicbrainz.org/artist/create");
+  assertEquals([...url.searchParams.keys()], [
+    "edit-artist.name",
+    "edit-artist.url.0.text",
+    "edit-artist.url.0.link_type_id",
+    "edit-artist.url.1.text",
+    "edit-artist.edit_note",
+  ]);
 });

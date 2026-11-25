@@ -12,7 +12,7 @@
  */
 import { ProviderRegistry } from "../../vendor/harmony/providers/registry.ts";
 import { mergeRelease } from "../../vendor/harmony/harmonizer/merge.ts";
-import { createReleaseSeed } from "../../vendor/harmony/musicbrainz/seeding.ts";
+import { convertLinkType, createReleaseSeed } from "../../vendor/harmony/musicbrainz/seeding.ts";
 import type { MetadataProvider, MetadataProviderConstructor } from "../../vendor/harmony/providers/base.ts";
 import type { HarmonyRelease, MergedHarmonyRelease, ReleaseOptions } from "../../vendor/harmony/harmonizer/types.ts";
 
@@ -81,6 +81,11 @@ export interface HarmonyRegistry {
   providerForUrl(url: URL): string | undefined;
   /** Whether the URL is a release (album) page of a registered provider, not an artist or a track (D51). */
   isReleaseUrl(url: URL): boolean;
+  /**
+   * An artist's pages on the providers that know it (from Harmony's external IDs), each with
+   * MusicBrainz's artist link type ids: to find the artist on MusicBrainz, or to seed adding it (D52).
+   */
+  artistLinks(artist: HarmonizedRelease["artists"][number]): { url: string; linkTypeIds: number[] }[];
   lookupByUrl(url: URL, options?: HarmonyReleaseOptions): Promise<HarmonizedRelease>;
   /** By barcode, on one enabled provider (D47). Rejects when that provider is not registered. */
   lookupByGtin(provider: HarmonyProviderId, gtin: string, options?: HarmonyReleaseOptions): Promise<HarmonizedRelease>;
@@ -126,6 +131,19 @@ export async function createHarmonyRegistry(opts: HarmonyRegistryOptions): Promi
   return {
     providerIds: enabled,
     providerForUrl: (url) => find(url)?.internalName,
+    artistLinks(artist) {
+      const out: { url: string; linkTypeIds: number[] }[] = [];
+      for (const id of artist.externalIds ?? []) {
+        const provider = registry.findByName(id.provider);
+        if (!provider) continue;
+        const url = provider.constructUrl(id);
+        if (url.protocol !== "https:") continue;
+        const types = id.linkTypes ?? provider.getLinkTypesForEntity(id);
+        const linkTypeIds = types.map((t) => convertLinkType("artist", t, url)).filter((n): n is number => !!n);
+        if (!out.some((l) => l.url === url.href)) out.push({ url: url.href, linkTypeIds });
+      }
+      return out;
+    },
     isReleaseUrl(url) {
       const provider = find(url);
       const entity = provider?.extractEntityFromUrl(url);

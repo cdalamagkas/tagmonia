@@ -96,6 +96,9 @@ export const api = {
   submissionCallback: (id: number, release: string) =>
     request<SubmissionDto>("POST", `/api/submissions/${id}/callback`, { release }),
   abandonSubmission: (id: number) => request<void>("POST", `/api/submissions/${id}/abandon`),
+  recheckSubmission: (id: number) => request<SubmissionDto>("POST", `/api/submissions/${id}/recheck`),
+  chooseSubmissionArtist: (id: number, name: string, artist: string | null) =>
+    request<SubmissionDto>("POST", `/api/submissions/${id}/artists`, { name, artist }),
   decide: (proposalId: number, body: DecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/decisions`, body),
   discard: (proposalId: number) => request<void>("POST", `/api/proposals/${proposalId}/discard`),
