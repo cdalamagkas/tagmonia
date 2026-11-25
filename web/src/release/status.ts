@@ -50,6 +50,16 @@ export function changesToWrite(p: ProposalDto): number {
   return albumFields.size + rows.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0);
 }
 
+/**
+ * Disagreements still waiting for a choice, counted as the Changes tab lists them: an album field once
+ * (it is decided once for every file), a track field per track.
+ */
+export function openChoices(p: ProposalDto): number {
+  const open = p.fields.filter((r) => r.conflict && r.decision === "auto" && !r.locked);
+  return new Set(open.filter((r) => RELEASE.has(r.field)).map((r) => r.field)).size +
+    open.filter((r) => !RELEASE.has(r.field)).length;
+}
+
 export function isOpen(p: ProposalDto): boolean {
   return p.state === "draft" || p.state === "needs_review" || p.state === "approved";
 }
@@ -131,10 +141,11 @@ export function releaseStatus(s: ReleaseState): ReleaseStatus {
         secondary: extra,
       };
     }
-    if (p.counts.conflicts > 0) {
+    const choices = openChoices(p);
+    if (choices > 0) {
       return {
         tone: "attention",
-        sentence: `${plural(p.counts.conflicts, "field")} ${p.counts.conflicts === 1 ? "needs" : "need"} your choice`,
+        sentence: `${plural(choices, "field")} ${choices === 1 ? "needs" : "need"} your choice`,
         primary: { id: "resolve", label: "Resolve" },
         secondary: extra,
       };

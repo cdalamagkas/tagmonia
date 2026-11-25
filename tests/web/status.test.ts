@@ -152,9 +152,21 @@ Deno.test("an open proposal: stale, then conflicts, then changes to write, else 
     "build",
     "Build again",
   ]);
-  const conflicts = proposal({ counts: { ...proposal().counts, conflicts: 2 } });
+  const conflicts = proposal({
+    fields: [
+      field({ fileId: 1, field: "title", conflict: true }),
+      field({ fileId: 2, field: "title", conflict: true }),
+    ],
+    counts: { ...proposal().counts, conflicts: 2 },
+  });
   assertEquals(say(state({ proposal: conflicts })).slice(1, 3), ["2 fields need your choice", "resolve"]);
   assertEquals(say(state()).slice(1), ["1 change ready", "write", "Write 1 change"]);
+  // A disagreement on an album field is one choice, though every file has the row (as the Changes tab lists it).
+  const albumConflict = proposal({
+    fields: [1, 2, 3, 4, 5].map((fileId) => field({ fileId, field: "date", conflict: true })),
+    counts: { ...proposal().counts, conflicts: 5 },
+  });
+  assertEquals(say(state({ proposal: albumConflict })).slice(1, 3), ["1 field needs your choice", "resolve"]);
   const none = proposal({ fields: [field({ status: "unchanged" })] });
   assertEquals(say(state({ proposal: none })), ["ok", "Everything is already right", null, null]);
 });

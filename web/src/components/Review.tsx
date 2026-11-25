@@ -288,7 +288,7 @@ function Marks({ item, a }: { item: ChangeItem; a: Actions }) {
   return (
     <>
       {item.filledBy && <span class="tm-badge tm-chip">filled by {PROVIDERS[item.filledBy] ?? item.filledBy}</span>}
-      {item.edited && <span class="tm-badge tm-chip">your value</span>}
+      {item.edited && !settled && <span class="tm-badge tm-chip">your value</span>}
       {settled && <span class="tm-badge tm-chip">chosen: {PROVIDERS[settled] ?? settled}</span>}
       {locks.length > 0 && <span class="tm-badge tm-chip">🔒 {lockLabel(locks[0])}</span>}
     </>
@@ -683,7 +683,7 @@ export function Review(
           <span>
             <strong>{m.selected}</strong> of {m.total} change{m.total === 1 ? "" : "s"} selected
             {unresolved > 0 && (
-              <span class="tm-muted">· {unresolved} need{unresolved === 1 ? "s" : ""} your choice</span>
+              <span class="tm-muted">{` · ${unresolved} need${unresolved === 1 ? "s" : ""} your choice`}</span>
             )}
           </span>
           <span class="tm-write-bar-actions">
