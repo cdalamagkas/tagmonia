@@ -66,6 +66,15 @@ function lists(field: CanonicalField, a: unknown[], b: unknown[], strength: Stre
   return x.every((v, i) => v === y[i]);
 }
 
+/**
+ * A date that agrees with the current one but says more ("1978" → "1978-03-09"):
+ * worth writing. The reverse is not, so a file's precise date is never cut back.
+ */
+export function refinesDate(field: CanonicalField, current: unknown, proposed: unknown): boolean {
+  return DATE_FIELDS.has(field) && typeof current === "string" && typeof proposed === "string" &&
+    proposed.trim().length > current.trim().length && datesAgree(current, proposed);
+}
+
 export function valuesAgree(
   field: CanonicalField,
   current: unknown,

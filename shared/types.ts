@@ -244,6 +244,12 @@ export interface FieldProposalDto {
   decision: FieldDecision;
   locked: boolean;
   sources: FieldSourceDto[];
+  /** Whose value is proposed: not "musicbrainz" means filled by a fallback provider (D48). */
+  origin: string;
+  /** The sources disagree; until decided (decision not "auto"), the write is refused. */
+  conflict: boolean;
+  /** The source the user picked to settle the field, if any. */
+  resolvedFrom: string | null;
 }
 
 export interface ProposalDto {
@@ -255,7 +261,8 @@ export interface ProposalDto {
   createdAt: number;
   /** The files changed since the proposal was built. */
   stale: boolean;
-  counts: { changed: number; added: number; unchanged: number; locked: number };
+  /** filled: rows whose value comes from a fallback provider; conflicts: rows still waiting for a decision. */
+  counts: { changed: number; added: number; unchanged: number; locked: number; filled: number; conflicts: number };
   /** Files with no track on the release; they are left untouched. */
   unmappedFiles: number[];
   fields: FieldProposalDto[];
@@ -344,6 +351,8 @@ export interface DecisionRequest {
   decision: FieldDecision;
   /** Required with "edited": the user's own value, in the field's canonical type. */
   edited?: unknown;
+  /** With "accepted": take this source's value instead of the proposed one (settles a conflict, D48). */
+  source?: "musicbrainz" | "deezer" | "itunes" | "discogs";
 }
 
 // ---- providers and settings (§9.2, §14.3, §15.2, Phase 4)

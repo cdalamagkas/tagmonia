@@ -5,7 +5,8 @@
  */
 import type { MappedPair } from "../identify/types.ts";
 import type { CanonicalField, CanonicalTags } from "../tagio/types.ts";
-import { valuesAgree } from "./compare.ts";
+import { refinesDate, valuesAgree } from "./compare.ts";
+import { type FieldProvenance, type SourceId, sourcesAgree } from "./merge.ts";
 import type { ProposedTags } from "./musicbrainz_tags.ts";
 
 export type FieldStatus = "unchanged" | "changed" | "added";
@@ -36,6 +37,10 @@ export interface FieldProposalDraft {
   /** A lock keeps the current value whatever the sources say. */
   locked: boolean;
   sources: FieldSource[];
+  /** Whose value is proposed; not MusicBrainz = "filled by" another provider (D48). */
+  origin: SourceId;
+  /** The sources disagree and the user must choose before writing (§10.3 rule 4). */
+  conflict: boolean;
 }
 
 export interface BuildInput {
@@ -46,6 +51,8 @@ export interface BuildInput {
   /** Snapshot the MusicBrainz values came from, for provenance (§9.4). */
   snapshotId: number | null;
   locks: FieldLock[];
+  /** From mergeProviders: per release field, or `${trackId}:${field}` (D48). Absent = MusicBrainz alone. */
+  provenance?: Map<string, FieldProvenance>;
 }
 
 export interface BuildResult {
@@ -79,7 +86,16 @@ export function buildFieldProposals(input: BuildInput): BuildResult {
     const proposed: CanonicalTags = { ...input.proposed.release, ...track };
     for (const [field, value] of Object.entries(proposed) as [CanonicalField, unknown][]) {
       const current = file.tags[field];
-      const agrees = valuesAgree(field, current, value);
+      const agrees = valuesAgree(field, current, value) && !refinesDate(field, current, value);
+      const prov = input.provenance?.get(field in track ? `${trackId}:${field}` : field);
+      const sources: FieldSource[] = prov
+        ? prov.sources.map((s) => ({
+          provider: s.provider,
+          value: s.value,
+          snapshotId: s.provider === "musicbrainz" ? input.snapshotId : null,
+          agreesWithProposed: sourcesAgree(field, s.value, value),
+        }))
+        : [{ provider: "musicbrainz", value, snapshotId: input.snapshotId, agreesWithProposed: true }];
       fields.push({
         fileId: file.id,
         field,
@@ -87,7 +103,9 @@ export function buildFieldProposals(input: BuildInput): BuildResult {
         proposed: value,
         status: current === undefined ? "added" : agrees ? "unchanged" : "changed",
         locked: isLocked(input.locks, input.candidateId, file.id, field),
-        sources: [{ provider: "musicbrainz", value, snapshotId: input.snapshotId, agreesWithProposed: true }],
+        sources,
+        origin: prov?.origin ?? "musicbrainz",
+        conflict: prov?.conflict ?? false,
       });
     }
   }

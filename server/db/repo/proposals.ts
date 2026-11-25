@@ -21,6 +21,12 @@ export interface StoredFieldProposal {
   decision: Decision;
   locked: boolean;
   sources: { provider: string; value: unknown; snapshotId: number | null; agreesWithProposed: boolean }[];
+  /** Whose value is proposed (D48). */
+  origin: string;
+  /** Sources disagree; unresolved while the decision is still "auto" and the row is unlocked. */
+  conflict: boolean;
+  /** The source the user picked, if they settled it that way. */
+  resolvedFrom: string | null;
 }
 
 export interface StoredProposal {
@@ -67,8 +73,9 @@ export function saveProposal(db: Db, p: NewProposal, now: number): number {
       now,
     ) as { id: number };
     const field = db.prepare(
-      `INSERT INTO field_proposal (proposal_id, file_id, field, current_value, proposed_value, status, decision, locked)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      `INSERT INTO field_proposal (proposal_id, file_id, field, current_value, proposed_value, status, decision, locked,
+                                   origin, conflict)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     );
     const source = db.prepare(
       `INSERT INTO field_source (field_proposal_id, provider, value, snapshot_id, agrees_with_proposed)
@@ -85,6 +92,8 @@ export function saveProposal(db: Db, p: NewProposal, now: number): number {
         // A locked field keeps the file's value (§10.3 rule 1).
         f.locked ? "kept_current" : "auto",
         f.locked ? 1 : 0,
+        f.origin,
+        f.conflict ? 1 : 0,
       ) as { id: number };
       for (const s of f.sources) {
         source.run(row.id, s.provider, JSON.stringify(s.value), s.snapshotId, s.agreesWithProposed ? 1 : 0);
@@ -126,7 +135,8 @@ export function setProposalState(db: Db, id: number, state: ProposalState, now: 
 
 function loadProposal(db: Db, p: ProposalRow): StoredProposal {
   const fields = db.prepare(
-    `SELECT id, file_id, field, current_value, proposed_value, edited_value, status, decision, locked
+    `SELECT id, file_id, field, current_value, proposed_value, edited_value, status, decision, locked, origin,
+            conflict, resolved_from
      FROM field_proposal WHERE proposal_id = ? ORDER BY file_id, id`,
   ).all(p.id) as unknown as {
     id: number;
@@ -138,6 +148,9 @@ function loadProposal(db: Db, p: ProposalRow): StoredProposal {
     status: FieldStatus;
     decision: Decision;
     locked: number;
+    origin: string;
+    conflict: number;
+    resolved_from: string | null;
   }[];
   const sources = db.prepare(
     `SELECT s.field_proposal_id, s.provider, s.value, s.snapshot_id, s.agrees_with_proposed
@@ -182,6 +195,9 @@ function loadProposal(db: Db, p: ProposalRow): StoredProposal {
       decision: f.decision,
       locked: f.locked === 1,
       sources: byField.get(f.id) ?? [],
+      origin: f.origin,
+      conflict: f.conflict === 1,
+      resolvedFrom: f.resolved_from,
     })),
   };
 }
@@ -203,7 +219,16 @@ export class ReviewError extends Error {
   override name = "ReviewError";
 }
 
-/** Applies one decision to field rows of one open proposal. Locked rows refuse: unlock first. */
+/** A conflict nobody has decided yet: writing waits for it (§10.3 rule 4, D48). */
+export function isUnresolved(f: Pick<StoredFieldProposal, "conflict" | "decision" | "locked">): boolean {
+  return f.conflict && f.decision === "auto" && !f.locked;
+}
+
+/**
+ * Applies one decision to field rows of one open proposal. Locked rows refuse: unlock first.
+ * With `source`, each row takes that source's value: "accepted" when it is the proposed value's
+ * origin, "edited" with the source's value otherwise.
+ */
 export function setDecisions(
   db: Db,
   proposalId: number,
@@ -211,18 +236,33 @@ export function setDecisions(
   decision: Decision,
   edited: unknown,
   now: number,
+  source?: string,
 ): void {
   transaction(db, () => {
     const p = db.prepare(`SELECT state FROM proposal WHERE id = ?`).get(proposalId) as { state: string } | undefined;
     if (!p) throw new ReviewError("proposal not found");
     if (!["draft", "needs_review", "approved"].includes(p.state)) throw new ReviewError(`proposal is ${p.state}`);
     const rows = db.prepare(
-      `SELECT id, locked FROM field_proposal WHERE proposal_id = ? AND id IN (${fieldIds.map(() => "?").join(",")})`,
-    ).all(proposalId, ...fieldIds) as { id: number; locked: number }[];
+      `SELECT id, locked, origin FROM field_proposal WHERE proposal_id = ? AND id IN (${
+        fieldIds.map(() => "?").join(",")
+      })`,
+    ).all(proposalId, ...fieldIds) as { id: number; locked: number; origin: string }[];
     if (rows.length !== new Set(fieldIds).size) throw new ReviewError("unknown field for this proposal");
     if (rows.some((r) => r.locked)) throw new ReviewError("a locked field keeps its value; unlock it first");
-    const update = db.prepare("UPDATE field_proposal SET decision = ?, edited_value = ? WHERE id = ?");
-    for (const r of rows) update.run(decision, decision === "edited" ? JSON.stringify(edited) : null, r.id);
+    const update = db.prepare(
+      "UPDATE field_proposal SET decision = ?, edited_value = ?, resolved_from = ? WHERE id = ?",
+    );
+    const sourceValue = db.prepare("SELECT value FROM field_source WHERE field_proposal_id = ? AND provider = ?");
+    for (const r of rows) {
+      if (source === undefined) {
+        update.run(decision, decision === "edited" ? JSON.stringify(edited) : null, null, r.id);
+        continue;
+      }
+      const s = sourceValue.get(r.id, source) as { value: string } | undefined;
+      if (!s) throw new ReviewError(`no ${source} value for this field`);
+      if (r.origin === source) update.run("accepted", null, source, r.id);
+      else update.run("edited", s.value, source, r.id);
+    }
     // Any change after approval needs a fresh look before writing.
     db.prepare("UPDATE proposal SET state = 'needs_review', updated_at = ? WHERE id = ? AND state = 'approved'").run(
       now,
@@ -254,7 +294,7 @@ function reapplyLocks(db: Db, field: CanonicalField): void {
      WHERE f.field = ? AND p.state IN ${OPEN}`,
   ).all(field) as { id: number; file_id: number; locked: number; candidate_id: number }[];
   const lock = db.prepare(
-    "UPDATE field_proposal SET locked = 1, decision = 'kept_current', edited_value = NULL WHERE id = ?",
+    "UPDATE field_proposal SET locked = 1, decision = 'kept_current', edited_value = NULL, resolved_from = NULL WHERE id = ?",
   );
   const unlock = db.prepare("UPDATE field_proposal SET locked = 0, decision = 'auto' WHERE id = ?");
   for (const r of rows) {

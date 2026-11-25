@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import type { HistoryResponse, WriteBatchDto } from "../../../shared/types.ts";
 import type { Db } from "../../db/db.ts";
-import { getProposal, setProposalState } from "../../db/repo/proposals.ts";
+import { getProposal, isUnresolved, setProposalState } from "../../db/repo/proposals.ts";
 import type { JobQueue } from "../../jobs/queue.ts";
 import { enqueueUndo, enqueueWrite, writeDedupeKey } from "../../jobs/write.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -70,6 +70,11 @@ export function writeRoutes(deps: WriteRouteDeps) {
       // §11.3 step 1 at release level: files changed since the proposal was built.
       if (cand.content_hash !== p.basedOnHash) {
         return c.json({ error: "The files changed since this proposal was built; build it again first" }, 409);
+      }
+      // §10.3 rule 4: a field whose sources disagree waits for the user's choice (D48).
+      const open = p.fields.filter(isUnresolved).length;
+      if (open > 0) {
+        return c.json({ error: `${open} field${open === 1 ? "" : "s"} with conflicting sources need a decision` }, 409);
       }
       if (queue.live(writeDedupeKey(p.candidateId))) {
         return c.json({ error: "A write or undo is already running for this release" }, 409);

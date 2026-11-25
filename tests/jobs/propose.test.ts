@@ -7,6 +7,7 @@ import { enqueueIdentify, registerIdentifyJob } from "../../server/jobs/identify
 import { autoPropose, enqueuePropose, PROPOSE_JOB, registerProposeJob } from "../../server/jobs/propose.ts";
 import { JobQueue } from "../../server/jobs/queue.ts";
 import { nullLogger } from "../../server/log.ts";
+import type { HarmonizedRelease } from "../../server/providers/harmony_adapter.ts";
 import { DEFAULT_IDENTIFY } from "../../server/identify/identify.ts";
 import { memoryDb } from "../helpers/app.ts";
 import { BEETHOVEN_5, FakeMb, loadRelease, loadWork, SYMPHONY_5 } from "../identify/helpers.ts";
@@ -167,4 +168,59 @@ Deno.test("the release's matches on other providers are stored with the proposal
     providerMatches(db, p.id).map((m) => [m.provider, m.status, m.via]),
     [["deezer", "skipped", null], ["itunes", "skipped", null], ["discogs", "not_found", "link"]],
   );
+});
+
+Deno.test("found providers are merged into the fields: fallbacks are marked, disagreements are conflicts (D48)", async () => {
+  const { db, id } = await setup();
+  const q2 = new JobQueue(db, { logger: nullLogger });
+  const mb = new FakeMb([release]);
+  mb.genres.set(BEETHOVEN_5, {
+    id: BEETHOVEN_5,
+    genres: [],
+    relations: [{ type: "discogs", url: { resource: "https://www.discogs.com/release/1" } }],
+  });
+  const discogs = {
+    title: release.title,
+    artists: [],
+    externalLinks: [],
+    gtin: "028925421059",
+    releaseDate: { date: { year: 1977 }, quality: "assumed-valid" },
+    media: [{ tracklist: release.media[0].tracks!.map((t) => ({ title: t.title })) }],
+    info: {
+      providers: [{ name: "Discogs", internalName: "discogs", id: "1", url: "https://www.discogs.com/release/1" }],
+      messages: [],
+    },
+  } as unknown as HarmonizedRelease;
+  registerProposeJob(q2, {
+    db,
+    mb,
+    settings: () => ({ genres: "musicbrainz", maxGenres: 5 }),
+    logger: nullLogger,
+    enrichment: {
+      registry: {
+        providerIds: ["discogs"],
+        providerForUrl: (u) => (u.host.includes("discogs") ? "discogs" : undefined),
+        lookupByUrl: () => Promise.resolve(discogs),
+        lookupByGtin: () => Promise.reject(new Error("unused")),
+      },
+      enabled: () => true,
+    },
+  });
+  enqueuePropose(q2, id, BEETHOVEN_5, "user");
+  await q2.drain();
+  const p = latestProposal(db, id)!;
+  const row = (field: string) => p.fields.find((f) => f.field === field)!;
+  assertEquals([row("barcode").origin, row("barcode").conflict, row("barcode").proposed], [
+    "discogs",
+    false,
+    "028925421059",
+  ]);
+  assertEquals([row("discogs_release_id").origin, row("discogs_release_id").proposed], ["discogs", "1"]);
+  assertEquals([row("date").origin, row("date").conflict, row("date").proposed], ["musicbrainz", true, "1978"]);
+  assertEquals(row("date").sources.map((s) => [s.provider, s.value, s.agreesWithProposed]), [
+    ["musicbrainz", "1978", true],
+    ["discogs", "1977", false],
+  ]);
+  assertEquals(row("album").origin, "musicbrainz");
+  assertEquals(providerMatches(db, p.id).find((m) => m.provider === "discogs")?.status, "found");
 });

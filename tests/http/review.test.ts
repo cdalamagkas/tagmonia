@@ -51,6 +51,8 @@ function seed(t: TestApp) {
           status: "changed" as const,
           locked: false,
           sources: [],
+          origin: "musicbrainz" as const,
+          conflict: false,
         },
         {
           fileId,
@@ -60,6 +62,8 @@ function seed(t: TestApp) {
           status: "added" as const,
           locked: false,
           sources: [],
+          origin: "musicbrainz" as const,
+          conflict: false,
         },
       ]),
       unmappedFiles: [],

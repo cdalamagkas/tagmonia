@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from "preact/hooks";
 import type {
+  DecisionRequest,
   FieldDecision,
   FieldProposalDto,
   HistoryResponse,
@@ -77,6 +78,11 @@ function writes(r: FieldProposalDto): boolean {
   return r.status !== "unchanged" || r.decision === "edited";
 }
 
+/** Shown without "show unchanged": it changes something, or its sources disagree. */
+function visible(r: FieldProposalDto): boolean {
+  return r.status !== "unchanged" || r.decision === "edited" || r.conflict;
+}
+
 function distinct(values: unknown[]): string[] {
   return [...new Set(values.map((v) => tagValue(v)))];
 }
@@ -112,11 +118,20 @@ interface RowProps {
   releaseId: number;
   busy: boolean;
   onDecide: (ids: number[], decision: FieldDecision, edited?: unknown) => Promise<void>;
+  /** Settle the rows with one source's value (D48). */
+  onPick: (ids: number[], source: NonNullable<DecisionRequest["source"]>) => Promise<void>;
   onLock: (field: Group["field"], scope: "release" | "global_field" | "file", target: string) => Promise<void>;
   onUnlock: (lockId: number) => Promise<void>;
 }
 
-function FieldRow({ group, locks, releaseId, busy, onDecide, onLock, onUnlock }: RowProps) {
+/** Each source's value once, for choosing between conflicting ones. */
+function sourceChoices(group: Group): { provider: string; value: unknown }[] {
+  const seen = new Map<string, unknown>();
+  for (const r of group.rows) for (const s of r.sources) if (!seen.has(s.provider)) seen.set(s.provider, s.value);
+  return [...seen].map(([provider, value]) => ({ provider, value }));
+}
+
+function FieldRow({ group, locks, releaseId, busy, onDecide, onPick, onLock, onUnlock }: RowProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const ids = group.rows.map((r) => r.id);
@@ -135,9 +150,13 @@ function FieldRow({ group, locks, releaseId, busy, onDecide, onLock, onUnlock }:
   const currents = distinct(group.rows.map((r) => r.current));
   const target = decision === "edited" ? first.edited : first.proposed;
   const sources = [...new Set(group.rows.flatMap((r) => r.sources.map((s) => s.provider)))];
+  const origins = [...new Set(group.rows.map((r) => r.origin).filter((o) => o !== "musicbrainz"))];
+  const conflict = group.rows.some((r) => r.conflict);
+  const unresolved = group.rows.some((r) => r.conflict && r.decision === "auto" && !r.locked);
+  const picked = first.resolvedFrom;
 
   return (
-    <tr class={writes(first) ? "" : "tm-row-quiet"}>
+    <tr class={unresolved ? "tm-row-conflict" : writes(first) ? "" : "tm-row-quiet"}>
       <th>{group.field}</th>
       <td>
         {currents.length === 1
@@ -194,8 +213,41 @@ function FieldRow({ group, locks, releaseId, busy, onDecide, onLock, onUnlock }:
                   {status}
                 </span>
               )}
-              {decision === "edited" && <span class="tm-badge tm-inline">your value</span>}
+              {decision === "edited" && !picked && <span class="tm-badge tm-inline">your value</span>}
+              {origins.map((o) => (
+                <span key={o} class="tm-badge tm-inline tm-badge-info" title="MusicBrainz has no value here">
+                  filled by {PROVIDERS[o] ?? o}
+                </span>
+              ))}
               {sources.map((s) => <span key={s} class="tm-badge tm-chip">{PROVIDERS[s] ?? s}</span>)}
+              {conflict && (
+                <div class="tm-conflict">
+                  <span class={`tm-badge tm-inline ${unresolved ? "tm-badge-error" : ""}`}>
+                    {unresolved
+                      ? "sources disagree: choose one"
+                      : picked
+                      ? `settled: ${PROVIDERS[picked] ?? picked}`
+                      : "sources disagree: decided"}
+                  </span>
+                  <ul class="tm-values">
+                    {sourceChoices(group).map((c) => (
+                      <li key={c.provider}>
+                        <span class="tm-muted">{PROVIDERS[c.provider] ?? c.provider}:</span> {tagValue(c.value)}{" "}
+                        {!locked && (
+                          <button
+                            type="button"
+                            class="tm-linklike tm-small-link"
+                            disabled={busy || picked === c.provider}
+                            onClick={() => onPick(ids, c.provider as NonNullable<DecisionRequest["source"]>)}
+                          >
+                            {picked === c.provider ? "using" : "use this"}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
       </td>
@@ -223,7 +275,7 @@ function FieldRow({ group, locks, releaseId, busy, onDecide, onLock, onUnlock }:
               <div class="tm-seg" role="group" aria-label={`Decision for ${group.field}`}>
                 <button
                   type="button"
-                  class={decision === "auto" || decision === "accepted" ? "tm-on" : ""}
+                  class={(decision === "auto" && !unresolved) || (decision === "accepted" && !picked) ? "tm-on" : ""}
                   disabled={busy}
                   onClick={() => onDecide(ids, "accepted")}
                 >
@@ -451,16 +503,15 @@ export function Review(
 
   const open = p.state === "needs_review" || p.state === "approved" || p.state === "draft";
   const toWrite = p.fields.filter(writes).length;
+  const conflicts = p.counts.conflicts;
   const fileName = new Map(files.map((f) => [f.id, f.tags.title ?? f.path.split("/").pop() ?? f.path]));
   const relGroups: Group[] = RELEASE_FIELDS
     .map((field) => ({ key: field, field, rows: p.fields.filter((f) => f.field === field) }))
-    .filter((g) =>
-      g.rows.length && (showUnchanged || g.rows.some((r) => r.status !== "unchanged" || r.decision === "edited"))
-    );
+    .filter((g) => g.rows.length && (showUnchanged || g.rows.some(visible)));
   const byFile = new Map<number, Group[]>();
   for (const f of p.fields) {
     if (RELEASE.has(f.field)) continue;
-    if (!showUnchanged && f.status === "unchanged" && f.decision !== "edited") continue;
+    if (!showUnchanged && !visible(f)) continue;
     const list = byFile.get(f.fileId) ?? [];
     list.push({ key: `${f.fileId}:${f.field}`, field: f.field, rows: [f] });
     byFile.set(f.fileId, list);
@@ -471,6 +522,8 @@ export function Review(
     busy: busy || !open,
     onDecide: (ids: number[], decision: FieldDecision, edited?: unknown) =>
       act(() => api.decide(p.id, { fieldIds: ids, decision, ...(edited !== undefined ? { edited } : {}) })),
+    onPick: (ids: number[], source: NonNullable<DecisionRequest["source"]>) =>
+      act(() => api.decide(p.id, { fieldIds: ids, decision: "accepted", source })),
     onLock: (field: Group["field"], scope: "release" | "global_field" | "file", target: string) =>
       act(() => api.lock({ scope, target, field })),
     onUnlock: (lockId: number) => act(() => api.unlock(lockId)),
@@ -495,6 +548,7 @@ export function Review(
               {p.chosenBy === "user" ? ", chosen by you" : ", matched automatically"} · {p.counts.changed} changed,{" "}
               {p.counts.added} added, {p.counts.unchanged} already right
               {p.counts.locked > 0 && `, ${p.counts.locked} locked`}
+              {p.counts.filled > 0 && `, ${p.counts.filled} filled by other providers`}
             </p>
           </div>
           <div class="tm-actions">
@@ -512,8 +566,12 @@ export function Review(
               <button
                 type="button"
                 class="tm-button"
-                disabled={busy || live || data.readOnly || p.stale || toWrite === 0}
-                title={data.readOnly ? "Read-only mode: nothing is written" : undefined}
+                disabled={busy || live || data.readOnly || p.stale || toWrite === 0 || conflicts > 0}
+                title={data.readOnly
+                  ? "Read-only mode: nothing is written"
+                  : conflicts > 0
+                  ? "Choose a value for each field whose sources disagree first"
+                  : undefined}
                 onClick={() => act(() => api.write(p.id))}
               >
                 {hist.job ? "Writing…" : `Write ${toWrite} change${toWrite === 1 ? "" : "s"} to files`}
@@ -522,6 +580,14 @@ export function Review(
           </div>
         </div>
         <ProviderMatches matches={p.providers} />
+        {conflicts > 0 && open && (
+          <p>
+            <span class="tm-badge tm-badge-error tm-inline">
+              {conflicts} field{conflicts === 1 ? "" : "s"} where MusicBrainz and another provider disagree
+            </span>{" "}
+            <span class="tm-muted">Pick a value (or keep, edit or lock the field) before writing.</span>
+          </p>
+        )}
         {data.readOnly && (
           <p class="tm-badge tm-badge-warn tm-inline">Read-only mode: you can review, but nothing is written.</p>
         )}
