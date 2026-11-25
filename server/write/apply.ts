@@ -526,8 +526,16 @@ export async function undoBatch(deps: WriteDeps, batchId: number, signal?: Abort
     finishBatch(db, undoId, { status, written, skipped, failed }, null, now());
     if (status === "done") {
       db.prepare("UPDATE write_batch SET status = 'undone' WHERE id = ?").run(batchId);
-      // The proposal can be reviewed and written again.
-      if (batch.proposal_id !== null) setProposalState(db, batch.proposal_id, "needs_review", now());
+      // The proposal can be reviewed and written again. Every file has exactly the tags the proposal
+      // was built from again, so it is current for the files as they are now (their mtimes changed).
+      if (batch.proposal_id !== null) {
+        setProposalState(db, batch.proposal_id, "needs_review", now());
+        if (batch.candidate_id !== null) {
+          db.prepare(
+            "UPDATE proposal SET based_on_hash = (SELECT content_hash FROM candidate WHERE id = ?) WHERE id = ?",
+          ).run(batch.candidate_id, batch.proposal_id);
+        }
+      }
     }
   });
   return { batchId: undoId, status, written, skipped, failed };
