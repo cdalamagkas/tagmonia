@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { ProviderMatch } from "../providers/enrichment.ts";
 
-export type CoverSource = "coverartarchive" | "itunes" | "deezer" | "discogs";
+export type CoverSource = "coverartarchive" | "itunes" | "deezer" | "discogs" | "bandcamp";
 
 export type CoverMode = "embed_1200" | "embed_full" | "folder" | "both";
 
@@ -53,7 +53,7 @@ export function caaOption(listing: CaaListing | null): CoverOption | null {
   return { source: "coverartarchive", full: front.image, sized: front.thumbnails["1200"] ?? front.image };
 }
 
-const STORE_ORDER = ["itunes", "deezer", "discogs"] as const;
+const STORE_ORDER = ["itunes", "deezer", "discogs", "bandcamp"] as const;
 
 function storeOption(provider: (typeof STORE_ORDER)[number], art: { url: string; thumbUrl?: string }) {
   switch (provider) {
@@ -72,6 +72,8 @@ function storeOption(provider: (typeof STORE_ORDER)[number], art: { url: string;
       return { source: provider, full: at(1900), sized: at(1200) } satisfies CoverOption;
     }
     case "discogs":
+    case "bandcamp":
+      // Only the original: Discogs serves no sizes; Bandcamp's size codes are undocumented.
       return { source: provider, full: art.url, sized: art.url } satisfies CoverOption;
   }
 }

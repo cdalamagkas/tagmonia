@@ -15,13 +15,13 @@
  */
 import { normalizeCatno } from "../identify/release.ts";
 import type { HarmonizedRelease } from "../providers/harmony_adapter.ts";
-import type { EnrichmentProvider, ProviderMatch } from "../providers/enrichment.ts";
+import type { EnrichmentProvider, ProviderMatch, SourceProvider } from "../providers/enrichment.ts";
 import type { MbRelease } from "../providers/musicbrainz/schema.ts";
 import type { CanonicalField, CanonicalTags } from "../tagio/types.ts";
 import { valuesAgree } from "./compare.ts";
 import type { ProposedTags } from "./musicbrainz_tags.ts";
 
-export type SourceId = "musicbrainz" | EnrichmentProvider;
+export type SourceId = "musicbrainz" | SourceProvider;
 
 export interface FieldProvenance {
   /** Whose value is proposed. */
@@ -46,21 +46,31 @@ interface ProviderValues {
   isrc: (string | undefined)[];
 }
 
-function harmonyValues(r: HarmonizedRelease): ProviderValues {
+/** The release date as "YYYY", "YYYY-MM" or "YYYY-MM-DD"; undefined when absent or flagged invalid. */
+export function harmonyDate(r: HarmonizedRelease): string | undefined {
   // Harmony flags dates it believes wrong (e.g. a store's placeholder); those never fill a field.
   const d = r.releaseDate?.quality === "assumed-invalid" ? undefined : r.releaseDate?.date;
   const pad = (n: number) => String(n).padStart(2, "0");
-  const date = d?.year
-    ? [String(d.year), d.month ? pad(d.month) : null, d.month && d.day ? pad(d.day) : null]
-      .filter(Boolean).join("-")
+  return d?.year
+    ? [String(d.year), d.month ? pad(d.month) : null, d.month && d.day ? pad(d.day) : null].filter(Boolean).join("-")
     : undefined;
+}
+
+/** Label names and catalog numbers, deduplicated; "none" placeholders dropped. */
+export function harmonyLabels(r: HarmonizedRelease): { label?: string[]; catalognumber?: string[] } {
   const labels = (r.labels ?? []).map((l) => l.name?.trim()).filter((x): x is string => !!x);
   const catnos = (r.labels ?? []).map((l) => l.catalogNumber?.trim())
     .filter((x): x is string => !!x && x.toLowerCase() !== "none" && x.toLowerCase() !== "[none]");
   return {
-    date,
     label: labels.length ? [...new Set(labels)] : undefined,
     catalognumber: catnos.length ? [...new Set(catnos)] : undefined,
+  };
+}
+
+function harmonyValues(r: HarmonizedRelease): ProviderValues {
+  return {
+    date: harmonyDate(r),
+    ...harmonyLabels(r),
     barcode: r.gtin ? String(r.gtin) : undefined,
     id: r.info?.providers?.[0]?.id,
     isrc: r.media.flatMap((m) => m.tracklist.map((t) => t.isrc || undefined)),
@@ -128,7 +138,9 @@ export function mergeProviders(mb: ProposedTags, mbRelease: MbRelease, matches: 
   const tracks = new Map([...mb.tracks].map(([id, t]) => [id, { ...t }]));
   const provenance = new Map<string, FieldProvenance>();
   const found = new Map<EnrichmentProvider, ProviderValues>();
-  for (const m of matches) if (m.status === "found" && m.release) found.set(m.provider, harmonyValues(m.release));
+  for (const m of matches) {
+    if (m.status === "found" && m.release && m.provider !== "bandcamp") found.set(m.provider, harmonyValues(m.release));
+  }
   const v = (p: EnrichmentProvider) => found.get(p);
 
   const set = (key: string, target: CanonicalTags, field: CanonicalField, r: ReturnType<typeof byPrecedence>) => {

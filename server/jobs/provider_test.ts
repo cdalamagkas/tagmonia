@@ -92,6 +92,14 @@ export async function testProvider(id: ProviderId, deps: ProviderTestDeps): Prom
         ? { ok: true, message: "key and secret accepted" }
         : { ok: false, message: `Discogs answered HTTP ${res.status}` };
     }
+    case "bandcamp": {
+      // One page request: Bandcamp is read from its public pages (D16).
+      const res = await get(deps, "https://bandcamp.com/", { Accept: "text/html" });
+      await res.body?.cancel();
+      return res.ok
+        ? { ok: true, message: "Bandcamp answered" }
+        : { ok: false, message: `Bandcamp answered HTTP ${res.status}` };
+    }
     case "jellyfin": {
       const { url, apiKey, library } = await deps.creds.get("jellyfin");
       if (!url || !apiKey) return { ok: false, message: "no server URL or API key" };
@@ -124,7 +132,9 @@ export async function testProvider(id: ProviderId, deps: ProviderTestDeps): Prom
 export function registerProviderTestJob(queue: JobQueue, deps: ProviderTestDeps): void {
   const now = deps.now ?? Date.now;
   queue.register(PROVIDER_TEST_JOB, async ({ job }) => {
-    const p = z.object({ provider: z.enum(["musicbrainz", "acoustid", "deezer", "itunes", "discogs", "jellyfin"]) })
+    const p = z.object({
+      provider: z.enum(["musicbrainz", "acoustid", "deezer", "itunes", "discogs", "bandcamp", "jellyfin"]),
+    })
       .safeParse(job.payload);
     if (!p.success) throw new PermanentJobError("invalid provider test payload");
     let result: TestResult;

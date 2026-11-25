@@ -79,6 +79,8 @@ export interface HarmonyRegistry {
   readonly providerIds: readonly HarmonyProviderId[];
   /** Internal name of the provider that would handle this URL, or undefined (unsupported host). */
   providerForUrl(url: URL): string | undefined;
+  /** Whether the URL is a release (album) page of a registered provider, not an artist or a track (D51). */
+  isReleaseUrl(url: URL): boolean;
   lookupByUrl(url: URL, options?: HarmonyReleaseOptions): Promise<HarmonizedRelease>;
   /** By barcode, on one enabled provider (D47). Rejects when that provider is not registered. */
   lookupByGtin(provider: HarmonyProviderId, gtin: string, options?: HarmonyReleaseOptions): Promise<HarmonizedRelease>;
@@ -124,6 +126,13 @@ export async function createHarmonyRegistry(opts: HarmonyRegistryOptions): Promi
   return {
     providerIds: enabled,
     providerForUrl: (url) => find(url)?.internalName,
+    isReleaseUrl(url) {
+      const provider = find(url);
+      const entity = provider?.extractEntityFromUrl(url);
+      if (!provider || !entity) return false;
+      const release = provider.entityTypeMap.release;
+      return (Array.isArray(release) ? release : [release]).includes(entity.type);
+    },
     lookupByUrl(url, options = {}) {
       const provider = find(url);
       if (!provider) return Promise.reject(new UnsupportedUrlError(url));

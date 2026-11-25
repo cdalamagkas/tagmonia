@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { CurrentCovers } from "../covers/current.ts";
 import type { TagIO } from "../tagio/types.ts";
+import type { HarmonyRegistry } from "../providers/harmony_adapter.ts";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/deno";
 import type { LoginThrottle } from "../auth/ratelimit.ts";
@@ -45,6 +46,8 @@ export interface AppContext {
   creds: CredentialStore;
   /** Reads the releases' current covers (D50); without it, no cover previews are served. */
   tagio?: Pick<TagIO, "read">;
+  /** Recognises provider release links for "not in MusicBrainz" proposals (§10.4, D51). */
+  harmony?: Pick<HarmonyRegistry, "providerForUrl" | "isReleaseUrl">;
 }
 
 export function createApp(ctx: AppContext): Hono<AuthEnv> {
@@ -98,6 +101,13 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
           : null,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
       covers,
+      sources: ctx.harmony
+        ? {
+          providerFor: (u) => ctx.harmony!.providerForUrl(u),
+          isReleaseUrl: (u) => ctx.harmony!.isReleaseUrl(u),
+          enabled: (id) => (ctx.settings.providers as Record<string, { enabled?: boolean }>)[id]?.enabled ?? false,
+        }
+        : null,
     }),
   );
   app.route("/api/jobs", jobRoutes(queue));

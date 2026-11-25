@@ -24,7 +24,7 @@ import { isUnresolved, latestProposal, locksFor, providerMatches } from "../../d
 import { coverWrites, getCover } from "../../db/repo/covers.ts";
 import { type CurrentCovers, THUMB_SIZES, type ThumbSize } from "../../covers/current.ts";
 import type { CachedImage } from "../../covers/fetch.ts";
-import { enqueuePropose, proposeDedupeKey } from "../../jobs/propose.ts";
+import { enqueuePropose, enqueueProviderPropose, proposeDedupeKey } from "../../jobs/propose.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
 import type { CandidateStatus } from "../../../shared/types.ts";
@@ -63,7 +63,36 @@ function toFileDto(f: StoredFile): LibraryFileDto {
 }
 
 const identifyBody = z.object({ releaseUrl: z.string().max(500).optional() }).strict();
-const proposeBody = z.object({ releaseMbid: mbidSchema }).strict();
+const proposeBody = z.union([
+  z.object({ releaseMbid: mbidSchema }).strict(),
+  z.object({ providerUrl: z.string().max(500) }).strict(),
+]);
+
+const SOURCE_NAMES: Record<string, string> = {
+  deezer: "Deezer",
+  itunes: "iTunes",
+  discogs: "Discogs",
+  bandcamp: "Bandcamp",
+};
+
+/** A provider release link the user gave, checked before any request (§14.5): https, a known host, a release page. */
+function checkProviderUrl(sources: LibraryRouteDeps["sources"], raw: string): { url: URL } | { error: string } {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return { error: "That is not a link" };
+  }
+  const provider = url.protocol === "https:" ? sources?.providerFor(url) : undefined;
+  if (!provider || !(provider in SOURCE_NAMES)) {
+    return { error: "Paste a Deezer, iTunes, Discogs or Bandcamp album link (https://…)" };
+  }
+  if (!sources!.enabled(provider)) {
+    return { error: `${SOURCE_NAMES[provider]} is switched off on the providers page (Settings)` };
+  }
+  if (!sources!.isReleaseUrl(url)) return { error: `That ${SOURCE_NAMES[provider]} link is not an album page` };
+  return { url };
+}
 
 const listQuery = z.object({
   q: z.string().max(200).optional(),
@@ -119,6 +148,12 @@ export interface LibraryRouteDeps {
   thresholds: () => { auto: number; review: number };
   /** The releases' current covers (D50); null = none served. */
   covers?: CurrentCovers | null;
+  /** Provider links a proposal can start from (§10.4, D51); null = MusicBrainz releases only. */
+  sources?: {
+    providerFor(url: URL): string | undefined;
+    isReleaseUrl(url: URL): boolean;
+    enabled(id: string): boolean;
+  } | null;
 }
 
 /**
@@ -242,9 +277,15 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       let proposal: ProposalDto | null = null;
       if (p) {
         const count = (s: string) => p.fields.filter((f) => f.status === s).length;
+        // Whose values the proposal is built on; only values from another source are "filled by" (D48, D51).
+        const primarySource = p.releaseMbid
+          ? "musicbrainz"
+          : (p.sourceUrl && deps.sources?.providerFor(new URL(p.sourceUrl))) || null;
         proposal = {
           id: p.id,
           releaseMbid: p.releaseMbid,
+          sourceUrl: p.sourceUrl,
+          primarySource,
           state: p.state,
           chosenBy: p.chosenBy,
           createdAt: p.createdAt,
@@ -254,7 +295,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
             added: count("added"),
             unchanged: count("unchanged"),
             locked: p.fields.filter((f) => f.locked).length,
-            filled: p.fields.filter((f) => f.origin !== "musicbrainz").length,
+            filled: p.fields.filter((f) => f.origin !== primarySource).length,
             conflicts: p.fields.filter(isUnresolved).length,
           },
           unmappedFiles: p.unmappedFiles,
@@ -281,12 +322,23 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       const id = Number(c.req.param("id"));
       if (!identificationState(db, id)) return c.json({ error: "not found" }, 404);
       const body = proposeBody.safeParse(await c.req.json().catch(() => null));
-      if (!body.success) return c.json({ error: "releaseMbid must be a MusicBrainz release id" }, 400);
+      if (!body.success) {
+        return c.json({ error: "Give releaseMbid (a MusicBrainz release id) or providerUrl (an album link)" }, 400);
+      }
+      let providerUrl: URL | null = null;
+      if ("providerUrl" in body.data) {
+        const checked = checkProviderUrl(deps.sources, body.data.providerUrl);
+        if ("error" in checked) return c.json({ error: checked.error }, 400);
+        providerUrl = checked.url;
+      }
       // Joining a queued automatic proposal would silently drop the user's choice.
       if (queue.live(proposeDedupeKey(id))) {
         return c.json({ error: "A proposal is already being built for this release; try again when it finishes" }, 409);
       }
-      return c.json(toJobDto(enqueuePropose(queue, id, body.data.releaseMbid, "user")), 202);
+      const job = providerUrl
+        ? enqueueProviderPropose(queue, id, providerUrl.href)
+        : enqueuePropose(queue, id, (body.data as { releaseMbid: string }).releaseMbid, "user");
+      return c.json(toJobDto(job), 202);
     })
     // Scanning only reads the library, so it is allowed in read-only mode.
     .post("/scan", (c) => c.json(toJobDto(enqueueScan(queue)) as ScanJobDto, 202));

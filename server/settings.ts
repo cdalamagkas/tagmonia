@@ -37,6 +37,8 @@ export const settingsSchema = z.object({
     deezer: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     itunes: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     discogs: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+    // Opt-in (D16): reads public pages, no official API. Only used from a Bandcamp link the user gives (D51).
+    bandcamp: z.object({ enabled: z.boolean().default(false) }).prefault({}),
   }).prefault({}),
   identify: z.object({
     /** §8.1: at or above, a match may be auto-approved (only if the user enables it, Phase 3). */

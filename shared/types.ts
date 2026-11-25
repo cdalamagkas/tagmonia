@@ -254,7 +254,11 @@ export interface FieldProposalDto {
 
 export interface ProposalDto {
   id: number;
+  /** null: the release is not on MusicBrainz; the proposal comes from `sourceUrl` (§10.4). */
   releaseMbid: string | null;
+  sourceUrl: string | null;
+  /** "musicbrainz", or the provider of `sourceUrl`: values from any other source are marked "filled by". */
+  primarySource: string | null;
   state: ProposalState;
   /** "auto" when identification was confident, "user" when picked in the UI. */
   chosenBy: "auto" | "user";
@@ -272,7 +276,7 @@ export interface ProposalDto {
   cover: CoverProposalDto | null;
 }
 
-export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "discogs";
+export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "discogs" | "bandcamp";
 export type CoverStatusDto = "added" | "changed" | "unchanged";
 
 export interface CoverImageDto {
@@ -325,7 +329,7 @@ export interface CoverDecisionRequest {
 }
 
 export interface ProviderMatchDto {
-  provider: "deezer" | "itunes" | "discogs";
+  provider: "deezer" | "itunes" | "discogs" | "bandcamp";
   status: "found" | "different_edition" | "not_found" | "skipped" | "error";
   via: "link" | "barcode" | null;
   url: string | null;
@@ -342,10 +346,11 @@ export interface ProposalResponse {
   locks: LockDto[];
 }
 
-/** POST …/proposal: build a proposal from this MusicBrainz release. */
-export interface ProposeRequest {
-  releaseMbid: string;
-}
+/**
+ * POST …/proposal: build a proposal from a MusicBrainz release, or from a Deezer,
+ * iTunes, Discogs or Bandcamp album link for a release not on MusicBrainz (§10.4).
+ */
+export type ProposeRequest = { releaseMbid: string } | { providerUrl: string };
 
 // ---- writing and undo (§11.3, Phase 3)
 
