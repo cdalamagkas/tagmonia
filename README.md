@@ -3,11 +3,10 @@
 **Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phases 0–4 are done; Phase 5 (MusicBrainz submission) is in progress.** Tagmonia identifies releases
-> against MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art,
-> writes everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can be tagged
-> from Deezer, iTunes, Discogs or Bandcamp and added to MusicBrainz through its release editor (checked end to end on
-> test.musicbrainz.org); what remains of Phase 5 is one real submission to musicbrainz.org.
+> **Status: Phases 0–5 are done; the release page restructure is next.** Tagmonia identifies releases against
+> MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art, writes
+> everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can be tagged from
+> Deezer, iTunes, Discogs or Bandcamp and added to MusicBrainz through its release editor.
 > See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
 
