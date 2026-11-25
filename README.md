@@ -32,6 +32,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   chooses how it is written: embedded at full size (the default), embedded at about 1200 px, only as `cover.jpg` in
   the album folder, or both (about 1200 px embedded plus the full-size `cover.jpg`). Other pictures in the files are
   kept, and undo puts back the previous pictures and folder image exactly.
+- **Shows each release's current cover**: a thumbnail in the library list, and on the release page the cover with its
+  size, type and where it is (embedded in the files or an image in the album folder).
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
 
@@ -41,7 +43,7 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 ## Development
 
 All tooling runs in a Docker container; nothing needs to be installed on the host except Docker and git.
-`scripts/dk` builds the dev image (`docker/dev.Dockerfile`: Deno, ffmpeg, mutagen, fpcalc) on first use and runs a
+`scripts/dk` builds the dev image (`docker/dev.Dockerfile`: Deno, ffmpeg, mutagen, Pillow, fpcalc) on first use and runs a
 command in it with the repo mounted.
 
 ```sh
@@ -137,6 +139,7 @@ Every dependency is pinned (`deno.json`, `deno.lock`, the Harmony submodule comm
 | `taglib-wasm`                           | TagIO spike implementation kept so the D7 decision can be re-checked; not used in production      |
 | mutagen, Python 3 (Debian packages)     | Production TagIO sidecar (D7)                                                                     |
 | Chromaprint `fpcalc` (Debian package)   | Fingerprinting for AcoustID identification (§8)                                                   |
+| Pillow (Debian package)                 | Cover thumbnails for the library and release pages (D50)                                          |
 
 Third-party licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

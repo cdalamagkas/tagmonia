@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type {
   CoverProposalDto,
+  CurrentCoverDto,
   EditionDto,
   IdentificationDto,
   JobDto,
@@ -21,6 +22,7 @@ import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
 import { isUnresolved, latestProposal, locksFor, providerMatches } from "../../db/repo/proposals.ts";
 import { coverWrites, getCover } from "../../db/repo/covers.ts";
+import { type CurrentCovers, THUMB_SIZES, type ThumbSize } from "../../covers/current.ts";
 import type { CachedImage } from "../../covers/fetch.ts";
 import { enqueuePropose, proposeDedupeKey } from "../../jobs/propose.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
@@ -115,6 +117,8 @@ export interface LibraryRouteDeps {
   musicServer?: () => Promise<{ name: "jellyfin"; library: string | null } | null>;
   /** Read per request, so the UI shows the thresholds the scores were judged by. */
   thresholds: () => { auto: number; review: number };
+  /** The releases' current covers (D50); null = none served. */
+  covers?: CurrentCovers | null;
 }
 
 /**
@@ -158,6 +162,27 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       if (!q.success) return c.json({ error: "invalid query" }, 400);
       const body: ReleaseList = listReleases(db, q.data);
       return c.json(body);
+    })
+    // The cover a release has now, as a small JPEG; the ETag changes when the source file does (D50).
+    .get("/releases/:id{[0-9]+}/cover", async (c) => {
+      const size = c.req.query("size") ?? "thumb";
+      if (!(size in THUMB_SIZES)) return c.json({ error: "size must be thumb or large" }, 400);
+      const t = deps.covers ? await deps.covers.thumbnail(Number(c.req.param("id")), size as ThumbSize) : null;
+      if (!t) return c.json({ error: "no cover" }, 404);
+      const headers = {
+        "Content-Type": t.mime,
+        ETag: t.etag,
+        // Revalidated every time: cheap (a 304), and a written cover shows at once.
+        "Cache-Control": "private, no-cache",
+        "X-Content-Type-Options": "nosniff",
+      };
+      if (c.req.header("If-None-Match") === t.etag) return c.body(null, 304, headers);
+      return c.body(t.bytes as Uint8Array<ArrayBuffer>, 200, headers);
+    })
+    .get("/releases/:id{[0-9]+}/cover/info", async (c) => {
+      const info = deps.covers ? await deps.covers.info(Number(c.req.param("id"))) : null;
+      const body: CurrentCoverDto | null = info;
+      return c.json({ cover: body });
     })
     .get("/releases/:id{[0-9]+}", (c) => {
       const r = getRelease(db, Number(c.req.param("id")));

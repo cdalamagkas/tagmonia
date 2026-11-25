@@ -147,7 +147,7 @@ async function main() {
   });
   const purge = setInterval(() => sessions.purgeExpired(), 3_600_000);
 
-  const app = createApp({ config, settings, db, queue, sessions, throttle: new LoginThrottle(), logger, creds });
+  const app = createApp({ config, settings, db, queue, sessions, throttle: new LoginThrottle(), logger, creds, tagio });
   const server = Deno.serve({
     port: config.port,
     onListen: ({ hostname, port }) =>

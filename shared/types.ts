@@ -304,6 +304,21 @@ export interface CoverProposalDto {
   writes: boolean;
 }
 
+/** GET /api/library/releases/:id/cover/info: the cover the release has now (D50). */
+export interface CurrentCoverDto {
+  /** Embedded in the first track that has a picture, or an image file in the album folder. */
+  kind: "embedded" | "folder";
+  path: string;
+  mime: string;
+  width: number | null;
+  height: number | null;
+  /** Bytes. */
+  size: number;
+  /** How many of the release's files have an embedded picture. */
+  filesWithPicture: number;
+  files: number;
+}
+
 /** POST /api/proposals/:id/cover/decision */
 export interface CoverDecisionRequest {
   decision: "accepted" | "kept_current";

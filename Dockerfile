@@ -12,9 +12,9 @@ RUN deno task web:install \
  && deno cache --frozen --node-modules-dir=none server/main.ts
 
 FROM ${DENO_IMAGE}
-# python3-mutagen: TagIO sidecar (D7). libchromaprint-tools: fpcalc (§8).
+# python3-mutagen: TagIO sidecar (D7). libchromaprint-tools: fpcalc (§8). python3-pil: cover thumbnails (D50).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-mutagen libchromaprint-tools \
+ && apt-get install -y --no-install-recommends python3 python3-mutagen python3-pil libchromaprint-tools \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV DENO_DIR=/deno-dir \

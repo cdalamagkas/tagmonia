@@ -451,3 +451,55 @@ a:focus-visible {
 .tm-radio-list .tm-check {
   align-items: flex-start;
 }
+
+/* Current covers (D50) */
+.tm-cover-thumb {
+  display: block;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--tm-rule);
+  background: var(--tm-mist);
+}
+.tm-cover-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tm-slate);
+  font-size: 1.1rem;
+}
+.tm-col-cover {
+  width: 56px;
+  padding-right: 0;
+}
+.tm-release-head {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.tm-release-head > div {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.tm-release-cover {
+  margin: 0;
+  width: 200px;
+}
+.tm-release-cover .tm-cover-thumb {
+  width: 200px;
+  height: 200px;
+  /* The whole cover, even when it is not square; list thumbnails crop instead. */
+  object-fit: contain;
+}
+.tm-release-cover figcaption {
+  font-size: 0.8rem;
+  margin-top: 6px;
+}
+.tm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

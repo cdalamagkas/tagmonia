@@ -6,6 +6,7 @@ import {
   type Credentials,
   type CredentialsRequest,
   CSRF_HEADER,
+  type CurrentCoverDto,
   type DecisionRequest,
   type HealthResponse,
   type HistoryResponse,
@@ -88,6 +89,11 @@ export const api = {
   decide: (proposalId: number, body: DecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/decisions`, body),
   discard: (proposalId: number) => request<void>("POST", `/api/proposals/${proposalId}/discard`),
+  /** The release's current cover image (D50); `v` changes the URL after a write. */
+  coverUrl: (releaseId: number, size: "thumb" | "large", v = 0) =>
+    `/api/library/releases/${releaseId}/cover?size=${size}${v ? `&v=${v}` : ""}`,
+  coverInfo: (releaseId: number) =>
+    request<{ cover: CurrentCoverDto | null }>("GET", `/api/library/releases/${releaseId}/cover/info`),
   coverDecision: (proposalId: number, body: CoverDecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/cover/decision`, body),
   write: (proposalId: number) => request<JobDto>("POST", `/api/proposals/${proposalId}/write`),

@@ -4,6 +4,7 @@ import { api } from "../api.ts";
 import { MusicServerStatus, scanActive, ScanStatus } from "../components/ScanStatus.tsx";
 import { onLinkClick } from "../router.ts";
 import { StatusBadge } from "../components/Identification.tsx";
+import { CoverImage } from "../components/CoverImage.tsx";
 
 const PAGE = 50;
 
@@ -125,6 +126,9 @@ export function LibraryPage() {
               <table class="tm-table">
                 <thead>
                   <tr>
+                    <th class="tm-col-cover">
+                      <span class="tm-sr">Cover</span>
+                    </th>
                     <th>Album artist</th>
                     <th>Album</th>
                     <th class="tm-num">Tracks</th>
@@ -136,6 +140,11 @@ export function LibraryPage() {
                 <tbody>
                   {items.map((r) => (
                     <tr key={r.id}>
+                      <td class="tm-col-cover">
+                        <a href={`/releases/${r.id}`} onClick={onLinkClick} tabIndex={-1} aria-hidden="true">
+                          <CoverImage releaseId={r.id} size="thumb" px={48} alt="" />
+                        </a>
+                      </td>
                       <td>{r.artist ?? <span class="tm-muted">–</span>}</td>
                       <td>
                         <a href={`/releases/${r.id}`} onClick={onLinkClick}>

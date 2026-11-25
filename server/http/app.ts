@@ -5,6 +5,8 @@
  */
 import { join } from "node:path";
 import { Hono } from "hono";
+import { CurrentCovers } from "../covers/current.ts";
+import type { TagIO } from "../tagio/types.ts";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/deno";
 import type { LoginThrottle } from "../auth/ratelimit.ts";
@@ -41,11 +43,22 @@ export interface AppContext {
   logger: Logger;
   /** Provider credentials, encrypted at rest (§14.3, D46). */
   creds: CredentialStore;
+  /** Reads the releases' current covers (D50); without it, no cover previews are served. */
+  tagio?: Pick<TagIO, "read">;
 }
 
 export function createApp(ctx: AppContext): Hono<AuthEnv> {
   const { config, db, queue, sessions } = ctx;
   const app = new Hono<AuthEnv>();
+  const covers = ctx.tagio
+    ? new CurrentCovers({
+      db,
+      tagio: ctx.tagio,
+      musicDir: config.musicDir,
+      cacheDir: join(config.configDir, "thumbs"),
+      logger: ctx.logger,
+    })
+    : null;
 
   app.use("*", async (c, next) => {
     await next();
@@ -84,6 +97,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
           ? { name: "jellyfin", library: (await ctx.creds.get("jellyfin")).library ?? null }
           : null,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
+      covers,
     }),
   );
   app.route("/api/jobs", jobRoutes(queue));
