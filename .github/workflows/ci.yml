@@ -12,7 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to a commit (§14.6); v7 runs on Node 24 (Node 20 actions are deprecated on GitHub runners).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
       # Same toolchain image as local development (scripts/dk); nothing is installed on the runner.
@@ -35,7 +36,8 @@ jobs:
     runs-on: ubuntu-24.04
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to a commit (§14.6); v7 runs on Node 24 (Node 20 actions are deprecated on GitHub runners).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
       - name: Build production image
