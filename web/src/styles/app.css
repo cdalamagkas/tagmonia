@@ -790,3 +790,19 @@ td.tm-change-off .tm-change-new {
     padding-left: 0;
   }
 }
+/* Match tab (restructure PR 3): folded evidence and alternatives */
+.tm-fold {
+  margin: 10px 0;
+}
+.tm-fold > summary {
+  cursor: pointer;
+  font-weight: var(--tm-weight-label);
+  color: var(--tm-navy);
+  padding: 4px 0;
+}
+.tm-fold > summary:hover {
+  color: var(--tm-orange);
+}
+.tm-fold[open] > summary {
+  margin-bottom: 8px;
+}
