@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1
 # Production image (ARCHITECTURE.md §15.1). Phase 6 adds PUID/PGID remapping,
 # SBOM and multi-arch publishing; this is the Phase 0 baseline.
-ARG DENO_IMAGE=denoland/deno:debian-2.9.8
-
-FROM ${DENO_IMAGE} AS build
+# The Deno image is written out (no build arg) so Dependabot can update it, together with docker/dev.Dockerfile.
+FROM denoland/deno:debian-2.9.8 AS build
 WORKDIR /app
 ENV DENO_DIR=/deno-dir
 COPY . .
@@ -11,7 +10,7 @@ RUN deno task web:install \
  && deno run -A npm:vite@7.3.7 build web \
  && deno cache --frozen --node-modules-dir=none server/main.ts
 
-FROM ${DENO_IMAGE}
+FROM denoland/deno:debian-2.9.8
 # python3-mutagen: TagIO sidecar (D7). libchromaprint-tools: fpcalc (§8). python3-pil: cover thumbnails (D50).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 python3-mutagen python3-pil libchromaprint-tools \
