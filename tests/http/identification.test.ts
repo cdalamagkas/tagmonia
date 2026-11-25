@@ -139,7 +139,7 @@ Deno.test("proposal API: none at first, a user pick queues a job, invalid ids an
   withApp(async (t, { cookie, csrf }) => {
     const id = await seedIdentified(t);
     const get = async () => await (await t.request(`/api/library/releases/${id}/proposal`, { cookie })).json();
-    assertEquals(await get(), { proposal: null, job: null, readOnly: false, locks: [] });
+    assertEquals(await get(), { proposal: null, job: null, readOnly: false, locks: [], evidence: null });
     const post = (body: unknown) =>
       t.request(`/api/library/releases/${id}/proposal`, { method: "POST", cookie, csrf, body: JSON.stringify(body) });
     assertEquals((await post({ releaseMbid: "not-an-mbid" })).status, 400);

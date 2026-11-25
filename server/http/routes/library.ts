@@ -26,6 +26,8 @@ import { type CurrentCovers, THUMB_SIZES, type ThumbSize } from "../../covers/cu
 import type { CachedImage } from "../../covers/fetch.ts";
 import { enqueuePropose, enqueueProviderPropose, proposeDedupeKey } from "../../jobs/propose.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
+import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
+import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
 import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
 import type { CandidateStatus } from "../../../shared/types.ts";
 import type { Job, JobQueue } from "../../jobs/queue.ts";
@@ -93,6 +95,8 @@ function checkProviderUrl(sources: LibraryRouteDeps["sources"], raw: string): { 
   if (!sources!.isReleaseUrl(url)) return { error: `That ${SOURCE_NAMES[provider]} link is not an album page` };
   return { url };
 }
+
+const evidenceBody = z.object({ url: z.string().max(500) }).strict();
 
 const listQuery = z.object({
   q: z.string().max(200).optional(),
@@ -179,6 +183,25 @@ export function editionRows(
 
 export function libraryRoutes(deps: LibraryRouteDeps) {
   const { db, queue } = deps;
+  const evidenceOf = (id: number) => {
+    const e = getEvidenceLink(db, id);
+    return e ? { provider: e.provider, url: e.url } : null;
+  };
+  /** Builds the release's latest proposal again from the same source, so a changed evidence link shows. */
+  const rebuild = (id: number): Job | null => {
+    const p = latestProposal(db, id);
+    if (!p || queue.live(proposeDedupeKey(id))) return null;
+    if (p.releaseMbid) {
+      return enqueuePropose(
+        queue,
+        id,
+        p.releaseMbid,
+        p.chosenBy,
+        p.mbServer === "https://test.musicbrainz.org" ? p.mbServer : undefined,
+      );
+    }
+    return p.sourceUrl ? enqueueProviderPropose(queue, id, p.sourceUrl) : null;
+  };
   return new Hono<AuthEnv>()
     .get("/summary", async (c) => {
       const scan = queue.latest(SCAN_JOB);
@@ -301,7 +324,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
           },
           unmappedFiles: p.unmappedFiles,
           // The provider's own data stays server-side; the UI needs only the outcome.
-          providers: providerMatches(db, p.id).map(({ release: _data, ...m }) => m),
+          providers: providerMatches(db, p.id).map(({ release: _data, evidence: _e, ...m }) => m),
           cover: coverDto(db, p.id, p.fields.map((f) => f.fileId)),
           // Snapshot ids are internal provenance, not part of the API.
           fields: p.fields.map((f) => ({
@@ -315,6 +338,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         job: job ? toJobDto(job) : null,
         readOnly: deps.readOnly,
         locks: locksFor(db, id),
+        evidence: evidenceOf(id),
       };
       return c.json(body);
     })
@@ -344,6 +368,31 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         (body.data as { server?: "https://test.musicbrainz.org" }).server,
       );
       return c.json(toJobDto(job), 202);
+    })
+    // Evidence (§9.5, D55): a YouTube link adds its date and label to every proposal built for the release.
+    // Nothing is written to the files, so read-only mode allows it.
+    .put("/releases/:id{[0-9]+}/evidence", async (c) => {
+      const id = Number(c.req.param("id"));
+      if (!identificationState(db, id)) return c.json({ error: "not found" }, 404);
+      const body = evidenceBody.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: "Give url: a YouTube video or playlist link" }, 400);
+      let url: URL;
+      try {
+        url = new URL(body.data.url.trim());
+      } catch {
+        return c.json({ error: "That is not a link" }, 400);
+      }
+      const link = parseYouTubeUrl(url);
+      if ("error" in link) return c.json({ error: link.error }, 400);
+      setEvidenceLink(db, id, { provider: "youtube", url: canonicalUrl(link) }, Date.now());
+      const job = rebuild(id);
+      return c.json({ evidence: { provider: "youtube", url: canonicalUrl(link) }, job: job ? toJobDto(job) : null });
+    })
+    .delete("/releases/:id{[0-9]+}/evidence", (c) => {
+      const id = Number(c.req.param("id"));
+      if (!removeEvidenceLink(db, id)) return c.json({ error: "not found" }, 404);
+      const job = rebuild(id);
+      return c.json({ evidence: null, job: job ? toJobDto(job) : null });
     })
     // Scanning only reads the library, so it is allowed in read-only mode.
     .post("/scan", (c) => c.json(toJobDto(enqueueScan(queue)) as ScanJobDto, 202));

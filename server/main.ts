@@ -22,6 +22,7 @@ import { registerProviderTestJob } from "./jobs/provider_test.ts";
 import { CredentialStore } from "./providers/credentials.ts";
 import { Vault } from "./secrets/vault.ts";
 import { AcoustIdClient } from "./providers/acoustid.ts";
+import { YouTubeClient } from "./providers/youtube.ts";
 import { RateLimiter } from "./providers/ratelimit.ts";
 import { SnapshotCache } from "./providers/snapshots.ts";
 import { identifyConfig, loadSettings } from "./settings.ts";
@@ -81,6 +82,20 @@ async function main() {
     }
     return acoustid.source;
   };
+  // YouTube evidence (§9.5, D55): built again whenever the key changes, like AcoustID.
+  const youtubeLimiter = new RateLimiter({ requests: 5, perMs: 1000 });
+  let youtube: { key: string; client: YouTubeClient } | null = null;
+  const youtubeClient = async (): Promise<YouTubeClient | null> => {
+    const { apiKey } = await creds.get("youtube");
+    if (!apiKey) return null;
+    if (youtube?.key !== apiKey) {
+      youtube = {
+        key: apiKey,
+        client: new YouTubeClient({ apiKey, cache: snaps, http: { userAgent: USER_AGENT, limiter: youtubeLimiter } }),
+      };
+    }
+    return youtube.client;
+  };
   const jellyfin = async (): Promise<JellyfinClient | null> => {
     const { url, apiKey, library } = await creds.get("jellyfin");
     return url && apiKey
@@ -118,6 +133,7 @@ async function main() {
     settings: () => settings.proposal,
     logger,
     enrichment: { registry: harmony, enabled: (id) => settings.providers[id].enabled },
+    youtube: youtubeClient,
   });
   registerRefreshJob(queue, { db, jellyfin, logger });
   registerSubmissionJobs(queue, {

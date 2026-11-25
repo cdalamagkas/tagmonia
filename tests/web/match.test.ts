@@ -75,6 +75,9 @@ Deno.test("one link box: MusicBrainz releases and bare IDs; any other https link
     kind: "provider",
     url: "https://www.deezer.com/album/771280491",
   });
+  assertEquals(classifyLink("https://music.youtube.com/playlist?list=OLAK5uy_abcdefghijk").kind, "youtube");
+  assertEquals(classifyLink("https://youtu.be/jNQXAC9IVRw").kind, "youtube");
+  assertEquals(classifyLink("https://notyoutube.com/watch?v=jNQXAC9IVRw").kind, "provider", "the server refuses it");
   assertEquals(classifyLink(`https://musicbrainz.org/release-group/${A}`).kind, "invalid");
   assertEquals(classifyLink("http://www.deezer.com/album/1").kind, "invalid");
   assertEquals(classifyLink("Ambient Piano").kind, "invalid");

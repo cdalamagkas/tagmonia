@@ -8,7 +8,15 @@ import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { type Vault, VaultError } from "../secrets/vault.ts";
 
-export type ProviderId = "musicbrainz" | "acoustid" | "deezer" | "itunes" | "discogs" | "bandcamp" | "jellyfin";
+export type ProviderId =
+  | "musicbrainz"
+  | "acoustid"
+  | "deezer"
+  | "itunes"
+  | "discogs"
+  | "bandcamp"
+  | "youtube"
+  | "jellyfin";
 
 export interface CredentialField {
   key: string;
@@ -85,6 +93,14 @@ export const PROVIDERS: readonly ProviderDef[] = [
     toggle: true,
     help:
       "Releases missing from MusicBrainz, from a Bandcamp album link. Bandcamp has no official API, so Tagmonia reads its public album pages; off unless you switch it on (D16).",
+  },
+  {
+    id: "youtube",
+    name: "YouTube",
+    tier: "enrichment",
+    fields: [{ key: "apiKey", label: "API key", secret: true, kind: "text" }],
+    help:
+      "Evidence from a YouTube video or playlist link you paste on a release: its release date and label fill gaps, never more (official YouTube Data API). A free API key from Google Cloud: create a project, enable the YouTube Data API v3, then create an API key.",
   },
   {
     id: "jellyfin",

@@ -8,6 +8,7 @@ import { useState } from "preact/hooks";
 import type {
   EditionDto,
   EditionSummary,
+  EvidenceLinkDto,
   IdentificationDto,
   LibraryFileDto,
   MatchDto,
@@ -168,10 +169,11 @@ function Mapping({ view, m, files }: { view: MappingView; m: MatchDto; files: Li
 
 /** One box for any release: a MusicBrainz release, or a Deezer, iTunes, Discogs or Bandcamp album. */
 function LinkBox(
-  { busy, onMusicBrainz, onProvider }: {
+  { busy, onMusicBrainz, onProvider, onYouTube }: {
     busy: boolean;
     onMusicBrainz: (mbid: string) => Promise<void>;
     onProvider: (url: string) => Promise<void>;
+    onYouTube: (url: string) => Promise<void>;
   },
 ) {
   const [text, setText] = useState("");
@@ -184,6 +186,7 @@ function LinkBox(
     setWorking(true);
     try {
       if (link.kind === "musicbrainz") await onMusicBrainz(link.mbid);
+      else if (link.kind === "youtube") await onYouTube(link.url);
       else await onProvider(link.url);
       setText("");
     } catch (e) {
@@ -206,7 +209,7 @@ function LinkBox(
           id="tm-link-box"
           type="text"
           inputMode="url"
-          placeholder="A MusicBrainz release, or a Deezer, iTunes, Discogs or Bandcamp album link"
+          placeholder="A MusicBrainz release, a Deezer, iTunes, Discogs or Bandcamp album, or a YouTube playlist"
           value={text}
           onInput={(e) => setText(e.currentTarget.value)}
           disabled={busy || working}
@@ -217,6 +220,30 @@ function LinkBox(
       </button>
       {error && <p class="tm-error" role="alert">{error}</p>}
     </form>
+  );
+}
+
+/** The release's YouTube link (§9.5, D55): evidence for the date and label, never the source of the tags. */
+function EvidenceLine(
+  { evidence, hasProposal, busy, onRemove }: {
+    evidence: EvidenceLinkDto;
+    hasProposal: boolean;
+    busy: boolean;
+    onRemove: () => void;
+  },
+) {
+  const what = evidence.url.includes("/playlist?") ? "YouTube playlist" : "YouTube video";
+  return (
+    <p class="tm-section-note">
+      <span class="tm-muted">Evidence:</span>{" "}
+      <a href={evidence.url} target="_blank" rel="noopener noreferrer">{what}</a>{" "}
+      <span class="tm-muted">
+        {hasProposal
+          ? "fills the release date and label where nothing else has them; see Changes."
+          : "used once the tags are proposed."}
+      </span>{" "}
+      <button type="button" class="tm-linklike tm-small-link" disabled={busy} onClick={onRemove}>remove</button>
+    </p>
   );
 }
 
@@ -323,11 +350,13 @@ function nothingYet(d: IdentificationDto, busy: boolean): string {
 }
 
 export function Identification(
-  { releaseId, data, proposal, files, onReload, onChoose, onChooseProvider }: {
+  { releaseId, data, proposal, evidence, files, onReload, onChoose, onChooseProvider }: {
     releaseId: number;
     /** Loaded and kept live by the release page (D53). */
     data: IdentificationDto;
     proposal: ProposalDto | null;
+    /** The release's YouTube link, if any (§9.5, D55). */
+    evidence: EvidenceLinkDto | null;
     files: LibraryFileDto[];
     onReload: () => Promise<void>;
     /** Builds a proposal from a MusicBrainz release; rejects with the server's message (e.g. busy). */
@@ -464,7 +493,23 @@ export function Identification(
             : <p class="tm-muted">{nothingYet(data, busy)}</p>
         )}
 
-        <LinkBox busy={busy} onMusicBrainz={chooseLink} onProvider={(url) => onChooseProvider(url)} />
+        {evidence && (
+          <EvidenceLine
+            evidence={evidence}
+            hasProposal={!!proposal}
+            busy={busy}
+            onRemove={() => run(() => api.removeEvidence(releaseId))}
+          />
+        )}
+        <LinkBox
+          busy={busy}
+          onMusicBrainz={chooseLink}
+          onProvider={(url) => onChooseProvider(url)}
+          onYouTube={async (url) => {
+            await api.setEvidence(releaseId, url);
+            await onReload();
+          }}
+        />
       </section>
 
       {subject && v.mapping && <Mapping view={v.mapping} m={subject} files={files} />}

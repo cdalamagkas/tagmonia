@@ -394,7 +394,8 @@ export interface CoverDecisionRequest {
 }
 
 export interface ProviderMatchDto {
-  provider: "deezer" | "itunes" | "discogs" | "bandcamp";
+  /** YouTube is evidence from a pasted link (§9.5, D55). */
+  provider: "deezer" | "itunes" | "discogs" | "bandcamp" | "youtube";
   status: "found" | "different_edition" | "not_found" | "skipped" | "error";
   via: "link" | "barcode" | null;
   url: string | null;
@@ -409,6 +410,20 @@ export interface ProposalResponse {
   readOnly: boolean;
   /** Locks that apply to this release: global, this release's, and its files'. */
   locks: LockDto[];
+  /** The release's YouTube link, if the user gave one (§9.5, D55). */
+  evidence: EvidenceLinkDto | null;
+}
+
+export interface EvidenceLinkDto {
+  provider: "youtube";
+  /** Canonical: https://www.youtube.com/playlist?list=… or …/watch?v=… */
+  url: string;
+}
+
+/** PUT / DELETE …/evidence: the link now, and the proposal being built again with it, if any. */
+export interface EvidenceResponse {
+  evidence: EvidenceLinkDto | null;
+  job: JobDto | null;
 }
 
 /**

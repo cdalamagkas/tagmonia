@@ -21,7 +21,7 @@ import type { CanonicalField, CanonicalTags } from "../tagio/types.ts";
 import { valuesAgree } from "./compare.ts";
 import type { ProposedTags } from "./musicbrainz_tags.ts";
 
-export type SourceId = "musicbrainz" | SourceProvider;
+export type SourceId = "musicbrainz" | SourceProvider | "youtube";
 
 export interface FieldProvenance {
   /** Whose value is proposed. */
@@ -139,7 +139,8 @@ export function mergeProviders(mb: ProposedTags, mbRelease: MbRelease, matches: 
   const provenance = new Map<string, FieldProvenance>();
   const found = new Map<EnrichmentProvider, ProviderValues>();
   for (const m of matches) {
-    if (m.status === "found" && m.release && m.provider !== "bandcamp") found.set(m.provider, harmonyValues(m.release));
+    if (m.status !== "found" || !m.release || m.provider === "bandcamp" || m.provider === "youtube") continue;
+    found.set(m.provider, harmonyValues(m.release));
   }
   const v = (p: EnrichmentProvider) => found.get(p);
 
