@@ -21,7 +21,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   from; each can be accepted, kept, edited or locked.
 - **One page per release** that says where it stands and what to do next ("15 changes ready · Write 15 changes",
   "3 releases fit; none is certain · Choose a release", "Written … · Undo"), and updates by itself while Tagmonia works.
-  Below it: **Changes** (what a write would do), **Match** (the MusicBrainz match, its evidence and the alternatives),
+  Below it: **Changes** (what a write would do, one line per change with a checkbox; the ⋯ menu edits a value or
+  keeps a field from ever changing on this album, this track or any album), **Match** (the MusicBrainz match, its evidence and the alternatives),
   **Files** (what the files hold now) and **History** (writes and undos).
 - **Writes** reviewed tags safely: a backup first, an atomic write, a read-back check with automatic restore, and
   **undo** for every write. A read-only mode writes nothing.

@@ -598,3 +598,195 @@ a:focus-visible {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* Changes tab (restructure PR 2): one line per change, a ⋯ menu, the track grid, the write bar */
+.tm-change-section {
+  margin-top: 18px;
+}
+.tm-change-section h3 {
+  margin: 0 0 6px;
+}
+.tm-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--tm-rule);
+}
+.tm-change input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+}
+.tm-change-field {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  min-width: 9.5rem;
+}
+.tm-change-values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tm-change-new {
+  font-weight: var(--tm-weight-label);
+  text-align: left;
+}
+.tm-change-marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tm-change-off .tm-change-new,
+td.tm-change-off .tm-change-new {
+  color: var(--tm-slate);
+  font-weight: var(--tm-weight-value);
+  text-decoration: line-through;
+}
+.tm-change-off .tm-diff-old {
+  text-decoration: none;
+}
+/* ⋯ menu */
+.tm-menu {
+  position: relative;
+  margin-left: auto;
+}
+.tm-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0 8px;
+  border-radius: var(--tm-radius);
+  color: var(--tm-slate);
+  font-weight: var(--tm-weight-name);
+  user-select: none;
+}
+.tm-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.tm-menu > summary:hover,
+.tm-menu[open] > summary {
+  background: var(--tm-mist);
+  color: var(--tm-navy);
+}
+.tm-menu-list {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  min-width: 15rem;
+  margin-top: 4px;
+  padding: 4px;
+  background: var(--tm-paper);
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius);
+  box-shadow: 0 6px 20px rgb(18 35 61 / 0.12);
+}
+.tm-menu-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font: inherit;
+  color: var(--tm-navy);
+  cursor: pointer;
+}
+.tm-menu-list button:hover {
+  background: var(--tm-mist);
+}
+/* Needs your choice */
+.tm-choice {
+  border-bottom: 1px solid var(--tm-rule);
+  padding-bottom: 6px;
+}
+.tm-choice .tm-change {
+  border-bottom: 0;
+}
+.tm-choice-list {
+  list-style: none;
+  margin: 0 0 4px 0;
+  padding: 0 0 0 9.5rem;
+  display: grid;
+  gap: 6px;
+}
+/* Cover: current → proposed */
+.tm-cover-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 260px;
+}
+.tm-cover-pair figure {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+.tm-cover-pair img,
+.tm-cover-pair .tm-cover-empty {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border: 1px solid var(--tm-rule);
+  border-radius: 4px;
+  background: var(--tm-mist);
+}
+/* Track grid */
+.tm-track-grid td,
+.tm-track-grid th {
+  vertical-align: middle;
+}
+.tm-grid-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+.tm-grid-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tm-grid-cell .tm-menu {
+  margin-left: 0;
+}
+/* Pinned write bar */
+.tm-write-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--tm-paper);
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius-card);
+  box-shadow: 0 -4px 16px rgb(18 35 61 / 0.08);
+}
+.tm-write-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .tm-change-field {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+  .tm-choice-list {
+    padding-left: 0;
+  }
+}

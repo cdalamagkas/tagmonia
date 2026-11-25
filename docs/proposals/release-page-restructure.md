@@ -228,7 +228,7 @@ The same EP, Add to MusicBrainz open at the artist step (test server):
 
 ## Plan
 
-Progress: PR 1 done (header, live updates, tabs).
+Progress: PR 1 done (header, live updates, tabs); PR 2 done (the Changes tab).
 
 Four PRs, each usable on its own:
 
@@ -268,9 +268,32 @@ Each PR is checked in headless Chromium at desktop and phone width, with the mea
     at 249 px (was 4,080 px, 24 buttons, action at 2,525 px);
   - EP from Deezer: the Changes tab is still 4,209 px and 211 buttons, which is PR 2's work.
 
+## PR 2 as built
+
+- `web/src/release/changes.ts` groups a proposal into the Changes tab's items; it is pure and unit-tested
+  (`tests/web/changes.test.ts`). The groups:
+  - **Needs your choice:** open disagreements, also on fields already as proposed.
+  - **Album:** an album field once.
+  - **On all tracks:** the same proposed value, current value and decision on every track (at least two tracks).
+  - **Track grid:** the rest, a row per track and a column per field, in the files' order.
+- The write bar's "N of M changes selected" and the header's "N changes ready" use the same counting, which the tests
+  check. Locked changes count in M but not in N.
+- Each line: a checkbox (checked = include in the write; "mixed" when some files keep their value), the field, current
+  → new, marks ("filled by …", "your value", "chosen: …", "🔒 never changes on …"), and a ⋯ menu. The menu offers
+  Edit the value…, Use the proposed value, and Never change on this album, on this track (track lines) or on any
+  album; on a locked line, Allow changes again. Clicking the new value edits it. The menu closes on a choice, an
+  outside click or Escape.
+- Track grid: each cell has its checkbox and ⋯; the column header's checkbox switches that field on every track.
+- Cover: one line with the current and proposed pictures, their sizes, and where it goes.
+- "N fields already right" opens a plain list; "Discard these changes" moved into the write bar.
+- Phone width (settled): the grid keeps its columns and scrolls sideways inside its box; the page itself does not.
+- Measured after PR 2 (1280 × 900):
+  - EP from Deezer, 41 changes: the Changes tab is 1,853 px (2.1 screens), with album fields once, 5 "all 5 tracks"
+    lines and one grid column (ISRC). It was 4,209 px after PR 1, with one table per track.
+  - Matched album, one cover upgrade: 900 px (one screen), 10 controls.
+
 ## Still to settle while building
 
-- The track grid at phone width: likely one card per track with its changed fields.
 - Which tab opens when there is no proposal yet (probably Match).
 - Whether the library list shows the same status sentence per release.
 - Whether Settings → Cover art and Settings → MusicBrainz submissions get a link from where they apply (the cover row,

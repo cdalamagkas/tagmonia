@@ -376,7 +376,15 @@ export function ReleasePage({ id }: { id: number }) {
               submission={data.submission}
               onReload={reload}
             />
-            <Review releaseId={id} data={data.proposal} files={files} live={live} onReload={reload} />
+            <Review
+              releaseId={id}
+              data={data.proposal}
+              files={files}
+              live={live}
+              currentCover={data.cover}
+              filesVersion={data.filesVersion}
+              onReload={reload}
+            />
           </>
         )}
         {tab === "match" && (
