@@ -268,6 +268,45 @@ export interface ProposalDto {
   fields: FieldProposalDto[];
   /** The same release on Deezer, iTunes and Discogs (D47). */
   providers: ProviderMatchDto[];
+  /** The proposed front cover (D49); null for a proposal built before cover art existed. */
+  cover: CoverProposalDto | null;
+}
+
+export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "discogs";
+export type CoverStatusDto = "added" | "changed" | "unchanged";
+
+export interface CoverImageDto {
+  mime: string;
+  width: number;
+  height: number;
+  /** Bytes. */
+  size: number;
+  /** Where it was downloaded from. */
+  url: string;
+  /** Same-origin preview: GET /api/proposals/:id/cover/embed or …/folder. */
+  preview: string;
+}
+
+export interface CoverProposalDto {
+  mode: Settings["covers"]["mode"];
+  /** null: no source had a cover. */
+  source: CoverSourceId | null;
+  skipped: { source: CoverSourceId; reason: string }[];
+  embed: CoverImageDto | null;
+  folder: CoverImageDto | null;
+  embedStatus: CoverStatusDto | null;
+  folderStatus: CoverStatusDto | null;
+  folderPath: string | null;
+  decision: "auto" | "accepted" | "kept_current";
+  /** The release's files now: how many there are and how many have a front cover, with its sizes in bytes. */
+  current: { files: number; withFront: number; sizes: number[] };
+  /** Whether writing changes anything about the cover. */
+  writes: boolean;
+}
+
+/** POST /api/proposals/:id/cover/decision */
+export interface CoverDecisionRequest {
+  decision: "accepted" | "kept_current";
 }
 
 export interface ProviderMatchDto {

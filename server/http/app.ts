@@ -3,6 +3,7 @@
  * security headers -> body limit -> /api/health -> Origin check -> public auth
  * routes -> session required -> CSRF -> everything else.
  */
+import { join } from "node:path";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/deno";
@@ -87,7 +88,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
   );
   app.route("/api/jobs", jobRoutes(queue));
   app.route("/api", writeRoutes({ db, queue, readOnly: config.readOnly }));
-  app.route("/api", reviewRoutes({ db }));
+  app.route("/api", reviewRoutes({ db, coverDir: join(config.configDir, "covers") }));
   app.route(
     "/api",
     providerRoutes({ db, queue, creds: ctx.creds, settings: ctx.settings, configDir: config.configDir }),

@@ -117,7 +117,8 @@ Deno.test("refreshFolders fully re-reads the written albums and scans for folder
       full.get("ReplaceAllMetadata"),
       full.get("Recursive"),
       full.get("ReplaceAllImages"),
+      full.get("ImageRefreshMode"),
     ],
-    ["FullRefresh", "true", "true", "false"],
+    ["FullRefresh", "true", "true", "true", "FullRefresh"],
   );
 });

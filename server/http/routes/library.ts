@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type {
+  CoverProposalDto,
   EditionDto,
   IdentificationDto,
   JobDto,
@@ -19,6 +20,8 @@ import { identificationState, matchesFor, type StoredMatch } from "../../db/repo
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
 import { isUnresolved, latestProposal, locksFor, providerMatches } from "../../db/repo/proposals.ts";
+import { coverWrites, getCover } from "../../db/repo/covers.ts";
+import type { CachedImage } from "../../covers/fetch.ts";
 import { enqueuePropose, proposeDedupeKey } from "../../jobs/propose.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
@@ -65,6 +68,44 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/** The proposal's cover for the review, with what the release's files carry now (D49). */
+function coverDto(db: Db, proposalId: number, fileIds: number[]): CoverProposalDto | null {
+  const c = getCover(db, proposalId);
+  if (!c) return null;
+  const ids = [...new Set(fileIds)];
+  const rows = ids.length
+    ? db.prepare(`SELECT pictures FROM library_file WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) as {
+      pictures: string;
+    }[]
+    : [];
+  const fronts = rows
+    .map((r) => (JSON.parse(r.pictures) as { type: string; size: number }[]).find((p) => p.type === "front"))
+    .filter((p) => !!p);
+  const image = (i: CachedImage | null, which: string) =>
+    i && {
+      mime: i.mime,
+      width: i.width,
+      height: i.height,
+      size: i.size,
+      url: i.url,
+      preview: `/api/proposals/${proposalId}/cover/${which}`,
+    };
+  const w = coverWrites(c);
+  return {
+    mode: c.mode,
+    source: c.source,
+    skipped: c.skipped,
+    embed: image(c.embed, "embed"),
+    folder: image(c.folder, "folder"),
+    embedStatus: c.embedStatus,
+    folderStatus: c.folderStatus,
+    folderPath: c.folderPath,
+    decision: c.decision,
+    current: { files: rows.length, withFront: fronts.length, sizes: [...new Set(fronts.map((p) => p.size))] },
+    writes: w.embed || w.folder,
+  };
+}
 
 export interface LibraryRouteDeps {
   db: Db;
@@ -194,6 +235,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
           unmappedFiles: p.unmappedFiles,
           // The provider's own data stays server-side; the UI needs only the outcome.
           providers: providerMatches(db, p.id).map(({ release: _data, ...m }) => m),
+          cover: coverDto(db, p.id, p.fields.map((f) => f.fileId)),
           // Snapshot ids are internal provenance, not part of the API.
           fields: p.fields.map((f) => ({
             ...f,

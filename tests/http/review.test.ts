@@ -1,5 +1,9 @@
 /** Review actions: decisions, locks and discard (§10.3). */
 import { assertEquals } from "@std/assert";
+import { join } from "node:path";
+import { coverCachePath, sha256Hex } from "../../server/covers/fetch.ts";
+import { saveCover } from "../../server/db/repo/covers.ts";
+import { fakeJpeg } from "../covers/helpers.ts";
 import { reconcileUnit, upsertFile } from "../../server/db/repo/library.ts";
 import { getProposal, saveProposal, setProposalState } from "../../server/db/repo/proposals.ts";
 import type { LockDto, ProposalResponse } from "../../shared/types.ts";
@@ -181,4 +185,50 @@ Deno.test("a proposal can be discarded, but a written one is undone instead", ()
     setProposalState(t.db, proposalId, "needs_review", 3);
     assertEquals((await discard()).status, 204);
     assertEquals(getProposal(t.db, proposalId)!.state, "discarded");
+  }));
+
+Deno.test("the cover: shown with what the files have, previewed from the cache, kept or used (D49)", () =>
+  withApp(async (t, { cookie, csrf }) => {
+    const { candidateId, proposalId } = seed(t);
+    const bytes = fakeJpeg(1200, 1200);
+    const sha = await sha256Hex(bytes);
+    await Deno.mkdir(join(t.configDir, "covers"));
+    await Deno.writeFile(coverCachePath(join(t.configDir, "covers"), sha, "image/jpeg"), bytes);
+    const image = { sha256: sha, mime: "image/jpeg" as const, width: 1200, height: 1200, size: bytes.length, url: "u" };
+    saveCover(t.db, proposalId, {
+      mode: "embed_full",
+      source: "deezer",
+      skipped: [{ source: "coverartarchive", reason: "HTTP 503" }],
+      embed: image,
+      folder: null,
+      embedStatus: "added",
+      folderStatus: null,
+      folderPath: null,
+      folderCurrent: null,
+    });
+    const load = async () =>
+      ((await (await t.request(`/api/library/releases/${candidateId}/proposal`, { cookie }))
+        .json()) as ProposalResponse)
+        .proposal!.cover!;
+    let cover = await load();
+    assertEquals([cover.source, cover.embed?.width, cover.embedStatus, cover.writes], ["deezer", 1200, "added", true]);
+    assertEquals(cover.current, { files: 2, withFront: 0, sizes: [] });
+    assertEquals(cover.embed?.preview, `/api/proposals/${proposalId}/cover/embed`);
+
+    const res = await t.request(cover.embed!.preview, { cookie });
+    assertEquals([res.status, res.headers.get("content-type")], [200, "image/jpeg"]);
+    assertEquals(new Uint8Array(await res.arrayBuffer()), bytes);
+    assertEquals((await t.request(`/api/proposals/${proposalId}/cover/folder`, { cookie })).status, 404);
+
+    const decide = (body: unknown) =>
+      t.request(`/api/proposals/${proposalId}/cover/decision`, {
+        method: "POST",
+        cookie,
+        csrf,
+        body: JSON.stringify(body),
+      });
+    assertEquals((await decide({ decision: "edited" })).status, 400);
+    assertEquals((await decide({ decision: "kept_current" })).status, 204);
+    cover = await load();
+    assertEquals([cover.decision, cover.writes], ["kept_current", false]);
   }));

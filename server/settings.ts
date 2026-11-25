@@ -67,6 +67,13 @@ export const settingsSchema = z.object({
     genres: z.enum(["musicbrainz", "none"]).default("musicbrainz"),
     maxGenres: z.number().int().min(1).max(20).default(5),
   }).prefault({}),
+  covers: z.object({
+    /**
+     * D46, D49: embed about 1200 px, embed full size, only save cover.jpg in the album folder,
+     * or embed about 1200 px and save the full-size cover.jpg.
+     */
+    mode: z.enum(["embed_1200", "embed_full", "folder", "both"]).default("embed_full"),
+  }).prefault({}),
   auth: z.object({
     /** Sessions end after this long without a request. */
     sessionIdleHours: z.number().positive().max(24 * 90).default(24 * 7),

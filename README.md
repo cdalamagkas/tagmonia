@@ -3,9 +3,9 @@
 **Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phase 4 (more providers) in progress.** Phases 0–3 are done: Tagmonia identifies releases against
-> MusicBrainz, proposes tags field by field, writes them with verification and undo, and tells Jellyfin. It now also
-> finds each release on Deezer, iTunes and Discogs and merges their values into the proposal; cover art comes next.
+> **Status: Phases 0–4 are done; Phase 5 (MusicBrainz submission) is next.** Tagmonia identifies releases against
+> MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art,
+> writes everything with verification and undo, and tells Jellyfin.
 > See the roadmap in
 > [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md#16-implementation-roadmap).
 
@@ -27,6 +27,11 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   label or catalog number from Discogs, missing ISRCs from Deezer or iTunes, and each provider's own ID. Such fields
   are marked "filled by …". Where MusicBrainz and Discogs disagree, the review shows both values and asks you to
   choose before anything is written.
+- **Cover art** from the Cover Art Archive, or else the largest image iTunes, Deezer or Discogs has for the same
+  release. The review shows the cover with its source, size and what the files have now. **Settings → Cover art**
+  chooses how it is written: embedded at full size (the default), embedded at about 1200 px, only as `cover.jpg` in
+  the album folder, or both (about 1200 px embedded plus the full-size `cover.jpg`). Other pictures in the files are
+  kept, and undo puts back the previous pictures and folder image exactly.
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
 

@@ -2,6 +2,7 @@
 import {
   type ApiError,
   type AuthState,
+  type CoverDecisionRequest,
   type Credentials,
   type CredentialsRequest,
   CSRF_HEADER,
@@ -87,6 +88,8 @@ export const api = {
   decide: (proposalId: number, body: DecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/decisions`, body),
   discard: (proposalId: number) => request<void>("POST", `/api/proposals/${proposalId}/discard`),
+  coverDecision: (proposalId: number, body: CoverDecisionRequest) =>
+    request<void>("POST", `/api/proposals/${proposalId}/cover/decision`, body),
   write: (proposalId: number) => request<JobDto>("POST", `/api/proposals/${proposalId}/write`),
   lock: (body: LockRequest) => request<LockDto>("POST", "/api/locks", body),
   unlock: (lockId: number) => request<void>("DELETE", `/api/locks/${lockId}`),
