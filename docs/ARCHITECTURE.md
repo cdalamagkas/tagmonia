@@ -919,6 +919,8 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Status:** done 2026-11-24. On a dev Jellyfin 10.11.3 over the maintainer's two test albums (a two-disc FLAC release and four Opus tracks of a partial album), driven through the HTTP API with live MusicBrainz: both were identified, reviewed (album titles and genres edited), written (17/17 and 4/4 files, verified), and Jellyfin showed the edited values after Tagmonia's own refresh; both writes were undone, Jellyfin returned exactly to its view before the write, every file's tags equalled their pre-write tags, and the audio packets of all 21 files were identical to a byte backup taken beforehand. Findings: D40–D44.
 
+**Correction (2026-11-26):** "returned exactly" holds only relative to that byte backup, which was taken too late. An earlier, failed run of the same check (2026-11-24 15:13) wrote Tagmonia's proposal to all 17 files of the Lukas Sternath album (50 fields changed, 81 added) and exited before undoing it; the backup was taken afterwards, so it already held the written tags, and the album's original tags were lost. The Mendelssohn album was not affected. The check now backs up first and compares with that backup after every run, including failed ones.
+
 ### Phase 4 — More providers
 
 - Discogs, Deezer, iTunes via Harmony; Cover Art Archive with fallbacks.
