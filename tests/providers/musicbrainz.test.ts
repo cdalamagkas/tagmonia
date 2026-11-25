@@ -157,3 +157,32 @@ Deno.test("a truncated tracklist is an error and is not cached", async () => {
   await assertRejects(() => s.client.lookupRelease(SIBELIUS), MusicBrainzResponseError);
   assertEquals(s.agents.length, 2);
 });
+
+Deno.test("releasesForUrl: the releases a provider page is linked to; none for an unknown URL (D52)", async () => {
+  const fetchImpl: typeof fetch = (input) => {
+    const url = new URL(String(input));
+    if (url.searchParams.get("resource") === "https://www.deezer.com/album/1") {
+      return Promise.resolve(Response.json({
+        id: "u1",
+        resource: "https://www.deezer.com/album/1",
+        relations: [{ type: "free streaming", release: { id: SIBELIUS, title: "Symphony no. 5" } }, { type: "x" }],
+      }));
+    }
+    return Promise.resolve(Response.json({ error: "Not Found" }, { status: 404 }));
+  };
+  await using s = await setup(fetchImpl);
+  assertEquals((await s.client.releasesForUrl("https://www.deezer.com/album/1")).value, [
+    { id: SIBELIUS, title: "Symphony no. 5" },
+  ]);
+  assertEquals((await s.client.releasesForUrl("https://www.deezer.com/album/2")).value, []);
+});
+
+Deno.test("lookupReleaseFresh never answers from the cache: a just-submitted release is asked for again", async () => {
+  await using s = await setup();
+  await s.client.lookupRelease(SIBELIUS);
+  await s.client.lookupRelease(SIBELIUS);
+  assertEquals(s.requests.length, 1, "the normal lookup is cached");
+  await s.client.lookupReleaseFresh(SIBELIUS);
+  assertEquals(s.requests.length, 2);
+  assertEquals(s.agents.every((a) => a === USER_AGENT), true);
+});

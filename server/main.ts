@@ -10,11 +10,13 @@ import { openMigratedDb } from "./db/db.ts";
 import { createApp } from "./http/app.ts";
 import { JobQueue } from "./jobs/queue.ts";
 import { enqueueIdentify, registerIdentifyJob } from "./jobs/identify.ts";
-import { registerProposeJob } from "./jobs/propose.ts";
+import { enqueuePropose, registerProposeJob } from "./jobs/propose.ts";
 import { registerWriteJobs } from "./jobs/write.ts";
 import { registerScanJob } from "./jobs/scan.ts";
 import { createLogger } from "./log.ts";
-import { createMusicBrainzClient } from "./providers/musicbrainz/mod.ts";
+import { createMusicBrainzClient, createSubmissionClients } from "./providers/musicbrainz/mod.ts";
+import { registerSubmissionJobs } from "./jobs/submission.ts";
+import type { SourceProvider } from "./providers/enrichment.ts";
 import { createAcoustIdSource, type FingerprintSource } from "./identify/acoustid_source.ts";
 import { registerProviderTestJob } from "./jobs/provider_test.ts";
 import { CredentialStore } from "./providers/credentials.ts";
@@ -107,15 +109,31 @@ async function main() {
     userAgent: USER_AGENT,
     limiter: new RateLimiter({ requests: 1, perMs: 1000 }),
   });
+  const submissionClients = createSubmissionClients(db, config.configDir, mb);
   registerProposeJob(queue, {
     db,
     mb,
+    mbFor: submissionClients,
     covers: { fetcher: covers, mode: () => settings.covers.mode, musicDir: config.musicDir },
     settings: () => settings.proposal,
     logger,
     enrichment: { registry: harmony, enabled: (id) => settings.providers[id].enabled },
   });
   registerRefreshJob(queue, { db, jellyfin, logger });
+  registerSubmissionJobs(queue, {
+    db,
+    client: submissionClients,
+    providerOf: (url) => harmony.providerForUrl(url) as SourceProvider | undefined,
+    onReturned: (candidateId, mbid, server) =>
+      enqueuePropose(
+        queue,
+        candidateId,
+        mbid,
+        "user",
+        server === "https://test.musicbrainz.org" ? server : undefined,
+      ),
+    logger,
+  });
   registerProviderTestJob(queue, { db, creds, mb, userAgent: USER_AGENT, version: VERSION });
   registerWriteJobs(queue, {
     db,

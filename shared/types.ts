@@ -259,6 +259,8 @@ export interface ProposalDto {
   sourceUrl: string | null;
   /** "musicbrainz", or the provider of `sourceUrl`: values from any other source are marked "filled by". */
   primarySource: string | null;
+  /** The release is on this MusicBrainz server rather than the configured one (the test server, D52). */
+  mbServer: string | null;
   state: ProposalState;
   /** "auto" when identification was confident, "user" when picked in the UI. */
   chosenBy: "auto" | "user";
@@ -323,6 +325,48 @@ export interface CurrentCoverDto {
   files: number;
 }
 
+// ---- MusicBrainz submission (§12, Phase 5)
+
+export interface PossibleDuplicateDto {
+  mbid: string;
+  title: string;
+  artist: string | null;
+  date: string | null;
+  country: string | null;
+  barcode: string | null;
+  trackCount: number | null;
+  /** Why it may be this release: "same barcode", "linked to the Deezer page", … */
+  reasons: string[];
+}
+
+/**
+ * checking → ready (duplicates checked, editor form built) → seeded (editor opened)
+ * → verifying (MusicBrainz sent the MBID back) → returned (verified). Or failed / abandoned.
+ */
+export type SubmissionState = "checking" | "ready" | "seeded" | "verifying" | "returned" | "failed" | "abandoned";
+
+export interface SubmissionDto {
+  id: number;
+  candidateId: number;
+  proposalId: number | null;
+  /** https://musicbrainz.org or https://test.musicbrainz.org */
+  server: string;
+  state: SubmissionState;
+  duplicates: PossibleDuplicateDto[];
+  releaseMbid: string | null;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+  /** Once returned: the new release, where to add its cover art, and (musicbrainz.org only) its ISRCs. */
+  followUps: { release: string; addCoverArt: string; isrcs: string | null } | null;
+}
+
+/** POST /api/submissions/:id/open: the browser posts `fields` to `action` in a new tab. */
+export interface SubmissionOpenResponse {
+  action: string;
+  fields: Record<string, string>;
+}
+
 /** POST /api/proposals/:id/cover/decision */
 export interface CoverDecisionRequest {
   decision: "accepted" | "kept_current";
@@ -350,7 +394,9 @@ export interface ProposalResponse {
  * POST …/proposal: build a proposal from a MusicBrainz release, or from a Deezer,
  * iTunes, Discogs or Bandcamp album link for a release not on MusicBrainz (§10.4).
  */
-export type ProposeRequest = { releaseMbid: string } | { providerUrl: string };
+export type ProposeRequest =
+  | { releaseMbid: string; server?: "https://test.musicbrainz.org" }
+  | { providerUrl: string };
 
 // ---- writing and undo (§11.3, Phase 3)
 

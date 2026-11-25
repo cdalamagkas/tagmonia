@@ -64,7 +64,7 @@ function toFileDto(f: StoredFile): LibraryFileDto {
 
 const identifyBody = z.object({ releaseUrl: z.string().max(500).optional() }).strict();
 const proposeBody = z.union([
-  z.object({ releaseMbid: mbidSchema }).strict(),
+  z.object({ releaseMbid: mbidSchema, server: z.literal("https://test.musicbrainz.org").optional() }).strict(),
   z.object({ providerUrl: z.string().max(500) }).strict(),
 ]);
 
@@ -286,6 +286,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
           releaseMbid: p.releaseMbid,
           sourceUrl: p.sourceUrl,
           primarySource,
+          mbServer: p.mbServer,
           state: p.state,
           chosenBy: p.chosenBy,
           createdAt: p.createdAt,
@@ -335,9 +336,13 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       if (queue.live(proposeDedupeKey(id))) {
         return c.json({ error: "A proposal is already being built for this release; try again when it finishes" }, 409);
       }
-      const job = providerUrl
-        ? enqueueProviderPropose(queue, id, providerUrl.href)
-        : enqueuePropose(queue, id, (body.data as { releaseMbid: string }).releaseMbid, "user");
+      const job = providerUrl ? enqueueProviderPropose(queue, id, providerUrl.href) : enqueuePropose(
+        queue,
+        id,
+        (body.data as { releaseMbid: string }).releaseMbid,
+        "user",
+        (body.data as { server?: "https://test.musicbrainz.org" }).server,
+      );
       return c.json(toJobDto(job), 202);
     })
     // Scanning only reads the library, so it is allowed in read-only mode.

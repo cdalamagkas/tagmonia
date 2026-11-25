@@ -6,6 +6,7 @@ import { onLinkClick } from "../router.ts";
 import { Identification } from "../components/Identification.tsx";
 import { Review } from "../components/Review.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
+import { Submission } from "../components/Submission.tsx";
 
 function coverCaption(c: CurrentCoverDto): string {
   const kb = c.size >= 1024 * 1024 ? `${(c.size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(c.size / 1024)} KB`;
@@ -159,6 +160,7 @@ export function ReleasePage({ id }: { id: number }) {
         }}
       />
       <Review releaseId={release.id} files={files} version={version} onFilesChanged={reload} />
+      <Submission releaseId={release.id} version={version} onProposalChanged={() => setVersion((v) => v + 1)} />
 
       <section class="tm-card">
         <h2>Tracks</h2>

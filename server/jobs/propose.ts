@@ -61,6 +61,8 @@ export interface CoverDeps {
 export interface ProposeJobDeps {
   db: Db;
   mb: ProposalSource;
+  /** MusicBrainz on another server (D52); absent = only `mb`. */
+  mbFor?: (server: string) => ProposalSource;
   covers?: CoverDeps | null;
   /** Deezer, iTunes and Discogs through Harmony (D47); absent = MusicBrainz only. */
   enrichment?: EnrichmentDeps | null;
@@ -74,6 +76,8 @@ const payloadSchema = z.union([
     candidateId: z.number().int().positive(),
     releaseMbid: mbidSchema,
     chosenBy: z.enum(["auto", "user"]),
+    /** Another MusicBrainz server than the configured one: the test server after a test submission (D52). */
+    server: z.literal("https://test.musicbrainz.org").optional(),
   }),
   // A release not on MusicBrainz, from a provider link the user gave (§10.4, D51).
   z.object({
@@ -108,15 +112,17 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
     if ("providerUrl" in parsed.data) {
       return await proposeFromProvider(deps, new URL(parsed.data.providerUrl), found, contentHash, now, signal);
     }
-    const { releaseMbid } = parsed.data;
+    const { releaseMbid, server } = parsed.data;
+    if (server && !deps.mbFor) throw new PermanentJobError(`${server} is not set up`);
+    const mb = server ? deps.mbFor!(server) : deps.mb;
 
-    const rel = await deps.mb.lookupRelease(releaseMbid, signal);
+    const rel = await mb.lookupRelease(releaseMbid, signal);
     if (!rel) throw new PermanentJobError(`MusicBrainz has no release ${releaseMbid}`);
     const snapshotIds = [rel.snapshotId];
 
     const settings = deps.settings();
     // Genres and links to other providers in one request; links are needed even with genres off.
-    const extras = await deps.mb.lookupReleaseExtras(rel.value.id, signal);
+    const extras = await mb.lookupReleaseExtras(rel.value.id, signal);
     if (extras) snapshotIds.push(extras.snapshotId);
     const genres: MbReleaseExtras | null = settings.genres === "musicbrainz" ? extras?.value ?? null : null;
 
@@ -125,7 +131,7 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       const missing = missingParentWorks(rel.value, parents);
       if (missing.length === 0) break;
       for (const id of missing) {
-        const w = await deps.mb.lookupWork(id, signal);
+        const w = await mb.lookupWork(id, signal);
         if (w) {
           parents.set(id, w.value);
           snapshotIds.push(w.snapshotId);
@@ -163,6 +169,7 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
     const proposalId = saveProposal(deps.db, {
       candidateId,
       releaseMbid: rel.value.id,
+      mbServer: server ?? null,
       chosenBy,
       basedOnHash: contentHash,
       snapshotIds: [...new Set(snapshotIds)],
@@ -329,8 +336,14 @@ export function proposeDedupeKey(candidateId: number): string {
   return `${PROPOSE_JOB}:${candidateId}`;
 }
 
-export function enqueuePropose(queue: JobQueue, candidateId: number, releaseMbid: string, chosenBy: ChosenBy): Job {
-  return queue.enqueue(PROPOSE_JOB, { candidateId, releaseMbid, chosenBy }, {
+export function enqueuePropose(
+  queue: JobQueue,
+  candidateId: number,
+  releaseMbid: string,
+  chosenBy: ChosenBy,
+  server?: "https://test.musicbrainz.org",
+): Job {
+  return queue.enqueue(PROPOSE_JOB, { candidateId, releaseMbid, chosenBy, ...(server ? { server } : {}) }, {
     dedupeKey: proposeDedupeKey(candidateId),
     maxAttempts: 3,
   });

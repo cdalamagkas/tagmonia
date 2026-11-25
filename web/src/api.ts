@@ -24,6 +24,8 @@ import {
   type ScanJobDto,
   type SettingsDto,
   type SettingsUpdateResponse,
+  type SubmissionDto,
+  type SubmissionOpenResponse,
 } from "../../shared/types.ts";
 
 export class ApiRequestError extends Error {
@@ -86,6 +88,14 @@ export const api = {
   identification: (id: number) => request<IdentificationDto>("GET", `/api/library/releases/${id}/identification`),
   proposal: (id: number) => request<ProposalResponse>("GET", `/api/library/releases/${id}/proposal`),
   propose: (id: number, body: ProposeRequest) => request<JobDto>("POST", `/api/library/releases/${id}/proposal`, body),
+  // MusicBrainz submission (§12)
+  submission: (releaseId: number) =>
+    request<{ submission: SubmissionDto | null }>("GET", `/api/library/releases/${releaseId}/submission`),
+  prepareSubmission: (proposalId: number) => request<SubmissionDto>("POST", `/api/proposals/${proposalId}/submission`),
+  openSubmission: (id: number) => request<SubmissionOpenResponse>("POST", `/api/submissions/${id}/open`),
+  submissionCallback: (id: number, release: string) =>
+    request<SubmissionDto>("POST", `/api/submissions/${id}/callback`, { release }),
+  abandonSubmission: (id: number) => request<void>("POST", `/api/submissions/${id}/abandon`),
   decide: (proposalId: number, body: DecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/decisions`, body),
   discard: (proposalId: number) => request<void>("POST", `/api/proposals/${proposalId}/discard`),

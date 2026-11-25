@@ -5,11 +5,15 @@ export type Route =
   | { page: "library" }
   | { page: "release"; id: number }
   | { page: "settings" }
+  /** Where MusicBrainz's release editor sends the browser after a submission (§12.2). */
+  | { page: "mbCallback"; submission: number }
   | { page: "notFound" };
 
 export function parseRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { page: "library" };
   if (/^\/settings\/?$/.test(pathname)) return { page: "settings" };
+  const cb = /^\/mb\/callback\/(\d+)\/?$/.exec(pathname);
+  if (cb) return { page: "mbCallback", submission: Number(cb[1]) };
   const m = /^\/releases\/(\d+)\/?$/.exec(pathname);
   if (m) return { page: "release", id: Number(m[1]) };
   return { page: "notFound" };

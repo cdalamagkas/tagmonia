@@ -6,6 +6,7 @@ import { AuthPage } from "./pages/AuthPage.tsx";
 import { LibraryPage } from "./pages/LibraryPage.tsx";
 import { ReleasePage } from "./pages/ReleasePage.tsx";
 import { navigate, onLinkClick, useRoute } from "./router.ts";
+import { MbCallbackPage } from "./pages/MbCallbackPage.tsx";
 
 export function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
@@ -43,6 +44,7 @@ export function App() {
   else if (route.page === "library") body = <LibraryPage />;
   else if (route.page === "release") body = <ReleasePage id={route.id} />;
   else if (route.page === "settings") body = <SettingsPage />;
+  else if (route.page === "mbCallback") body = <MbCallbackPage submission={route.submission} />;
   else {body = (
       <main>
         <p>

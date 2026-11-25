@@ -35,6 +35,8 @@ export interface StoredProposal {
   releaseMbid: string | null;
   /** The provider page a "not in MusicBrainz" proposal was built from (§10.4). */
   sourceUrl: string | null;
+  /** Set when the release is on another MusicBrainz server than the configured one (the test server, D52). */
+  mbServer: string | null;
   state: ProposalState;
   chosenBy: ChosenBy;
   basedOnHash: string;
@@ -50,6 +52,7 @@ export interface NewProposal {
   /** null for a release not on MusicBrainz, built from `sourceUrl`. */
   releaseMbid: string | null;
   sourceUrl?: string | null;
+  mbServer?: string | null;
   chosenBy: ChosenBy;
   basedOnHash: string;
   snapshotIds: number[];
@@ -63,13 +66,14 @@ export function saveProposal(db: Db, p: NewProposal, now: number): number {
       p.candidateId,
     );
     const { id } = db.prepare(
-      `INSERT INTO proposal (candidate_id, release_mbid, source_url, state, chosen_by, based_on_hash, snapshot_ids,
-                             unmapped_files, created_at, updated_at)
-       VALUES (?, ?, ?, 'needs_review', ?, ?, ?, ?, ?, ?) RETURNING id`,
+      `INSERT INTO proposal (candidate_id, release_mbid, source_url, mb_server, state, chosen_by, based_on_hash,
+                             snapshot_ids, unmapped_files, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'needs_review', ?, ?, ?, ?, ?, ?) RETURNING id`,
     ).get(
       p.candidateId,
       p.releaseMbid,
       p.sourceUrl ?? null,
+      p.mbServer ?? null,
       p.chosenBy,
       p.basedOnHash,
       JSON.stringify(p.snapshotIds),
@@ -113,6 +117,7 @@ interface ProposalRow {
   candidate_id: number;
   release_mbid: string | null;
   source_url: string | null;
+  mb_server: string | null;
   state: ProposalState;
   chosen_by: ChosenBy;
   based_on_hash: string;
@@ -184,6 +189,7 @@ function loadProposal(db: Db, p: ProposalRow): StoredProposal {
     candidateId: p.candidate_id,
     releaseMbid: p.release_mbid,
     sourceUrl: p.source_url,
+    mbServer: p.mb_server,
     state: p.state,
     chosenBy: p.chosen_by,
     basedOnHash: p.based_on_hash,
