@@ -17,12 +17,17 @@ import { mbidSchema } from "../providers/musicbrainz/schema.ts";
 import { creditText } from "../proposal/harmony_tags.ts";
 import { findDuplicates } from "../submission/duplicates.ts";
 import { mergedFromMatches, seedFor } from "../submission/seed.ts";
+import { type ArtistLink, collectArtists, resolveArtists, withArtistMbids } from "../submission/artists.ts";
+import type { MergedRelease } from "../providers/harmony_adapter.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
 
 export const SUBMISSION_CHECK_JOB = "submission_check";
 export const SUBMISSION_VERIFY_JOB = "submission_verify";
 
-export type SubmissionClient = Pick<MusicBrainzClient, "searchReleases" | "releasesForUrl" | "lookupReleaseFresh">;
+export type SubmissionClient = Pick<
+  MusicBrainzClient,
+  "searchReleases" | "releasesForUrl" | "lookupReleaseFresh" | "artistsForUrl" | "searchArtists"
+>;
 
 export interface SubmissionJobDeps {
   db: Db;
@@ -30,6 +35,8 @@ export interface SubmissionJobDeps {
   client: (server: string) => SubmissionClient;
   /** The provider of a proposal's source link (D51). */
   providerOf: (url: URL) => SourceProvider | undefined;
+  /** An artist's provider pages with MusicBrainz link types (the Harmony adapter's `artistLinks`). */
+  artistLinks: (artist: MergedRelease["artists"][number]) => ArtistLink[];
   /** After a verified return: build the proposal from the new release, on its server. */
   onReturned: (candidateId: number, releaseMbid: string, server: string) => void;
   logger: Logger;
@@ -69,12 +76,18 @@ export function registerSubmissionJobs(queue: JobQueue, deps: SubmissionJobDeps)
         trackCount,
         urls: merged.info.providers.map((x) => ({ name: x.name, url: x.url })),
       }, signal);
-      const seed = seedFor(merged, {
+      // §12.3: the editor links only artists whose MBID the seed carries.
+      const artists = await resolveArtists(
+        deps.client(s.server),
+        collectArtists(merged, deps.artistLinks),
+        { server: s.server, releaseUrl: proposal.sourceUrl, chosen: s.artistChoices, signal },
+      );
+      const seed = seedFor(withArtistMbids(merged, artists), {
         returnUrl: new URL(`/mb/callback/${s.id}`, s.returnBase),
         fetchedAt: fetched ?? proposal.createdAt,
       });
       const isrcs = merged.media.flatMap((m) => m.tracklist.map((t) => t.isrc ?? ""));
-      updateSubmission(deps.db, s.id, { state: "ready", duplicates, seed, isrcs, error: null }, now());
+      updateSubmission(deps.db, s.id, { state: "ready", duplicates, seed, isrcs, artists, error: null }, now());
       return { duplicates: duplicates.length };
     } catch (e) {
       if (signal?.aborted) throw e;

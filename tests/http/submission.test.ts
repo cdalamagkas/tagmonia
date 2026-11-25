@@ -11,6 +11,8 @@ import { BEETHOVEN_5, loadRelease } from "../identify/helpers.ts";
 import { MATCHES } from "../submission/helpers.ts";
 
 const NEW = "6f0e1c47-0000-4000-8000-00000000abcd";
+const ARTIST = "a1a1a1a1-0000-4000-8000-000000000001";
+const SUGGESTED = "b2b2b2b2-0000-4000-8000-000000000002";
 const known = await loadRelease(BEETHOVEN_5);
 
 function seed(t: TestApp, opts: { releaseMbid?: string; folder?: string } = {}) {
@@ -37,7 +39,10 @@ function seed(t: TestApp, opts: { releaseMbid?: string; folder?: string } = {}) 
   return { candidateId, proposalId };
 }
 
-async function withApp(fn: (t: TestApp, s: { cookie: string; csrf: string }, returned: string[]) => Promise<void>) {
+async function withApp(
+  fn: (t: TestApp, s: { cookie: string; csrf: string }, returned: string[]) => Promise<void>,
+  opts: { artistLinked?: boolean } = {},
+) {
   const t = await makeTestApp();
   const returned: string[] = [];
   registerSubmissionJobs(t.queue, {
@@ -47,8 +52,27 @@ async function withApp(fn: (t: TestApp, s: { cookie: string; csrf: string }, ret
       releasesForUrl: () => Promise.resolve({ value: [], snapshotId: 0 }),
       lookupReleaseFresh: (mbid: string) =>
         Promise.resolve(mbid === NEW ? { value: { ...known, id: NEW }, snapshotId: 1 } : null),
+      // The artist's Deezer page is linked on MusicBrainz only when the test says so.
+      artistsForUrl: (url: string) =>
+        Promise.resolve({
+          value: opts.artistLinked !== false && url === "https://www.deezer.com/artist/9"
+            ? [{ id: ARTIST, name: "Niklas Blumenthaler" }]
+            : [],
+          snapshotId: 0,
+        }),
+      searchArtists: () =>
+        Promise.resolve({
+          value: [
+            { id: SUGGESTED, name: "Niklas Blumenthaler", score: 100, disambiguation: "pianist" },
+            { id: "c3", name: "Nicklas Blum", score: 40 },
+          ],
+          snapshotId: 0,
+        }),
     }),
     providerOf: (u) => (u.hostname.endsWith("deezer.com") ? "deezer" : undefined),
+    artistLinks: (
+      a,
+    ) => (a.name === "Niklas Blumenthaler" ? [{ url: "https://www.deezer.com/artist/9", linkTypeIds: [194] }] : []),
     onReturned: (candidateId, mbid, server) => returned.push(`${candidateId} ${mbid} ${server}`),
     logger: nullLogger,
   });
@@ -76,11 +100,20 @@ Deno.test("prepare, open the editor, come back: verified with MusicBrainz, then 
     await t.queue.drain();
     let s = await latest();
     assertEquals([s.state, s.server, s.duplicates], ["ready", "https://musicbrainz.org", []]);
+    assertEquals(s.artists.map((a) => [a.name, a.mbid, a.via, a.createUrl]), [[
+      "Niklas Blumenthaler",
+      ARTIST,
+      "link",
+      null,
+    ]]);
 
     const open = await post(`/api/submissions/${id}/open`);
     const form = (await open.json()) as SubmissionOpenResponse;
     assertEquals(form.action, "https://musicbrainz.org/release/add");
     assertEquals(form.fields.name, "Ambient Piano Vol.1");
+    // §12.3: the found artist is linked in the editor by its MBID, not left as a name to resolve.
+    assertEquals(form.fields["artist_credit.names.0.mbid"], ARTIST);
+    assertEquals(form.fields["artist_credit.names.0.artist.name"], undefined);
     // Back to Tagmonia's own origin; the submission id is in the path, Harmony's lookup details in the query.
     const back0 = new URL(form.fields.redirect_uri);
     assertEquals([back0.origin, back0.pathname], ["http://tagmonia.test", `/mb/callback/${id}`]);
@@ -153,3 +186,49 @@ Deno.test("only releases missing from MusicBrainz, the test server when chosen, 
     const latest = await (await t.request(`/api/library/releases/${candidateId}/submission`, { cookie })).json();
     assertEquals(latest, { submission: null }, "someone else's latest submission is not shown");
   }));
+
+Deno.test("an artist MusicBrainz lacks: an Add artist link and suggestions; a chosen one is linked after a re-check", () =>
+  withApp(async (t, { cookie, csrf }) => {
+    const { candidateId, proposalId } = seed(t);
+    const post = (path: string, body?: unknown) =>
+      t.request(path, { method: "POST", cookie, csrf, body: body === undefined ? undefined : JSON.stringify(body) });
+    const latest = async () =>
+      ((await (await t.request(`/api/library/releases/${candidateId}/submission`, { cookie })).json()) as {
+        submission: SubmissionDto;
+      }).submission;
+    const { id } = (await (await post(`/api/proposals/${proposalId}/submission`)).json()) as SubmissionDto;
+    await t.queue.drain();
+    let [artist] = (await latest()).artists;
+    assertEquals([artist.mbid, artist.via], [null, null]);
+    assertEquals(
+      artist.suggestions.map((g) => [g.mbid, g.disambiguation]),
+      [[SUGGESTED, "pianist"]],
+      "weak matches dropped",
+    );
+    const create = new URL(artist.createUrl!);
+    assertEquals(create.origin + create.pathname, "https://musicbrainz.org/artist/create");
+    assertEquals(create.searchParams.get("edit-artist.name"), "Niklas Blumenthaler");
+    assertEquals(create.searchParams.get("edit-artist.url.0.text"), "https://www.deezer.com/artist/9");
+    assertEquals(create.searchParams.get("edit-artist.url.0.link_type_id"), "194");
+
+    assertEquals(
+      (await post(`/api/submissions/${id}/artists`, { name: "Someone Else", artist: SUGGESTED })).status,
+      400,
+    );
+    assertEquals((await post(`/api/submissions/${id}/artists`, { name: artist.name, artist: "no id" })).status, 400);
+    const chose = await post(`/api/submissions/${id}/artists`, {
+      name: artist.name,
+      artist: `https://musicbrainz.org/artist/${SUGGESTED}`,
+    });
+    assertEquals([chose.status, ((await chose.json()) as SubmissionDto).state], [202, "checking"]);
+    await t.queue.drain();
+    [artist] = (await latest()).artists;
+    assertEquals([artist.mbid, artist.via, artist.createUrl], [SUGGESTED, "chosen", null]);
+    const form = (await (await post(`/api/submissions/${id}/open`)).json()) as SubmissionOpenResponse;
+    assertEquals(form.fields["artist_credit.names.0.mbid"], SUGGESTED);
+
+    // Re-checking keeps working after the editor was opened (e.g. once the artist was added there).
+    assertEquals((await post(`/api/submissions/${id}/recheck`)).status, 202);
+    await t.queue.drain();
+    assertEquals((await latest()).state, "ready");
+  }, { artistLinked: false }));

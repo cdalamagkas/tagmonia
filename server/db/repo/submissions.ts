@@ -1,6 +1,7 @@
 /** Submissions of releases missing from MusicBrainz (§12, D52). */
 import type { Db } from "../db.ts";
 import type { PossibleDuplicate } from "../../submission/duplicates.ts";
+import type { ArtistResolution } from "../../submission/artists.ts";
 
 export type SubmissionState =
   | "checking"
@@ -23,6 +24,10 @@ export interface Submission {
   seed: Record<string, string> | null;
   /** ISRCs in track order ("" where a track has none), for submitting them after the release exists. */
   isrcs: string[];
+  /** The credited artists on the server: found (MBID in the seed) or not (§12.3). */
+  artists: ArtistResolution[];
+  /** Artist name → MBID the user chose, used when the artist's pages find nothing. */
+  artistChoices: Record<string, string>;
   releaseMbid: string | null;
   error: string | null;
   createdAt: number;
@@ -40,6 +45,8 @@ interface Row {
   duplicates: string;
   seed: string | null;
   isrcs: string;
+  artists: string;
+  artist_choices: string;
   release_mbid: string | null;
   error: string | null;
   created_at: number;
@@ -58,6 +65,8 @@ function toSubmission(r: Row): Submission {
     duplicates: JSON.parse(r.duplicates),
     seed: r.seed ? JSON.parse(r.seed) : null,
     isrcs: JSON.parse(r.isrcs),
+    artists: JSON.parse(r.artists),
+    artistChoices: JSON.parse(r.artist_choices),
     releaseMbid: r.release_mbid,
     error: r.error,
     createdAt: r.created_at,
@@ -92,7 +101,9 @@ export function latestSubmission(db: Db, candidateId: number): Submission | unde
 export function updateSubmission(
   db: Db,
   id: number,
-  patch: Partial<Pick<Submission, "state" | "duplicates" | "seed" | "isrcs" | "releaseMbid" | "error">>,
+  patch: Partial<
+    Pick<Submission, "state" | "duplicates" | "seed" | "isrcs" | "artists" | "artistChoices" | "releaseMbid" | "error">
+  >,
   now: number,
 ): void {
   const cols: string[] = [];
@@ -105,6 +116,8 @@ export function updateSubmission(
   if (patch.duplicates !== undefined) set("duplicates", JSON.stringify(patch.duplicates));
   if (patch.seed !== undefined) set("seed", patch.seed === null ? null : JSON.stringify(patch.seed));
   if (patch.isrcs !== undefined) set("isrcs", JSON.stringify(patch.isrcs));
+  if (patch.artists !== undefined) set("artists", JSON.stringify(patch.artists));
+  if (patch.artistChoices !== undefined) set("artist_choices", JSON.stringify(patch.artistChoices));
   if (patch.releaseMbid !== undefined) set("release_mbid", patch.releaseMbid);
   if (patch.error !== undefined) set("error", patch.error);
   set("updated_at", now);

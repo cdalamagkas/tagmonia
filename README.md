@@ -35,7 +35,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 - **Adds them to MusicBrainz, with you in charge**: Tagmonia checks MusicBrainz for the release first (barcode, linked
   pages, title), then opens MusicBrainz's release editor filled in, with an edit note naming its sources. You review
   and submit from your own account; MusicBrainz sends you back, Tagmonia checks the new release exists, and its
-  MusicBrainz IDs are proposed for the files. Then: links to add the cover art and submit the ISRCs. **Settings →
+  MusicBrainz IDs are proposed for the files. Artists MusicBrainz does not have yet are listed first, each with a
+  filled-in "Add artist" link. Then: links to add the cover art and submit the ISRCs. **Settings →
   MusicBrainz submissions** can point this at test.musicbrainz.org for trying it out. Nothing is ever submitted
   automatically.
 - **Cover art** from the Cover Art Archive, or else the largest image iTunes, Deezer or Discogs has for the same

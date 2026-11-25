@@ -343,6 +343,22 @@ export interface PossibleDuplicateDto {
  * checking → ready (duplicates checked, editor form built) → seeded (editor opened)
  * → verifying (MusicBrainz sent the MBID back) → returned (verified). Or failed / abandoned.
  */
+/** A credited artist on the submission's server (§12.3): found, or with suggestions and an "Add artist" link. */
+export interface SubmissionArtistDto {
+  name: string;
+  links: { url: string; linkTypeIds: number[] }[];
+  mbid: string | null;
+  via: "link" | "chosen" | null;
+  suggestions: {
+    mbid: string;
+    name: string;
+    disambiguation: string | null;
+    country: string | null;
+    score: number | null;
+  }[];
+  createUrl: string | null;
+}
+
 export type SubmissionState = "checking" | "ready" | "seeded" | "verifying" | "returned" | "failed" | "abandoned";
 
 export interface SubmissionDto {
@@ -353,6 +369,8 @@ export interface SubmissionDto {
   server: string;
   state: SubmissionState;
   duplicates: PossibleDuplicateDto[];
+  /** Every credited artist: the editor links those with an MBID; the others must be chosen or added. */
+  artists: SubmissionArtistDto[];
   releaseMbid: string | null;
   error: string | null;
   createdAt: number;

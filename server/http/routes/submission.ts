@@ -34,6 +34,9 @@ const MBID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 const callbackBody = z.object({ release: z.string().max(300) }).strict();
 
+/** An artist the user matched by hand: an MBID or a MusicBrainz artist link; null forgets the choice. */
+const artistBody = z.object({ name: z.string().min(1).max(500), artist: z.string().max(300).nullable() }).strict();
+
 /** Where to add cover art and ISRCs once the release exists (§12.2: follow-ups, never automated). */
 function followUps(s: Submission): SubmissionDto["followUps"] {
   if (!s.releaseMbid) return null;
@@ -57,6 +60,7 @@ export function toSubmissionDto(s: Submission): SubmissionDto {
     server: s.server,
     state: s.state,
     duplicates: s.duplicates,
+    artists: s.artists,
     releaseMbid: s.releaseMbid,
     error: s.error,
     createdAt: s.createdAt,
@@ -121,6 +125,39 @@ export function submissionRoutes(deps: SubmissionRouteDeps) {
       if (s.state !== "seeded") return c.json({ error: `This submission is ${s.state}` }, 409);
       updateSubmission(db, s.id, { state: "verifying", error: null }, now());
       enqueueSubmissionVerify(queue, s.id, mbid);
+      return c.json(toSubmissionDto(getSubmission(db, s.id)!), 202);
+    })
+    // Check again: after adding a missing artist on MusicBrainz, or when the server's data changed.
+    .post("/submissions/:id{[0-9]+}/recheck", (c) => {
+      const s = mine(Number(c.req.param("id")), c.get("session").userId);
+      if (!s) return c.json({ error: "not found" }, 404);
+      if (!["ready", "seeded", "failed"].includes(s.state)) {
+        return c.json({ error: `This submission is ${s.state}` }, 409);
+      }
+      updateSubmission(db, s.id, { state: "checking", error: null }, now());
+      enqueueSubmissionCheck(queue, s.id);
+      return c.json(toSubmissionDto(getSubmission(db, s.id)!), 202);
+    })
+    // §12.3: an artist not found by its provider pages, matched to a MusicBrainz artist by the user.
+    .post("/submissions/:id{[0-9]+}/artists", async (c) => {
+      const s = mine(Number(c.req.param("id")), c.get("session").userId);
+      if (!s) return c.json({ error: "not found" }, 404);
+      if (!["ready", "seeded", "failed"].includes(s.state)) {
+        return c.json({ error: `This submission is ${s.state}` }, 409);
+      }
+      const body = artistBody.safeParse(await c.req.json().catch(() => null));
+      if (!body.success || !s.artists.some((a) => a.name === body.data.name)) {
+        return c.json({ error: "Not an artist of this release" }, 400);
+      }
+      const choices = { ...s.artistChoices };
+      if (body.data.artist === null) delete choices[body.data.name];
+      else {
+        const mbid = MBID.exec(body.data.artist)?.[0]?.toLowerCase();
+        if (!mbid) return c.json({ error: "No MusicBrainz artist id in that" }, 400);
+        choices[body.data.name] = mbid;
+      }
+      updateSubmission(db, s.id, { artistChoices: choices, state: "checking", error: null }, now());
+      enqueueSubmissionCheck(queue, s.id);
       return c.json(toSubmissionDto(getSubmission(db, s.id)!), 202);
     })
     .post("/submissions/:id{[0-9]+}/abandon", (c) => {

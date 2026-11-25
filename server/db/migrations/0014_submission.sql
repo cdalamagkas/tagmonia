@@ -11,6 +11,8 @@ CREATE TABLE submission (
   duplicates    TEXT    NOT NULL DEFAULT '[]', -- JSON: releases MusicBrainz may already have
   seed          TEXT,                      -- JSON form fields for <server>/release/add
   isrcs         TEXT    NOT NULL DEFAULT '[]', -- JSON: ISRCs by track order, for the follow-up (MagicISRC)
+  artists       TEXT    NOT NULL DEFAULT '[]', -- JSON: each credited artist, found on the server or not (§12.3)
+  artist_choices TEXT   NOT NULL DEFAULT '{}', -- JSON: name -> MBID the user chose for an artist not found by its pages
   release_mbid  TEXT,                      -- returned by MusicBrainz, verified by a lookup
   error         TEXT,
   created_at    INTEGER NOT NULL,

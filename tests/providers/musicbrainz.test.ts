@@ -186,3 +186,23 @@ Deno.test("lookupReleaseFresh never answers from the cache: a just-submitted rel
   assertEquals(s.requests.length, 2);
   assertEquals(s.agents.every((a) => a === USER_AGENT), true);
 });
+
+Deno.test("artistsForUrl and searchArtists: a release's artists by their provider pages, else by name (D52)", async () => {
+  const asked: URL[] = [];
+  const fetchImpl: typeof fetch = (input) => {
+    const url = new URL(String(input));
+    asked.push(url);
+    if (url.pathname.endsWith("/url")) {
+      return Promise.resolve(Response.json({
+        id: "u",
+        relations: [{ artist: { id: "a1", name: "Niklas" } }, { artist: { id: "a1", name: "Niklas" } }],
+      }));
+    }
+    return Promise.resolve(Response.json({ artists: [{ id: "a2", name: 'Say "Hi"', score: 100 }] }));
+  };
+  await using s = await setup(fetchImpl);
+  assertEquals((await s.client.artistsForUrl("https://www.deezer.com/artist/9")).value, [{ id: "a1", name: "Niklas" }]);
+  assertEquals(asked[0].searchParams.get("inc"), "artist-rels");
+  assertEquals((await s.client.searchArtists('Say "Hi"')).value.map((a) => a.id), ["a2"]);
+  assertEquals(asked[1].searchParams.get("query"), 'artist:"Say \\"Hi\\""');
+});
