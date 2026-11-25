@@ -926,12 +926,12 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Done when:** a release present on Deezer/Bandcamp but missing on MusicBrainz can be seeded, submitted by the user, and the returned MBID is written to the files.
 
-**Progress:** part 1, proposals for releases not on MusicBrainz from a provider link, and Bandcamp as an opt-in provider (D51). Checked live on a 5-track EP on Deezer and iTunes but not on MusicBrainz (*Ambient Piano Vol.1*, Niklas Blumenthaler), with silent stand-in files of the real lengths: no MusicBrainz match, the Deezer link built the proposal (tags, label, barcode, ISRCs, Deezer ID, iTunes cover at 1500 px), all 5 files written. Part 2, seeding with the duplicate check, the edit note and the verified callback (D52). Checked live on test.musicbrainz.org (2026-11-25), which meets the "Done when" there:
+**Status:** done 2026-11-25, on test.musicbrainz.org. part 1, proposals for releases not on MusicBrainz from a provider link, and Bandcamp as an opt-in provider (D51). Checked live on a 5-track EP on Deezer and iTunes but not on MusicBrainz (*Ambient Piano Vol.1*, Niklas Blumenthaler), with silent stand-in files of the real lengths: no MusicBrainz match, the Deezer link built the proposal (tags, label, barcode, ISRCs, Deezer ID, iTunes cover at 1500 px), all 5 files written. Part 2, seeding with the duplicate check, the edit note and the verified callback (D52). Checked live on test.musicbrainz.org (2026-11-25), which meets the "Done when" there:
 - The same EP was prepared against the test server: no duplicates. Its two artists were missing at first; one was added with the filled-in "Add artist" link and then found by its Deezer page, and the other was linked by its unique name.
 - The maintainer submitted the release from the pre-filled editor and was sent back to Tagmonia, which verified release `0ff64786-bca0-42e7-bbc6-4b2a49f13425` on the test server and proposed it from there.
 - The write put the release's MusicBrainz IDs into all 5 files (album, release group, track, recording and artist IDs, each checked against the test server's data); the Deezer ISRCs were kept.
 
-Still to do, by the maintainer's choice: one real submission to musicbrainz.org when there is a release worth adding.
+The maintainer chose the test server for the "Done when"; submitting to musicbrainz.org works the same way (the default setting) and is left to whenever there is a release worth adding, not a pending task.
 
 ### Phase 6 — Optional providers and polish
 
