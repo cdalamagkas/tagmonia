@@ -301,6 +301,16 @@ Each PR is checked in headless Chromium at desktop and phone width, with the mea
     lines and one grid column (ISRC). It was 4,209 px after PR 1, with one table per track.
   - Matched album, one cover upgrade: 900 px (one screen), 10 controls.
 
+### After the restructure: tables again (D56, 2026-11-26)
+
+The maintainer preferred the earlier layout, which shows each field's before and after on every track. The Changes
+tab now has a table for the album and one per track (Field, Current, Proposed), with only the rows that would change
+unless **Show all fields** is on; "N fields already right" moved into that toggle's label. The track grid, the "all N
+tracks" lines and the "already right" fold went. The checkbox, the ⋯ menu, the marks, Needs your choice, the cover
+line, the write bar and the counting stayed. Every table uses the same column widths, so Current and Proposed line up
+down the page. Measured (1280 × 900): the 3-track Deezer stand-in is 2.3 screens (24 rows); the matched 17-track album
+with only a new cover is 1.1 screens, and 18 screens (359 rows) with all fields shown.
+
 ## PR 3 as built
 
 - `web/src/release/match.ts` builds the Match tab's model; it is pure and unit-tested (`tests/web/match.test.ts`). It

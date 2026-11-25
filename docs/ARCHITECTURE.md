@@ -919,6 +919,8 @@ Each phase ends with passing tests and an updated decision log. Phases are order
 
 **Status:** done 2026-11-24. On a dev Jellyfin 10.11.3 over the maintainer's two test albums (a two-disc FLAC release and four Opus tracks of a partial album), driven through the HTTP API with live MusicBrainz: both were identified, reviewed (album titles and genres edited), written (17/17 and 4/4 files, verified), and Jellyfin showed the edited values after Tagmonia's own refresh; both writes were undone, Jellyfin returned exactly to its view before the write, every file's tags equalled their pre-write tags, and the audio packets of all 21 files were identical to a byte backup taken beforehand. Findings: D40–D44.
 
+**Correction (2026-11-26):** "returned exactly" holds only relative to that byte backup, which was taken too late. An earlier, failed run of the same check (2026-11-24 15:13) wrote Tagmonia's proposal to all 17 files of the Lukas Sternath album (50 fields changed, 81 added) and exited before undoing it; the backup was taken afterwards, so it already held the written tags, and the album's original tags were lost. The Mendelssohn album was not affected. The check now backs up first and compares with that backup after every run, including failed ones.
+
 ### Phase 4 — More providers
 
 - Discogs, Deezer, iTunes via Harmony; Cover Art Archive with fallbacks.
@@ -951,7 +953,7 @@ The maintainer chose the test server for the "Done when"; submitting to musicbra
 
 ### Release page restructure (done, outside the phases)
 
-Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs: a header with one status and next action, then tabs (Changes, Match, Files, History), checkbox decisions, one track grid, one link box, and Add to MusicBrainz as a step panel launched from the header. See [proposals/release-page-restructure.md](proposals/release-page-restructure.md) (D53).
+Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs (the Changes tab went back to tables afterwards, D56): a header with one status and next action, then tabs (Changes, Match, Files, History), checkbox decisions, one track grid, one link box, and Add to MusicBrainz as a step panel launched from the header. See [proposals/release-page-restructure.md](proposals/release-page-restructure.md) (D53).
 
 ---
 
@@ -1014,6 +1016,7 @@ Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs: a header with 
 | D53 | 2026-11-25 | **Release page restructure accepted** ([proposals/release-page-restructure.md](proposals/release-page-restructure.md)): a header with one status sentence and one primary action; tabs Changes, Match, Files, History; checkboxes replace "Use proposed / Keep current", with Edit and Lock in a ⋯ menu; tracks as one grid; one link box for MusicBrainz and provider links; Add to MusicBrainz as a header-launched step. Four PRs after Phase 5 part 2 | Collapsible sections on one page; keep the per-field buttons | Measured: the action needed sat 2.4 to 2.8 screens down on 4.5- to 5.6-screen pages with up to 96 buttons; evidence for certain matches and duplicated sections pushed it there. Maintainer choices: tabs, checkboxes, separate PRs. |
 | D54 | 2026-11-26 | **Beatport deferred:** not offered, though D16 approves it as opt-in | Patch Harmony's Beatport provider (read each track page) and offer the fix upstream; a Tagmonia-owned Beatport reader | Found while building it: Beatport's release pages no longer embed the tracklist (the second embedded query is now recommendations), so Harmony's Beatport provider fails on every release at the pinned commit, which is upstream's latest; upstream also switched off its barcode search ("has not worked for a year"). Track pages still have ISRCs and lengths. Each page also embeds an anonymous session with an `access_token`, so any recorded Beatport page must be stripped of it. Maintainer choice: revisit later. |
 | D55 | 2026-11-26 | **YouTube evidence as built** (§9.5): one pasted link per release; date and label filled only where empty (a year-only date refined); listed otherwise, never a conflict; counted only when the video count equals the track count; the key in a header; no on/off switch, the key is the switch | "Provided to YouTube by" as the label; a YouTube playlist as a last-resort source of a proposal | Maintainer choice: evidence only. The distributor named by "Provided to YouTube by" is rarely the label. The Data API cannot read YouTube Music album pages (`/browse/…`), so the album's playlist link is asked for instead. |
+| D56 | 2026-11-26 | **Changes tab back to tables** (revises D53's PR 2): a table for the album and one per track, each row a field with its current and proposed value; only rows that would change unless **Show all fields** is on. The checkbox, the ⋯ menu (Edit, never change on this album / track / any album), the marks, Needs your choice, the cover line and the write bar stay; counting is unchanged | Keep the track grid and the "on all tracks" lines | Maintainer choice: the before and after of each field, per track, read more easily than a grid of new values with the old one on hover. |
 
 ---
 
