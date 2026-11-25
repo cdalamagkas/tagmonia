@@ -314,7 +314,12 @@ export function ReleasePage({ id }: { id: number }) {
         return batch && act(() => api.undo(batch.id));
       }
       case "match":
-        return selectTab("match");
+        selectTab("match");
+        // "Paste an album link": straight to the box.
+        if (a.label.startsWith("Paste")) {
+          requestAnimationFrame(() => document.getElementById("tm-link-box")?.focus());
+        }
+        return;
       case "resolve":
         selectTab("changes");
         return scrollTo("tm-conflicts");
@@ -391,6 +396,7 @@ export function ReleasePage({ id }: { id: number }) {
           <Identification
             releaseId={id}
             data={data.identification}
+            proposal={p}
             files={files}
             onReload={reload}
             onChoose={(releaseMbid) => propose({ releaseMbid })}

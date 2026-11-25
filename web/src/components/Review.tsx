@@ -18,8 +18,15 @@ import type {
   ProposalResponse,
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
-import { RELEASE_FIELDS, tagValue } from "../format.ts";
-import { buildChanges, type ChangeItem, coverProposes, locksOf, proposes } from "../release/changes.ts";
+import { tagValue } from "../format.ts";
+import {
+  alreadyRightView,
+  buildChanges,
+  type ChangeItem,
+  coverProposes,
+  locksOf,
+  type RightField,
+} from "../release/changes.ts";
 import { isOpen } from "../release/status.ts";
 
 const PROVIDERS: Record<string, string> = {
@@ -440,41 +447,60 @@ function CoverLine(
   );
 }
 
-/** Everything already as proposed, for "Show all fields". */
-function AlreadyRight({ p, trackName }: { p: ProposalDto; trackName: (id: number) => string }) {
-  const rows = p.fields.filter((r) => !proposes(r));
-  const album = new Map<string, FieldProposalDto>();
-  const tracks: FieldProposalDto[] = [];
-  for (const r of rows) {
-    if (RELEASE.has(r.field)) {
-      if (!album.has(r.field)) album.set(r.field, r);
-    } else tracks.push(r);
-  }
+function RightTable({ fields }: { fields: RightField[] }) {
   return (
-    <div class="tm-table-wrap">
-      <table class="tm-table tm-kv">
-        <tbody>
-          {[...album.values()].map((r) => (
-            <tr key={`a:${r.field}`}>
-              <th>{r.field}</th>
-              <td>{shown(r.current)}</td>
-            </tr>
-          ))}
-          {tracks.map((r) => (
-            <tr key={r.id}>
-              <th>
-                {r.field} <span class="tm-muted">· {trackName(r.fileId)}</span>
-              </th>
-              <td>{shown(r.current)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <table class="tm-table tm-kv">
+      <tbody>
+        {fields.map((f) => (
+          <tr key={f.field}>
+            <th>{f.field}</th>
+            <td>{shown(f.value)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
-const RELEASE = new Set<string>(RELEASE_FIELDS);
+/**
+ * Everything already as proposed, organised like the changes above it: the album's fields, the track
+ * fields that are the same on every track (once), then one closed line per track with its own fields.
+ */
+function AlreadyRight(
+  { p, fileOrder, trackLabel }: { p: ProposalDto; fileOrder: number[]; trackLabel: (id: number) => string },
+) {
+  const v = alreadyRightView(p, fileOrder);
+  return (
+    <div class="tm-right">
+      {v.album.length > 0 && (
+        <>
+          <h4>Album</h4>
+          <RightTable fields={v.album} />
+        </>
+      )}
+      {v.everyTrack.length > 0 && (
+        <>
+          <h4>The same on every track</h4>
+          <RightTable fields={v.everyTrack} />
+        </>
+      )}
+      {v.tracks.length > 0 && (
+        <>
+          <h4>Each track</h4>
+          {v.tracks.map((t) => (
+            <details key={t.fileId} class="tm-fold tm-right-track">
+              <summary>
+                {trackLabel(t.fileId)}{" "}
+                <span class="tm-muted">· {t.fields.length} field{t.fields.length === 1 ? "" : "s"}</span>
+              </summary>
+              <RightTable fields={t.fields} />
+            </details>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
 
 export function Review(
   { releaseId, data, files, live, currentCover, filesVersion, onReload }: {
@@ -524,6 +550,7 @@ export function Review(
   const titles = new Map(files.map((f) => [f.id, f.tags.title ?? f.path.split("/").pop() ?? f.path]));
   const numbers = new Map(files.map((f) => [f.id, f.tags.tracknumber ?? null]));
   const trackName = (id: number) => titles.get(id) ?? `file ${id}`;
+  const multiDisc = new Set(files.map((f) => f.tags.discnumber ?? 1)).size > 1;
   const a: Actions = {
     releaseId,
     locks: data.locks,
@@ -673,7 +700,18 @@ export function Review(
             <button type="button" class="tm-linklike" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
               {showAll ? "▾" : "▸"} {m.alreadyRight} field{m.alreadyRight === 1 ? "" : "s"} already right
             </button>
-            {showAll && <AlreadyRight p={p} trackName={trackName} />}
+            {showAll && (
+              <AlreadyRight
+                p={p}
+                fileOrder={files.map((f) => f.id)}
+                trackLabel={(id) => {
+                  const f = files.find((x) => x.id === id);
+                  const n = f?.tags.tracknumber;
+                  const disc = multiDisc && f?.tags.discnumber ? `${f.tags.discnumber}-` : "";
+                  return `${n ? `${disc}${n} · ` : ""}${trackName(id)}`;
+                }}
+              />
+            )}
           </div>
         )}
       </section>

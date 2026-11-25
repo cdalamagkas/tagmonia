@@ -228,7 +228,7 @@ The same EP, Add to MusicBrainz open at the artist step (test server):
 
 ## Plan
 
-Progress: PR 1 done (header, live updates, tabs); PR 2 done (the Changes tab).
+Progress: PR 1 done (header, live updates, tabs); PR 2 done (the Changes tab); PR 3 done (the Match tab).
 
 Four PRs, each usable on its own:
 
@@ -285,12 +285,50 @@ Each PR is checked in headless Chromium at desktop and phone width, with the mea
   outside click or Escape.
 - Track grid: each cell has its checkbox and ⋯; the column header's checkbox switches that field on every track.
 - Cover: one line with the current and proposed pictures, their sizes, and where it goes.
-- "N fields already right" opens a plain list; "Discard these changes" moved into the write bar.
+- "N fields already right" opens in three parts, organised like the changes above it:
+  - **Album**: in the album field order;
+  - **The same on every track**: shown once;
+  - **Each track**: one closed line per track ("1-1 · title · 19 fields") with its fields in reading order: title and
+    artists, numbering, work and movement, credits, ISRC, then MusicBrainz identifiers.
+
+  It was one flat table, 359 rows for the 17-track album, with tracks interleaved (`alreadyRightView` in
+  `changes.ts`, tested).
+- "Discard these changes" moved into the write bar.
 - Phone width (settled): the grid keeps its columns and scrolls sideways inside its box; the page itself does not.
 - Measured after PR 2 (1280 × 900):
   - EP from Deezer, 41 changes: the Changes tab is 1,853 px (2.1 screens), with album fields once, 5 "all 5 tracks"
     lines and one grid column (ISRC). It was 4,209 px after PR 1, with one table per track.
   - Matched album, one cover upgrade: 900 px (one screen), 10 controls.
+
+## PR 3 as built
+
+- `web/src/release/match.ts` builds the Match tab's model; it is pure and unit-tested (`tests/web/match.test.ts`). It
+  gives:
+  - the source: the proposal's MusicBrainz release, its provider album, or none yet;
+  - the subject: the chosen release, else the best match, unless identification concluded that nothing fits;
+  - whether it is uncertain: not named by the files, and below the automatic threshold or held for review; a release
+    the user chose never is;
+  - the mapping reduced to what is off;
+  - the alternatives: the subject's other editions, then up to five other releases, never repeating the subject.
+- **Where the tags come from:**
+  - the source with its facts (format, country, date, label, catalog number, barcode, track count), whether it was
+    chosen or matched automatically, and the score;
+  - "Why this release" (the signals), folded unless uncertain;
+  - Identify again;
+  - one link box, "Use another release". A MusicBrainz release link (or a bare MBID) proposes from that release at
+    once (the user's choice) and identifies against it, so its evidence shows. Any other https link goes to the server
+    as a provider album link, and its message is shown when refused.
+- **Track mapping:** "All N files map one to one onto the release's tracks" when every fit is ≥ 90% and nothing is
+  left over. Otherwise the weak fits, the files not on the release and the tracks missing from the folder. Every pair
+  is under "Show every file and its track".
+- **Other releases:** "Same album, other editions" (with the note on telling them apart) and "Other releases". With
+  a provider source, or when nothing fits, they sit folded under "MusicBrainz searched: nothing close (best N%)".
+- The header's "Paste an album link" opens the Match tab with the cursor in the link box.
+- Measured after PR 3 (1280 × 900):
+  - matched album: the Match tab is 1,003 px (1.1 screens) and 11 controls (it was 1,836 px after PR 1);
+  - partial album (4 of 8 tracks): 1.4 screens, with the 4 missing tracks listed;
+  - EP not on MusicBrainz: one card and a fold. Before, the "CD 1 — Niklas" guess at 47%, its weak mapping and the
+    candidates filled the tab.
 
 ## Still to settle while building
 
