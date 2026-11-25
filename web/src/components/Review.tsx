@@ -1,8 +1,9 @@
 /**
- * The Changes tab (§10; docs/proposals/release-page-restructure.md, PR 2): only what a write would
- * change, as one line per change with a checkbox ("include in the write"), grouped as Needs your
- * choice, Cover, Album and Tracks. Clicking a new value edits it; the ⋯ menu holds the rest. The
- * write bar below says how many changes are selected. Grouping and counting: release/changes.ts.
+ * The Changes tab (§10; docs/proposals/release-page-restructure.md, D53, D56): Needs your choice, the
+ * cover, then a table for the album and one per track, each row a field with its current and proposed
+ * value and a checkbox ("include in the write"). Only what would change is listed unless "Show all
+ * fields" is on. Clicking a new value edits it; the ⋯ menu holds the rest. The write bar below says how
+ * many changes are selected. Grouping and counting: release/changes.ts.
  */
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -19,14 +20,7 @@ import type {
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { tagValue } from "../format.ts";
-import {
-  alreadyRightView,
-  buildChanges,
-  type ChangeItem,
-  coverProposes,
-  locksOf,
-  type RightField,
-} from "../release/changes.ts";
+import { buildChanges, type ChangeItem, coverProposes, locksOf } from "../release/changes.ts";
 import { isOpen } from "../release/status.ts";
 
 const PROVIDERS: Record<string, string> = {
@@ -304,55 +298,6 @@ function Marks({ item, a }: { item: ChangeItem; a: Actions }) {
   );
 }
 
-/** "current → new", the new value clickable to edit it. */
-function Values({ item, a, onEdit }: { item: ChangeItem; a: Actions; onEdit: (() => void) | null }) {
-  const current = item.current.length > 1
-    ? (
-      <span
-        class="tm-badge tm-badge-warn tm-inline"
-        title={item.current.map((v) => tagValue(v) || "(not set)").join("\n")}
-      >
-        differs across files
-      </span>
-    )
-    : shown(item.current[0]);
-  return (
-    <span class="tm-change-values">
-      {/* Nothing to strike out when the files have no value. */}
-      <span class={(item.included || item.mixed) && tagValue(item.current[0]) !== "" ? "tm-diff-old" : ""}>
-        {current}
-      </span>
-      <span class="tm-muted" aria-hidden="true">→</span>
-      {onEdit && !item.locked
-        ? (
-          <button type="button" class="tm-linklike tm-change-new" title="Edit" disabled={a.busy} onClick={onEdit}>
-            {shown(item.value)}
-          </button>
-        )
-        : <span class="tm-change-new">{shown(item.value)}</span>}
-    </span>
-  );
-}
-
-/** One change line: [✓] field  current → new  marks  ⋯ */
-function ChangeLine({ item, a, label }: { item: ChangeItem; a: Actions; label?: ComponentChildren }) {
-  const [editing, setEditing] = useState(false);
-  const onEdit = editable(item) ? () => setEditing(true) : null;
-  return (
-    <div class={`tm-change${item.included || item.mixed ? "" : " tm-change-off"}`}>
-      <Include item={item} a={a} label={`Write ${item.field}`} />
-      <span class="tm-change-field">{label ?? item.field}</span>
-      {editing
-        ? <EditBox item={item} a={a} onDone={() => setEditing(false)} />
-        : <Values item={item} a={a} onEdit={onEdit} />}
-      <span class="tm-change-marks">
-        <Marks item={item} a={a} />
-      </span>
-      <Menu item={item} a={a} onEdit={onEdit} />
-    </div>
-  );
-}
-
 /** A field whose sources disagree (D48): each source's value with "Use this", or keep or edit it. */
 function ChoiceLine({ item, a, trackName }: { item: ChangeItem; a: Actions; trackName: string | null }) {
   const [editing, setEditing] = useState(false);
@@ -449,57 +394,73 @@ function CoverLine(
   );
 }
 
-function RightTable({ fields }: { fields: RightField[] }) {
+/** The current value: one, or "differs across files" with each value on hover. */
+function Current({ item }: { item: ChangeItem }) {
+  if (item.current.length > 1) {
+    return (
+      <span
+        class="tm-badge tm-badge-warn tm-inline"
+        title={item.current.map((v) => tagValue(v) || "(not set)").join("\n")}
+      >
+        differs across files
+      </span>
+    );
+  }
+  // Struck out when it will be replaced; nothing to strike when the files have no value.
+  const replaced = !item.right && (item.included || item.mixed) && tagValue(item.current[0]) !== "";
+  return <span class={replaced ? "tm-diff-old" : ""}>{shown(item.current[0])}</span>;
+}
+
+/** One field: [✓] field | current | proposed (click to edit) + marks | ⋯ */
+function FieldRow({ item, a }: { item: ChangeItem; a: Actions }) {
+  const [editing, setEditing] = useState(false);
+  const onEdit = editable(item) ? () => setEditing(true) : null;
+  const on = item.included || item.mixed;
   return (
-    <table class="tm-table tm-kv">
-      <tbody>
-        {fields.map((f) => (
-          <tr key={f.field}>
-            <th>{f.field}</th>
-            <td>{shown(f.value)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <tr class={item.right ? "tm-row-quiet" : on ? "" : "tm-change-off"}>
+      <td class="tm-col-check">{!item.right && <Include item={item} a={a} label={`Write ${item.field}`} />}</td>
+      <th>{item.field}</th>
+      <td>
+        <Current item={item} />
+      </td>
+      <td>
+        {editing ? <EditBox item={item} a={a} onDone={() => setEditing(false)} /> : (
+          <>
+            {onEdit && !item.locked
+              ? (
+                <button type="button" class="tm-linklike tm-change-new" title="Edit" disabled={a.busy} onClick={onEdit}>
+                  {shown(item.value)}
+                </button>
+              )
+              : <span class="tm-change-new">{shown(item.value)}</span>} <Marks item={item} a={a} />
+          </>
+        )}
+      </td>
+      <td class="tm-col-menu">
+        <Menu item={item} a={a} onEdit={onEdit} />
+      </td>
+    </tr>
   );
 }
 
-/**
- * Everything already as proposed, organised like the changes above it: the album's fields, the track
- * fields that are the same on every track (once), then one closed line per track with its own fields.
- */
-function AlreadyRight(
-  { p, fileOrder, trackLabel }: { p: ProposalDto; fileOrder: number[]; trackLabel: (id: number) => string },
-) {
-  const v = alreadyRightView(p, fileOrder);
+function FieldTable({ rows, a }: { rows: ChangeItem[]; a: Actions }) {
   return (
-    <div class="tm-right">
-      {v.album.length > 0 && (
-        <>
-          <h4>Album</h4>
-          <RightTable fields={v.album} />
-        </>
-      )}
-      {v.everyTrack.length > 0 && (
-        <>
-          <h4>The same on every track</h4>
-          <RightTable fields={v.everyTrack} />
-        </>
-      )}
-      {v.tracks.length > 0 && (
-        <>
-          <h4>Each track</h4>
-          {v.tracks.map((t) => (
-            <details key={t.fileId} class="tm-fold tm-right-track">
-              <summary>
-                {trackLabel(t.fileId)}{" "}
-                <span class="tm-muted">· {t.fields.length} field{t.fields.length === 1 ? "" : "s"}</span>
-              </summary>
-              <RightTable fields={t.fields} />
-            </details>
-          ))}
-        </>
-      )}
+    <div class="tm-table-wrap">
+      <table class="tm-table tm-review">
+        <thead>
+          <tr>
+            {/* Labelled, not hidden text: an absolutely placed label would escape the scrolling box. */}
+            <th class="tm-col-check" aria-label="Write" />
+            <th>Field</th>
+            <th>Current</th>
+            <th>Proposed</th>
+            <th class="tm-col-menu" aria-label="More" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((it) => <FieldRow key={it.key} item={it} a={a} />)}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -550,7 +511,6 @@ export function Review(
   const open = isOpen(p);
   const m = buildChanges(p, files.map((f) => f.id));
   const titles = new Map(files.map((f) => [f.id, f.tags.title ?? f.path.split("/").pop() ?? f.path]));
-  const numbers = new Map(files.map((f) => [f.id, f.tags.tracknumber ?? null]));
   const trackName = (id: number) => titles.get(id) ?? `file ${id}`;
   const multiDisc = new Set(files.map((f) => f.tags.discnumber ?? 1)).size > 1;
   const a: Actions = {
@@ -576,22 +536,16 @@ export function Review(
     ? "Nothing selected"
     : undefined;
 
-  /** The grid column's checkbox: all of that field's cells in or out. */
-  const column = (field: FieldProposalDto["field"]) => {
-    const items = m.grid.map((r) => r.cells[field]).filter((i): i is ChangeItem => !!i && !i.locked);
-    const all = items.length > 0 && items.every((i) => i.included);
-    return (
-      <input
-        type="checkbox"
-        aria-label={`Write ${field} on every track`}
-        checked={all}
-        ref={(el) => {
-          if (el) el.indeterminate = !all && items.some((i) => i.included);
-        }}
-        disabled={a.busy || items.length === 0}
-        onChange={() => a.onDecide(items.flatMap((i) => i.ids), all ? "kept_current" : "accepted")}
-      />
-    );
+  const visible = (rows: ChangeItem[]) => (showAll ? rows : rows.filter((it) => !it.right));
+  const albumRows = visible(m.album);
+  const trackTables = m.tracks.map((t) => ({ fileId: t.fileId, rows: visible(t.rows) })).filter((t) =>
+    t.rows.length > 0
+  );
+  const trackLabel = (id: number) => {
+    const f = files.find((x) => x.id === id);
+    const n = f?.tags.tracknumber;
+    const disc = multiDisc && f?.tags.discnumber ? `${f.tags.discnumber}-` : "";
+    return `${n ? `${disc}${n} · ` : ""}${trackName(id)}`;
   };
 
   return (
@@ -608,6 +562,13 @@ export function Review(
           <p class="tm-muted">These changes were written. They are listed as they were proposed.</p>
         )}
         {error && <p class="tm-error" role="alert">{error}</p>}
+        <label class="tm-check">
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.currentTarget.checked)} />
+          Show all fields{" "}
+          <span class="tm-muted">
+            ({m.alreadyRight} already right)
+          </span>
+        </label>
 
         {unresolved > 0 && (
           <div class="tm-change-section" id="tm-conflicts">
@@ -637,85 +598,29 @@ export function Review(
           </div>
         )}
 
-        {m.album.length > 0 && (
-          <div class="tm-change-section">
-            <h3>Album</h3>
-            {m.album.map((it) => <ChangeLine key={it.key} item={it} a={a} />)}
-          </div>
-        )}
+        <div class="tm-change-section">
+          <h3>Album</h3>
+          {albumRows.length > 0 ? <FieldTable rows={albumRows} a={a} /> : <p class="tm-muted">Nothing to change.</p>}
+        </div>
 
-        {(m.allTracks.length > 0 || m.grid.length > 0) && (
-          <div class="tm-change-section">
-            <h3>Tracks</h3>
-            {m.allTracks.map((it) => (
-              <ChangeLine
-                key={it.key}
-                item={it}
-                a={a}
-                label={
-                  <>
-                    {it.field} <span class="tm-muted">· all {it.rows.length} tracks</span>
-                  </>
-                }
-              />
-            ))}
-            {m.grid.length > 0 && (
-              <div class="tm-table-wrap">
-                <table class="tm-table tm-track-grid">
-                  <thead>
-                    <tr>
-                      <th class="tm-num tm-col-narrow">#</th>
-                      <th>Track</th>
-                      {m.gridFields.map((f) => (
-                        <th key={f}>
-                          <label class="tm-grid-head">{column(f)} {f}</label>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {m.grid.map((row) => (
-                      <tr key={row.fileId}>
-                        <td class="tm-num tm-col-narrow">{numbers.get(row.fileId) ?? ""}</td>
-                        <td>{trackName(row.fileId)}</td>
-                        {m.gridFields.map((f) => {
-                          const it = row.cells[f];
-                          return (
-                            <td key={f} class={it && !it.included ? "tm-change-off" : ""}>
-                              {it ? <GridCell item={it} a={a} /> : <span class="tm-muted">=</span>}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        <div class="tm-change-section">
+          <h3>Tracks</h3>
+          {trackTables.length === 0 && <p class="tm-muted">Nothing to change.</p>}
+          {trackTables.map((t) => {
+            const n = t.rows.filter((it) => !it.right).length;
+            return (
+              <div key={t.fileId} class="tm-file-review">
+                <h4>
+                  {trackLabel(t.fileId)}
+                  {showAll && <span class="tm-muted">{` · ${n === 0 ? "nothing to change" : `${n} to change`}`}</span>}
+                </h4>
+                <FieldTable rows={t.rows} a={a} />
               </div>
-            )}
-          </div>
-        )}
+            );
+          })}
+        </div>
 
         {nothing && <p class="tm-muted">Nothing to change: the files already have these tags.</p>}
-
-        {m.alreadyRight > 0 && (
-          <div class="tm-change-section">
-            <button type="button" class="tm-linklike" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
-              {showAll ? "▾" : "▸"} {m.alreadyRight} field{m.alreadyRight === 1 ? "" : "s"} already right
-            </button>
-            {showAll && (
-              <AlreadyRight
-                p={p}
-                fileOrder={files.map((f) => f.id)}
-                trackLabel={(id) => {
-                  const f = files.find((x) => x.id === id);
-                  const n = f?.tags.tracknumber;
-                  const disc = multiDisc && f?.tags.discnumber ? `${f.tags.discnumber}-` : "";
-                  return `${n ? `${disc}${n} · ` : ""}${trackName(id)}`;
-                }}
-              />
-            )}
-          </div>
-        )}
       </section>
 
       {open && !nothing && (
@@ -748,32 +653,5 @@ export function Review(
         </div>
       )}
     </>
-  );
-}
-
-/** One cell of the track grid: the checkbox, the new value (the current one on hover), the ⋯ menu. */
-function GridCell({ item, a }: { item: ChangeItem; a: Actions }) {
-  const [editing, setEditing] = useState(false);
-  const onEdit = editable(item) ? () => setEditing(true) : null;
-  if (editing) return <EditBox item={item} a={a} onDone={() => setEditing(false)} />;
-  const was = tagValue(item.current[0]) || "(not set)";
-  return (
-    <span class="tm-grid-cell">
-      <Include item={item} a={a} label={`Write ${item.field}`} />
-      {onEdit && !item.locked
-        ? (
-          <button
-            type="button"
-            class="tm-linklike tm-change-new"
-            title={`Now: ${was}. Click to edit.`}
-            onClick={onEdit}
-          >
-            {shown(item.value)}
-          </button>
-        )
-        : <span class="tm-change-new" title={`Now: ${was}`}>{shown(item.value)}</span>}
-      <Marks item={item} a={a} />
-      <Menu item={item} a={a} onEdit={onEdit} />
-    </span>
   );
 }

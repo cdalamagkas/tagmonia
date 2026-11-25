@@ -1,11 +1,13 @@
 /**
- * What the Changes tab shows (docs/proposals/release-page-restructure.md, PR 2): a proposal's rows
- * grouped into items, one checkbox each. Pure, so the grouping and the counts are unit-tested.
+ * What the Changes tab shows (docs/proposals/release-page-restructure.md, D53, D56): a proposal's rows
+ * as table rows, one checkbox each. Pure, so the grouping and the counts are unit-tested.
  *
  * - **Needs your choice:** fields whose sources disagree and that nobody has decided yet (D48).
- * - **Album:** an album-level field once, though it is written to every file.
- * - **On all tracks:** a track-level change that is the same on every track ("total tracks 5").
- * - **Track grid:** the other track-level changes, a row per track and a column per field.
+ * - **Album:** one table, an album-level field once, though it is written to every file.
+ * - **Tracks:** one table per track, in the files' order, its fields in reading order.
+ *
+ * Every row carries `right` (already as proposed): the tables show only the others unless "Show all
+ * fields" is on.
  *
  * Counting is the header's (status.ts `changesToWrite`): an album field once, a track field per track.
  */
@@ -15,7 +17,7 @@ import { writes } from "./status.ts";
 
 const RELEASE = new Set<string>(RELEASE_FIELDS);
 
-export type ItemScope = "album" | "all-tracks" | "track";
+export type ItemScope = "album" | "track";
 
 export interface ChangeItem {
   key: string;
@@ -41,20 +43,21 @@ export interface ChangeItem {
   filledBy: string | null;
   /** Changes it counts for: 1 for an album field, one per track otherwise. */
   weight: number;
+  /** Nothing to change: the files already hold the proposed value. */
+  right: boolean;
 }
 
-export interface TrackRow {
+export interface TrackTable {
   fileId: number;
-  cells: Partial<Record<FieldProposalDto["field"], ChangeItem>>;
+  rows: ChangeItem[];
 }
 
 export interface ChangesModel {
   needsChoice: ChangeItem[];
+  /** Every album field, in the album field order; open disagreements are in needsChoice instead. */
   album: ChangeItem[];
-  allTracks: ChangeItem[];
-  /** Fields with a column in the track grid, in the order they first appear. */
-  gridFields: FieldProposalDto["field"][];
-  grid: TrackRow[];
+  /** Every track, in the files' order, with every field in reading order. */
+  tracks: TrackTable[];
   /** Changes the write would make now (checked), and all proposed changes. */
   selected: number;
   total: number;
@@ -98,6 +101,7 @@ function item(
     unresolved: rows.some((r) => r.conflict && r.decision === "auto" && !r.locked),
     filledBy: first.origin !== primary ? first.origin : null,
     weight: scope === "album" ? 1 : rows.length,
+    right: !rows.some(proposes),
   };
 }
 
@@ -108,14 +112,6 @@ export function coverProposes(p: ProposalDto): boolean {
   return (!!c.embed && c.embedStatus !== "unchanged") || (!!c.folder && c.folderStatus !== "unchanged");
 }
 
-/** The same change on every track: same proposed value, same current value, same decision. */
-function sameOnEveryTrack(rows: FieldProposalDto[], trackCount: number): boolean {
-  if (rows.length !== trackCount || trackCount < 2) return false;
-  const one = (f: (r: FieldProposalDto) => unknown) => new Set(rows.map((r) => json(f(r)))).size === 1;
-  return one((r) => r.proposed) && one((r) => r.current) && one((r) => r.decision) && one((r) => r.edited) &&
-    one((r) => r.locked);
-}
-
 export function buildChanges(p: ProposalDto, fileOrder: number[]): ChangesModel {
   const primary = p.primarySource ?? "musicbrainz";
   const trackFiles = [...new Set(p.fields.filter((r) => !RELEASE.has(r.field)).map((r) => r.fileId))];
@@ -124,56 +120,40 @@ export function buildChanges(p: ProposalDto, fileOrder: number[]): ChangesModel 
 
   const needsChoice: ChangeItem[] = [];
   const album: ChangeItem[] = [];
-  const allTracks: ChangeItem[] = [];
-  const gridFields: FieldProposalDto["field"][] = [];
-  const cells = new Map<number, TrackRow["cells"]>(trackFiles.map((id) => [id, {}]));
 
-  // Album fields: one item each.
+  // Album fields: one row each, decided once for every file.
   const albumRows = new Map<string, FieldProposalDto[]>();
   for (const r of p.fields) {
-    if (RELEASE.has(r.field) && proposes(r)) albumRows.set(r.field, [...(albumRows.get(r.field) ?? []), r]);
+    if (RELEASE.has(r.field)) albumRows.set(r.field, [...(albumRows.get(r.field) ?? []), r]);
   }
   for (const [field, rows] of albumRows) {
-    const it = item(`album:${field}`, "album", rows, primary);
+    // Only the files that need it changed decide it; the others already have the value.
+    const changing = rows.filter(proposes);
+    const it = item(`album:${field}`, "album", changing.length ? changing : rows, primary);
     (it.unresolved ? needsChoice : album).push(it);
   }
+  album.sort(byRank(RELEASE_FIELDS));
 
-  // Track fields: the same change everywhere collapses; the rest goes to the grid, by track.
-  const trackRows = new Map<string, FieldProposalDto[]>();
+  // Track fields: a table per track.
+  const perTrack = new Map<number, ChangeItem[]>(trackFiles.map((id) => [id, []]));
   for (const r of p.fields) {
-    if (!RELEASE.has(r.field) && proposes(r)) trackRows.set(r.field, [...(trackRows.get(r.field) ?? []), r]);
+    if (RELEASE.has(r.field)) continue;
+    const it = item(`track:${r.fileId}:${r.field}`, "track", [r], primary, r.fileId);
+    if (it.unresolved) needsChoice.push(it);
+    else perTrack.get(r.fileId)!.push(it);
   }
-  for (const [field, rows] of trackRows) {
-    if (sameOnEveryTrack(rows, trackFiles.length) && !rows.some((r) => r.conflict && r.decision === "auto")) {
-      allTracks.push(item(`all:${field}`, "all-tracks", rows, primary));
-      continue;
-    }
-    for (const r of rows) {
-      const it = item(`track:${r.fileId}:${field}`, "track", [r], primary, r.fileId);
-      if (it.unresolved) needsChoice.push(it);
-      else {
-        if (!gridFields.includes(r.field)) gridFields.push(r.field);
-        cells.get(r.fileId)![r.field] = it;
-      }
-    }
-  }
+  const tracks = trackFiles.map((fileId) => ({ fileId, rows: perTrack.get(fileId)!.sort(byRank(TRACK_ORDER)) }));
 
-  const grid = trackFiles.map((fileId) => ({ fileId, cells: cells.get(fileId)! }))
-    .filter((row) => Object.keys(row.cells).length > 0);
-  const items = [...needsChoice, ...album, ...allTracks, ...grid.flatMap((r) => Object.values(r.cells))];
-  const total = items.reduce((n, it) => n + it.weight, 0) + (coverProposes(p) ? 1 : 0);
+  const items = [...needsChoice, ...album, ...tracks.flatMap((t) => t.rows)];
+  const total = items.filter((it) => !it.right).reduce((n, it) => n + it.weight, 0) + (coverProposes(p) ? 1 : 0);
 
   // Selected: as the write counts it (status.ts changesToWrite), which is what the header says.
   const writing = p.fields.filter(writes);
   const selected = new Set(writing.filter((r) => RELEASE.has(r.field)).map((r) => r.field)).size +
     writing.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0);
+  const alreadyRight = items.filter((it) => it.right).length;
 
-  // An album field is already right only when no file needs it changed.
-  const albumRight = new Set<string>(p.fields.filter((r) => RELEASE.has(r.field)).map((r) => r.field));
-  for (const field of albumRows.keys()) albumRight.delete(field);
-  const alreadyRight = albumRight.size + p.fields.filter((r) => !RELEASE.has(r.field) && !proposes(r)).length;
-
-  return { needsChoice, album, allTracks, gridFields, grid, selected, total, alreadyRight };
+  return { needsChoice, album, tracks, selected, total, alreadyRight };
 }
 
 /** The locks that make an item "never change" (to show, and to remove from the ⋯ menu). */
@@ -223,63 +203,5 @@ function byRank(order: readonly string[]) {
   return (a: { field: string }, b: { field: string }) => {
     const [x, y] = [fieldRank(a.field, order), fieldRank(b.field, order)];
     return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]);
-  };
-}
-
-export interface RightField {
-  field: FieldProposalDto["field"];
-  value: unknown;
-}
-
-export interface AlreadyRightView {
-  album: RightField[];
-  /** Track fields with the same value on every track, once (needs at least two tracks). */
-  everyTrack: RightField[];
-  /** Each track's other fields, in the files' order. */
-  tracks: { fileId: number; fields: RightField[] }[];
-}
-
-/** "N fields already right", organised like the changes: album, the same on every track, then per track. */
-export function alreadyRightView(p: ProposalDto, fileOrder: number[]): AlreadyRightView {
-  const right = p.fields.filter((r) => !proposes(r));
-  const changingAlbum = new Set(p.fields.filter((r) => RELEASE.has(r.field) && proposes(r)).map((r) => r.field));
-  const album = new Map<string, RightField>();
-  for (const r of right) {
-    if (RELEASE.has(r.field) && !changingAlbum.has(r.field) && !album.has(r.field)) {
-      album.set(r.field, { field: r.field, value: r.current });
-    }
-  }
-
-  const trackFiles = [...new Set(p.fields.filter((r) => !RELEASE.has(r.field)).map((r) => r.fileId))];
-  const order = new Map(fileOrder.map((id, i) => [id, i]));
-  trackFiles.sort((a, b) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9));
-  const perTrack = new Map<number, Map<string, unknown>>(trackFiles.map((id) => [id, new Map()]));
-  for (const r of right) if (!RELEASE.has(r.field)) perTrack.get(r.fileId)!.set(r.field, r.current);
-
-  const everyTrack: RightField[] = [];
-  if (trackFiles.length > 1) {
-    const fields = new Set([...perTrack.values()].flatMap((m) => [...m.keys()]));
-    for (const field of fields) {
-      const values = [...perTrack.values()].map((m) => (m.has(field) ? json(m.get(field)) : undefined));
-      if (values.every((v) => v !== undefined && v === values[0])) {
-        everyTrack.push({ field: field as RightField["field"], value: perTrack.get(trackFiles[0])!.get(field) });
-      }
-    }
-  }
-  const shared = new Set(everyTrack.map((f) => f.field));
-  const tracks = trackFiles
-    .map((fileId) => ({
-      fileId,
-      fields: [...perTrack.get(fileId)!]
-        .filter(([field]) => !shared.has(field as RightField["field"]))
-        .map(([field, value]) => ({ field: field as RightField["field"], value }))
-        .sort(byRank(TRACK_ORDER)),
-    }))
-    .filter((t) => t.fields.length > 0);
-
-  return {
-    album: [...album.values()].sort(byRank(RELEASE_FIELDS)),
-    everyTrack: everyTrack.sort(byRank(TRACK_ORDER)),
-    tracks,
   };
 }

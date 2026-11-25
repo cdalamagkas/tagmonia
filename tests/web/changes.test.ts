@@ -1,7 +1,7 @@
-/** The Changes tab's grouping and counts (restructure PR 2, D53). */
+/** The Changes tab's tables and counts (D53, D56). */
 import { assert, assertEquals } from "@std/assert";
 import type { FieldProposalDto, LockDto, ProposalDto } from "../../shared/types.ts";
-import { alreadyRightView, buildChanges, locksOf } from "../../web/src/release/changes.ts";
+import { buildChanges, type ChangesModel, locksOf } from "../../web/src/release/changes.ts";
 import { changesToWrite } from "../../web/src/release/status.ts";
 
 let nextId = 1;
@@ -58,15 +58,23 @@ function ep() {
   ];
 }
 
-Deno.test("an album field once, the same change on every track once, the rest as a track grid", () => {
+/** A track's row for a field. */
+const cell = (m: ChangesModel, fileId: number, field: string) =>
+  m.tracks.find((t) => t.fileId === fileId)!.rows.find((r) => r.field === field)!;
+
+Deno.test("an album table with each field once; a table per track, every field, what is right marked", () => {
   const m = buildChanges(proposal(ep()), FILES);
-  assertEquals(m.album.map((i) => [i.field, i.ids.length, i.weight, i.current, i.value]), [
-    ["album", 5, 1, ["Ambient Piano Vol 1"], "Ambient Piano Vol.1"],
+  assertEquals(m.album.map((i) => [i.field, i.ids.length, i.weight, i.current, i.value, i.right]), [
+    ["album", 5, 1, ["Ambient Piano Vol 1"], "Ambient Piano Vol.1", false],
   ]);
-  assertEquals(m.allTracks.map((i) => [i.field, i.weight, i.value]), [["totaltracks", 5, 5]]);
-  assertEquals(m.gridFields, ["isrc"]);
-  assertEquals(m.grid.map((r) => [r.fileId, r.cells.isrc?.value]), FILES.map((f) => [f, [`QM${f}`]]));
-  assertEquals(m.grid[0].cells.isrc?.filledBy, "itunes", "not the proposal's own source: filled by iTunes");
+  assertEquals(m.tracks.map((t) => t.fileId), FILES);
+  // Reading order: title, numbering, then the ISRC.
+  assertEquals(m.tracks[0].rows.map((r) => [r.field, r.right]), [["title", true], ["totaltracks", false], [
+    "isrc",
+    false,
+  ]]);
+  assertEquals(cell(m, 2, "isrc").value, ["QM2"]);
+  assertEquals(cell(m, 2, "isrc").filledBy, "itunes", "not the proposal's own source: filled by iTunes");
   assertEquals(m.album[0].filledBy, null);
   // 1 album field + 5 totals + 5 ISRCs; titles are already right.
   assertEquals([m.selected, m.total, m.alreadyRight], [11, 11, 5]);
@@ -75,7 +83,7 @@ Deno.test("an album field once, the same change on every track once, the rest as
 
 Deno.test("track order follows the files, not the database", () => {
   const m = buildChanges(proposal(ep()), [5, 4, 3, 2, 1]);
-  assertEquals(m.grid.map((r) => r.fileId), [5, 4, 3, 2, 1]);
+  assertEquals(m.tracks.map((t) => t.fileId), [5, 4, 3, 2, 1]);
 });
 
 Deno.test("kept, locked and edited rows: the checkbox, the counts, and the value shown", () => {
@@ -87,11 +95,10 @@ Deno.test("kept, locked and edited rows: the checkbox, the counts, and the value
   });
   const m = buildChanges(proposal(fields), FILES);
   assertEquals([m.album[0].included, m.album[0].mixed], [false, true], "four files write it, one keeps its value");
-  const locked = m.grid.find((r) => r.fileId === 2)!.cells.isrc!;
+  const locked = cell(m, 2, "isrc");
   assertEquals([locked.locked, locked.included], [true, false]);
-  const edited = m.grid.find((r) => r.fileId === 3)!.cells.title!;
-  assertEquals([edited.edited, edited.value, edited.included], [true, "Mine", true]);
-  assertEquals(m.gridFields, ["isrc", "title"]);
+  const edited = cell(m, 3, "title");
+  assertEquals([edited.edited, edited.value, edited.included, edited.right], [true, "Mine", true, false]);
   // Album field still written to four files (1) + 5 totals + 4 ISRCs + 1 edited title.
   assertEquals([m.selected, m.total], [11, 12]);
 });
@@ -136,9 +143,14 @@ Deno.test("the cover counts as one change, in the total and, when used, in the s
   assertEquals(same.total, 11, "a cover already in the files is not a change");
 });
 
-Deno.test("a single-track release has no 'on all tracks' line; its changes stay in the grid", () => {
-  const m = buildChanges(proposal([row(1, "totaltracks", { proposed: 1 })]), [1]);
-  assertEquals([m.allTracks.length, m.gridFields], [0, ["totaltracks"]]);
+Deno.test("an album field already right on some files is decided only for the others", () => {
+  const fields = FILES.map((f) =>
+    f === 1
+      ? row(f, "label", { current: ["LKult"], proposed: ["LKult"], status: "unchanged" })
+      : row(f, "label", { current: null, proposed: ["LKult"] })
+  );
+  const m = buildChanges(proposal(fields), FILES);
+  assertEquals([m.album[0].ids.length, m.album[0].right, m.album[0].current], [4, false, [null]]);
 });
 
 Deno.test("the locks behind an item: this album's, its files', and global ones for the field", () => {
@@ -150,11 +162,11 @@ Deno.test("the locks behind an item: this album's, its files', and global ones f
     { id: 4, scope: "file", target: "2", field: "isrc" },
   ];
   assertEquals(locksOf(m.album[0], locks, 9).map((l) => l.id), [1, 2]);
-  assertEquals(locksOf(m.grid[1].cells.isrc!, locks, 9).map((l) => l.id), [4]);
-  assert(locksOf(m.grid[0].cells.isrc!, locks, 9).length === 0);
+  assertEquals(locksOf(cell(m, 2, "isrc"), locks, 9).map((l) => l.id), [4]);
+  assert(locksOf(cell(m, 1, "isrc"), locks, 9).length === 0);
 });
 
-Deno.test("already right: album once, the same on every track once, then each track's own, in reading order", () => {
+Deno.test("show all fields: right rows in reading order, album fields once, MusicBrainz identifiers last", () => {
   const right = (fileId: number, field: FieldProposalDto["field"], value: unknown) =>
     row(fileId, field, { current: value, proposed: value, status: "unchanged" });
   const fields = [
@@ -162,27 +174,21 @@ Deno.test("already right: album once, the same on every track once, then each tr
     right(2, "title", "Two"),
     right(1, "musicbrainz_trackid", "t1"),
     right(1, "title", "One"),
-    right(1, "totaltracks", 2),
-    right(2, "totaltracks", 2),
     right(1, "composer", ["Schubert"]),
-    right(2, "composer", ["Liszt"]),
     right(1, "tracknumber", 1),
-    right(2, "tracknumber", 2),
     right(1, "label", ["NO SILENCE"]),
     right(2, "label", ["NO SILENCE"]),
     right(1, "album", "A"),
     right(2, "album", "A"),
-    // Changing: never listed as already right.
     row(1, "date", { current: "2026", proposed: "2026-10-23", status: "changed" }),
     row(2, "date", { current: "2026", proposed: "2026-10-23", status: "changed" }),
     row(1, "isrc", { proposed: ["X"] }),
   ];
-  const v = alreadyRightView(proposal(fields), [1, 2]);
-  assertEquals(v.album.map((f) => f.field), ["album", "label"], "album fields once, in the album order");
-  assertEquals(v.everyTrack, [{ field: "totaltracks", value: 2 }]);
-  assertEquals(v.tracks.map((t) => [t.fileId, t.fields.map((f) => f.field)]), [
-    [1, ["title", "tracknumber", "composer", "musicbrainz_trackid"]],
-    [2, ["title", "tracknumber", "composer", "musicbrainz_trackid"]],
+  const m = buildChanges(proposal(fields), [1, 2]);
+  assertEquals(m.album.map((i) => [i.field, i.right]), [["album", true], ["date", false], ["label", true]]);
+  assertEquals(m.tracks.map((t) => [t.fileId, t.rows.map((r) => r.field)]), [
+    [1, ["title", "tracknumber", "composer", "isrc", "musicbrainz_trackid"]],
+    [2, ["title", "musicbrainz_trackid"]],
   ]);
-  assertEquals(buildChanges(proposal(fields), [1, 2]).alreadyRight, 2 + 8 + 2, "the count still covers them all");
+  assertEquals(m.alreadyRight, 2 + 4 + 2);
 });

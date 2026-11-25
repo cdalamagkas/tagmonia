@@ -21,8 +21,9 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   from; each can be accepted, kept, edited or locked.
 - **One page per release** that says where it stands and what to do next ("15 changes ready · Write 15 changes",
   "3 releases fit; none is certain · Choose a release", "Written … · Undo"), and updates by itself while Tagmonia works.
-  Below it: **Changes** (what a write would do, one line per change with a checkbox; the ⋯ menu edits a value or
-  keeps a field from ever changing on this album, this track or any album), **Match** (where the tags come from, the track mapping, the other editions and releases, and one box for
+  Below it: **Changes** (what a write would do: a table for the album and one per track with each field's current
+  and proposed value and a checkbox, and **Show all fields** for the rest; the ⋯ menu edits a value or keeps a field
+  from ever changing on this album, this track or any album), **Match** (where the tags come from, the track mapping, the other editions and releases, and one box for
   any MusicBrainz, Deezer, iTunes, Discogs or Bandcamp link),
   **Files** (what the files hold now) and **History** (writes and undos). For a release missing from MusicBrainz, the
   header's **Add to MusicBrainz →** opens a step panel over the tabs.

@@ -738,27 +738,6 @@ td.tm-change-off .tm-change-new {
   border-radius: 4px;
   background: var(--tm-mist);
 }
-/* Track grid */
-.tm-track-grid td,
-.tm-track-grid th {
-  vertical-align: middle;
-}
-.tm-grid-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: ui-monospace, monospace;
-  font-size: 0.85rem;
-}
-.tm-grid-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.tm-grid-cell .tm-menu {
-  margin-left: 0;
-}
 /* Pinned write bar */
 .tm-write-bar {
   position: sticky;
@@ -805,23 +784,6 @@ td.tm-change-off .tm-change-new {
 }
 .tm-fold[open] > summary {
   margin-bottom: 8px;
-}
-/* "N fields already right": album, the same on every track, then each track */
-.tm-right h4 {
-  margin: 14px 0 4px;
-  font-size: 0.9rem;
-  color: var(--tm-slate);
-}
-.tm-right-track {
-  margin: 0;
-  border-bottom: 1px solid var(--tm-rule);
-}
-.tm-right-track > summary {
-  font-weight: var(--tm-weight-value);
-  padding: 8px 0;
-}
-.tm-right-track[open] > summary {
-  margin-bottom: 4px;
 }
 
 /* Add to MusicBrainz as a step panel (restructure PR 4) */
@@ -972,4 +934,31 @@ td.tm-change-off .tm-change-new {
   border-top: 1px solid var(--tm-rule);
   padding-top: 12px;
   margin-top: 16px;
+}
+
+/* Changes tab as tables (D56): a narrow checkbox column and a narrow menu column around the field */
+/* The same columns in every table, so Current and Proposed line up from the album down the tracks. */
+table.tm-review {
+  table-layout: fixed;
+  min-width: 560px;
+}
+.tm-review .tm-col-check {
+  width: 32px;
+}
+.tm-review .tm-col-menu {
+  width: 44px;
+}
+.tm-review thead th:nth-child(2) {
+  width: 22%;
+}
+.tm-review thead th:nth-child(3) {
+  width: 32%;
+}
+.tm-review td,
+.tm-review th {
+  overflow-wrap: anywhere;
+}
+.tm-review tr.tm-change-off td,
+.tm-review tr.tm-change-off th {
+  opacity: 0.6;
 }
