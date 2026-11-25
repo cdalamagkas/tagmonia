@@ -122,6 +122,11 @@ export const releaseSchema = z.looseObject({
   ...releaseBase,
   media: z.array(mediumSchema).default([]),
   relations: z.array(relationSchema).optional(),
+  /** Whether the Cover Art Archive has a front image; darkened ones cannot be served (D49). */
+  "cover-art-archive": z.looseObject({
+    front: z.boolean().optional(),
+    darkened: z.boolean().optional(),
+  }).optional(),
 });
 
 export const releaseSearchSchema = z.looseObject({

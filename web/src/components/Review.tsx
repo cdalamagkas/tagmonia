@@ -5,6 +5,8 @@
  */
 import { useEffect, useState } from "preact/hooks";
 import type {
+  CoverImageDto,
+  CoverProposalDto,
   DecisionRequest,
   FieldDecision,
   FieldProposalDto,
@@ -63,6 +65,104 @@ function ProviderMatches({ matches }: { matches: ProposalDto["providers"] }) {
     </p>
   );
 }
+const COVER_SOURCES: Record<string, string> = { coverartarchive: "Cover Art Archive", ...PROVIDERS };
+
+const MODES: Record<CoverProposalDto["mode"], string> = {
+  embed_1200: "embedded at about 1200 px",
+  embed_full: "embedded at full size",
+  folder: "saved as a folder image only",
+  both: "embedded at about 1200 px and saved full size as a folder image",
+};
+
+function kb(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+
+function imageLine(i: CoverImageDto): string {
+  return `${i.width} × ${i.height} ${i.mime === "image/png" ? "PNG" : "JPEG"}, ${kb(i.size)}`;
+}
+
+function statusBadge(s: CoverProposalDto["embedStatus"]) {
+  if (!s || s === "unchanged") return <span class="tm-badge tm-inline">already there</span>;
+  return <span class={`tm-badge tm-inline ${s === "added" ? "tm-badge-ok" : "tm-badge-warn"}`}>{s}</span>;
+}
+
+/** The release's front cover (D49): what is proposed, where from, what the files have now. */
+function CoverPanel(
+  { cover, busy, onDecide }: {
+    cover: CoverProposalDto;
+    busy: boolean;
+    onDecide: (d: "accepted" | "kept_current") => Promise<void>;
+  },
+) {
+  const shown = cover.embed ?? cover.folder;
+  const kept = cover.decision === "kept_current";
+  const now = cover.current.withFront === 0
+    ? "No file has a front cover now."
+    : `Now: ${cover.current.withFront} of ${cover.current.files} files have a front cover (${
+      cover.current.sizes.map(kb).join(", ")
+    }).`;
+  return (
+    <div class="tm-cover">
+      {shown
+        ? <img src={shown.preview} alt="Proposed front cover" width={160} height={160} loading="lazy" />
+        : <div class="tm-cover-none tm-muted">No cover</div>}
+      <div>
+        {cover.source
+          ? (
+            <>
+              <p>
+                From <strong>{COVER_SOURCES[cover.source] ?? cover.source}</strong>, {MODES[cover.mode]}{" "}
+                <span class="tm-muted">(Settings → Cover art)</span>
+              </p>
+              <ul class="tm-values">
+                {cover.embed && (
+                  <li>
+                    Embedded in each file: {imageLine(cover.embed)} {statusBadge(cover.embedStatus)}
+                  </li>
+                )}
+                {cover.folder && (
+                  <li>
+                    <code>{cover.folderPath}</code>: {imageLine(cover.folder)} {statusBadge(cover.folderStatus)}
+                  </li>
+                )}
+              </ul>
+            </>
+          )
+          : <p class="tm-muted">No cover found on the Cover Art Archive or the other providers.</p>}
+        <p class="tm-muted">{now}</p>
+        {cover.skipped.length > 0 && (
+          <p class="tm-muted tm-small-note">
+            Passed over: {cover.skipped.map((s) => `${COVER_SOURCES[s.source] ?? s.source} (${s.reason})`).join("; ")}
+          </p>
+        )}
+        {cover.source && (cover.embed || cover.folder) && (
+          <div class="tm-seg" role="group" aria-label="Decision for the cover">
+            <button
+              type="button"
+              class={kept ? "" : "tm-on"}
+              disabled={busy}
+              onClick={() =>
+                onDecide("accepted")}
+            >
+              Use this cover
+            </button>
+            <button
+              type="button"
+              class={kept ? "tm-on" : ""}
+              disabled={busy}
+              onClick={() =>
+                onDecide("kept_current")}
+            >
+              Keep current
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const RELEASE = new Set<string>(RELEASE_FIELDS);
 
 /** One reviewable line: a release field across all files, or one field of one file. */
@@ -502,7 +602,7 @@ export function Review(
   }
 
   const open = p.state === "needs_review" || p.state === "approved" || p.state === "draft";
-  const toWrite = p.fields.filter(writes).length;
+  const toWrite = p.fields.filter(writes).length + (p.cover?.writes ? 1 : 0);
   const conflicts = p.counts.conflicts;
   const fileName = new Map(files.map((f) => [f.id, f.tags.title ?? f.path.split("/").pop() ?? f.path]));
   const relGroups: Group[] = RELEASE_FIELDS
@@ -628,6 +728,17 @@ export function Review(
           <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.currentTarget.checked)} />
           Show fields that are already right
         </label>
+
+        {p.cover && (
+          <>
+            <h3>Cover</h3>
+            <CoverPanel
+              cover={p.cover}
+              busy={busy || !open}
+              onDecide={(decision) => act(() => api.coverDecision(p.id, { decision }))}
+            />
+          </>
+        )}
 
         <h3>Album</h3>
         {relGroups.length

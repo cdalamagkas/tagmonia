@@ -73,20 +73,37 @@ if (!info.StartupWizardCompleted) {
 const auth = await call("POST", "Users/AuthenticateByName", { Username: USER, Pw: password });
 const token: string = auth.AccessToken;
 
-const folders: { Name: string }[] = await call("GET", "Library/VirtualFolders", undefined, token);
-if (!folders.some((f) => f.Name === LIBRARY)) {
-  // Only what is in the files: no online metadata, so the check sees exactly what Tagmonia wrote.
-  const none = (Type: string) => ({ Type, MetadataFetchers: [], MetadataFetcherOrder: [], ImageFetchers: [] });
+// Only what is in the files: no online metadata or images, so the check sees exactly what Tagmonia wrote.
+// Covers embedded in the tracks ("Image Extractor", on by default in Jellyfin) and folder images are read (D49).
+const none = (Type: string) => ({ Type, MetadataFetchers: [], MetadataFetcherOrder: [], ImageFetchers: [] });
+const OPTIONS = {
+  EnableRealtimeMonitor: false,
+  EnableInternetProviders: false,
+  MetadataSavers: [],
+  TypeOptions: [
+    none("MusicAlbum"),
+    none("MusicArtist"),
+    { ...none("Audio"), ImageFetchers: ["Image Extractor"], ImageFetcherOrder: ["Image Extractor"] },
+  ],
+};
+const folders: { Name: string; ItemId: string; LibraryOptions: Record<string, unknown> }[] = await call(
+  "GET",
+  "Library/VirtualFolders",
+  undefined,
+  token,
+);
+const existing = folders.find((f) => f.Name === LIBRARY);
+if (!existing) {
   const q = new URLSearchParams({ name: LIBRARY, collectionType: "music", paths: "/music", refreshLibrary: "true" });
-  await call("POST", `Library/VirtualFolders?${q}`, {
-    LibraryOptions: {
-      EnableRealtimeMonitor: false,
-      EnableInternetProviders: false,
-      MetadataSavers: [],
-      TypeOptions: [none("MusicAlbum"), none("MusicArtist"), none("Audio")],
-    },
-  }, token);
+  await call("POST", `Library/VirtualFolders?${q}`, { LibraryOptions: OPTIONS }, token);
   console.log(`library "${LIBRARY}" created over /music`);
+} else {
+  // Libraries set up before D49 had embedded covers off: bring their options up to date.
+  await call("POST", "Library/VirtualFolders/LibraryOptions", {
+    Id: existing.ItemId,
+    LibraryOptions: { ...existing.LibraryOptions, ...OPTIONS },
+  }, token);
+  console.log(`library "${LIBRARY}" options updated`);
 }
 
 const APP = "Tagmonia (dev)";

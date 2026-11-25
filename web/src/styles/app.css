@@ -416,3 +416,38 @@ a:focus-visible {
     padding: 16px;
   }
 }
+
+.tm-cover {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.tm-cover img,
+.tm-cover-none {
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius);
+  background: var(--tm-mist);
+}
+.tm-cover-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tm-cover > div {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.tm-small-note {
+  font-size: 0.85rem;
+}
+.tm-radio-list {
+  display: grid;
+  gap: 10px;
+}
+.tm-radio-list .tm-check {
+  align-items: flex-start;
+}

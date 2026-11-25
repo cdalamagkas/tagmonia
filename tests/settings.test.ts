@@ -53,3 +53,16 @@ Deno.test("updating settings validates, writes the file, applies in place and re
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("covers are embedded at full size by default; the mode changes without a restart (D46, D49)", async () => {
+  assertEquals(DEFAULT_SETTINGS.covers.mode, "embed_full");
+  const dir = await Deno.makeTempDir({ prefix: "tagmonia-settings-" });
+  try {
+    const s = await loadSettings(dir);
+    assertEquals(await updateSettings(dir, s, { covers: { mode: "both" } }), []);
+    assertEquals((await loadSettings(dir)).covers.mode, "both");
+    await assertRejects(() => updateSettings(dir, s, { covers: { mode: "huge" } }), SettingsError);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

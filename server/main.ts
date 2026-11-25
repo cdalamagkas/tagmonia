@@ -26,6 +26,7 @@ import { identifyConfig, loadSettings } from "./settings.ts";
 import { createTagIO } from "./tagio/mod.ts";
 import { PROJECT_URL, USER_AGENT, VERSION } from "./version.ts";
 import { createHarmonyRegistry } from "./providers/harmony_adapter.ts";
+import { CoverFetcher } from "./covers/fetch.ts";
 
 async function main() {
   const config = loadConfig();
@@ -99,9 +100,16 @@ async function main() {
       ? { discogsConsumerKey: discogs.consumerKey, discogsConsumerSecret: discogs.consumerSecret }
       : undefined,
   });
+  // Cover art (D49): one request per second for every cover host, images cached under /config.
+  const covers = new CoverFetcher({
+    cacheDir: join(config.configDir, "covers"),
+    userAgent: USER_AGENT,
+    limiter: new RateLimiter({ requests: 1, perMs: 1000 }),
+  });
   registerProposeJob(queue, {
     db,
     mb,
+    covers: { fetcher: covers, mode: () => settings.covers.mode, musicDir: config.musicDir },
     settings: () => settings.proposal,
     logger,
     enrichment: { registry: harmony, enabled: (id) => settings.providers[id].enabled },
@@ -114,6 +122,7 @@ async function main() {
     musicDir: config.musicDir,
     readOnly: config.readOnly,
     logger,
+    covers: { read: (sha, mime) => covers.read(sha, mime), backupDir: join(config.configDir, "backups", "pictures") },
     // §13: tell the music server once the files changed (when one is configured).
     afterBatch: (r) => {
       creds.configured("jellyfin").then((on) => {

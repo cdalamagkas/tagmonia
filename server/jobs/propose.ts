@@ -8,12 +8,17 @@ import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { getRelease } from "../db/repo/library.ts";
 import { type ChosenBy, latestProposal, listLocks, saveProposal, saveProviderMatches } from "../db/repo/proposals.ts";
-import { type EnrichmentDeps, findOnProviders, linksOf } from "../providers/enrichment.ts";
+import { type EnrichmentDeps, findOnProviders, linksOf, type ProviderMatch } from "../providers/enrichment.ts";
 import { toReleaseView } from "../identify/release.ts";
 import { DEFAULT_SCORING, scoreRelease } from "../identify/score.ts";
 import type { Logger } from "../log.ts";
 import { buildFieldProposals } from "../proposal/build.ts";
 import { mergeProviders } from "../proposal/merge.ts";
+import { chooseCover, type CoverFetcher } from "../covers/fetch.ts";
+import { folderCoverPath, readFolderCover } from "../covers/folder.ts";
+import type { CoverMode } from "../covers/sources.ts";
+import { embedStatus, folderFileName, folderStatus } from "../covers/status.ts";
+import { saveCover } from "../db/repo/covers.ts";
 import { missingParentWorks, tagsFromMusicBrainz } from "../proposal/musicbrainz_tags.ts";
 import type { Cited } from "../providers/musicbrainz/client.ts";
 import { mbidSchema, type MbRelease, type MbReleaseExtras, type MbWork } from "../providers/musicbrainz/schema.ts";
@@ -34,9 +39,17 @@ export interface ProposalSettings {
   maxGenres: number;
 }
 
+/** Cover art (D49): where images come from, the mode setting, and the music root for the folder file. */
+export interface CoverDeps {
+  fetcher: Pick<CoverFetcher, "listing" | "download">;
+  mode: () => CoverMode;
+  musicDir: string;
+}
+
 export interface ProposeJobDeps {
   db: Db;
   mb: ProposalSource;
+  covers?: CoverDeps | null;
   /** Deezer, iTunes and Discogs through Harmony (D47); absent = MusicBrainz only. */
   enrichment?: EnrichmentDeps | null;
   settings: () => ProposalSettings;
@@ -135,6 +148,19 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       },
     }, now());
     if (matches) saveProviderMatches(deps.db, proposalId, matches, now());
+    if (deps.covers) {
+      const mappedIds = new Set(mapping.pairs.map((p) => p.fileId));
+      await proposeCover(
+        deps.db,
+        deps.covers,
+        proposalId,
+        rel.value,
+        matches ?? [],
+        found.release.folder,
+        files.filter((f) => mappedIds.has(f.id)),
+        signal,
+      );
+    }
     const count = (s: string) => build.fields.filter((f) => f.status === s).length;
     return {
       proposalId,
@@ -143,6 +169,44 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       unchanged: count("unchanged"),
       unmappedFiles: build.unmappedFiles.length,
     };
+  });
+}
+
+/** Chooses and downloads the release's cover, compares it with what the files and folder have, and stores it. */
+async function proposeCover(
+  db: Db,
+  deps: CoverDeps,
+  proposalId: number,
+  release: MbRelease,
+  matches: ProviderMatch[],
+  folder: string,
+  files: { pictures: { type: string; mime: string; size: number }[] }[],
+  signal?: AbortSignal,
+): Promise<void> {
+  const mode = deps.mode();
+  const { cover, skipped } = await chooseCover(deps.fetcher, release, matches, mode, signal);
+  let folderPath: string | null = null, folderCurrent: string | null = null;
+  if (cover?.folder) {
+    const name = folderFileName(cover.folder.mime);
+    try {
+      const abs = await folderCoverPath(await Deno.realPath(deps.musicDir), folder, name);
+      folderCurrent = (await readFolderCover(abs))?.sha256 ?? null;
+      folderPath = folder === "" ? name : `${folder}/${name}`;
+    } catch (e) {
+      // A linked cover file or an unreadable folder: the folder file is not proposed.
+      skipped.push({ source: cover.source, reason: `folder image: ${(e as Error).message}` });
+    }
+  }
+  saveCover(db, proposalId, {
+    mode,
+    source: cover?.source ?? null,
+    skipped,
+    embed: cover?.embed ?? null,
+    folder: folderPath ? cover?.folder ?? null : null,
+    embedStatus: cover?.embed ? embedStatus(cover.embed, files) : null,
+    folderStatus: folderPath && cover?.folder ? folderStatus(folderCurrent, cover.folder.sha256) : null,
+    folderPath,
+    folderCurrent,
   });
 }
 

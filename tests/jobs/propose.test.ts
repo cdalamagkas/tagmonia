@@ -1,6 +1,8 @@
 /** The propose job: lookups, stored proposal, automatic proposals after a confident match. */
 import { assert, assertEquals } from "@std/assert";
+import { join } from "node:path";
 import type { Db } from "../../server/db/db.ts";
+import { getCover } from "../../server/db/repo/covers.ts";
 import { reconcileUnit, upsertFile } from "../../server/db/repo/library.ts";
 import { latestProposal, providerMatches } from "../../server/db/repo/proposals.ts";
 import { enqueueIdentify, registerIdentifyJob } from "../../server/jobs/identify.ts";
@@ -223,4 +225,54 @@ Deno.test("found providers are merged into the fields: fallbacks are marked, dis
   ]);
   assertEquals(row("album").origin, "musicbrainz");
   assertEquals(providerMatches(db, p.id).find((m) => m.provider === "discogs")?.status, "found");
+});
+
+Deno.test("the cover is chosen, compared with the files and folder, and stored with the proposal (D49)", async () => {
+  const { db, id } = await setup();
+  const music = await Deno.makeTempDir({ prefix: "tagmonia-propose-covers-" });
+  await Deno.mkdir(join(music, "K"));
+  try {
+    const q2 = new JobQueue(db, { logger: nullLogger });
+    const image = { sha256: "a".repeat(64), mime: "image/jpeg" as const, width: 1200, height: 1200, size: 9, url: "u" };
+    const asked: string[] = [];
+    registerProposeJob(q2, {
+      db,
+      mb: new FakeMb([release]),
+      settings: () => ({ genres: "none", maxGenres: 5 }),
+      logger: nullLogger,
+      covers: {
+        musicDir: music,
+        mode: () => "both",
+        fetcher: {
+          listing: (mbid) => {
+            asked.push(`listing ${mbid}`);
+            return Promise.resolve({
+              images: [{ front: true, image: "https://coverartarchive.org/1.jpg", thumbnails: {} }],
+            });
+          },
+          download: (url) => {
+            asked.push(url);
+            return Promise.resolve({ ...image, url });
+          },
+        },
+      },
+    });
+    enqueuePropose(q2, id, BEETHOVEN_5, "user");
+    await q2.drain();
+    const p = latestProposal(db, id)!;
+    const c = getCover(db, p.id)!;
+    // The recorded release says the Cover Art Archive has a front image; its original is the only variant.
+    assertEquals(asked, [`listing ${BEETHOVEN_5}`, "https://coverartarchive.org/1.jpg"]);
+    assertEquals([c.mode, c.source, c.embedStatus, c.folderStatus, c.folderPath, c.folderCurrent], [
+      "both",
+      "coverartarchive",
+      "added",
+      "added",
+      "K/cover.jpg",
+      null,
+    ]);
+    assertEquals(c.decision, "auto");
+  } finally {
+    await Deno.remove(music, { recursive: true });
+  }
 });

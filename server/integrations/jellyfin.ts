@@ -162,9 +162,10 @@ export class JellyfinClient {
       const res = await this.#request("POST", `Items/${encodeURIComponent(id)}/Refresh`, {
         Recursive: "true",
         MetadataRefreshMode: "FullRefresh",
-        ImageRefreshMode: "Default",
+        // A written or undone cover must replace the one Jellyfin extracted before (D49).
+        ImageRefreshMode: "FullRefresh",
         ReplaceAllMetadata: "true",
-        ReplaceAllImages: "false",
+        ReplaceAllImages: "true",
       }, signal);
       await res.body?.cancel();
     }
