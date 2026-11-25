@@ -1,10 +1,25 @@
 import { useEffect, useState } from "preact/hooks";
-import type { LibraryFileDto, ReleaseDetail } from "../../../shared/types.ts";
+import type { CurrentCoverDto, LibraryFileDto, ReleaseDetail } from "../../../shared/types.ts";
 import { api, ApiRequestError } from "../api.ts";
 import { bytes, duration, RELEASE_FIELDS, tagValue } from "../format.ts";
 import { onLinkClick } from "../router.ts";
 import { Identification } from "../components/Identification.tsx";
 import { Review } from "../components/Review.tsx";
+import { CoverImage } from "../components/CoverImage.tsx";
+
+function coverCaption(c: CurrentCoverDto): string {
+  const kb = c.size >= 1024 * 1024 ? `${(c.size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(c.size / 1024)} KB`;
+  const type = c.mime === "image/png"
+    ? "PNG"
+    : c.mime === "image/jpeg"
+    ? "JPEG"
+    : c.mime.replace("image/", "").toUpperCase();
+  const dims = c.width && c.height ? `${c.width} × ${c.height} ` : "";
+  const where = c.kind === "embedded"
+    ? `embedded in ${c.filesWithPicture} of ${c.files} files`
+    : `folder image ${c.path.split("/").pop()}${c.filesWithPicture ? "" : ", none embedded"}`;
+  return `${dims}${type}, ${kb} · ${where}`;
+}
 
 function releaseTags(files: LibraryFileDto[]) {
   return RELEASE_FIELDS.flatMap((field) => {
@@ -50,11 +65,17 @@ export function ReleasePage({ id }: { id: number }) {
   const [open, setOpen] = useState<number | null>(null);
 
   const [version, setVersion] = useState(0);
-  const reload = () =>
-    api.release(id).then(
+  const [cover, setCover] = useState<CurrentCoverDto | null | undefined>(undefined);
+  const [coverVersion, setCoverVersion] = useState(0);
+  const reload = () => {
+    // The files may have changed (a write or undo): ask for the cover again too.
+    setCoverVersion((v) => v + 1);
+    api.coverInfo(id).then((r) => setCover(r.cover), () => setCover(null));
+    return api.release(id).then(
       setData,
       (e) => setError(e instanceof ApiRequestError && e.status === 404 ? "This release no longer exists." : e.message),
     );
+  };
   useEffect(() => {
     setData(null);
     reload();
@@ -82,11 +103,27 @@ export function ReleasePage({ id }: { id: number }) {
     <main>
       <a href="/" onClick={onLinkClick}>← Library</a>
       <section class="tm-card">
-        <h1>{release.album ?? "Loose files"}</h1>
-        <p class="tm-muted">
-          {release.artist ?? "Unknown artist"} · {release.trackCount} files ·{" "}
-          <span class="tm-path">{release.folder || "/"}</span>
-        </p>
+        <div class="tm-release-head">
+          <figure class="tm-release-cover">
+            <CoverImage
+              releaseId={release.id}
+              size="large"
+              px={200}
+              version={coverVersion}
+              alt={`Cover of ${release.album ?? "this release"}`}
+            />
+            <figcaption class="tm-muted">
+              {cover === undefined ? "" : cover ? coverCaption(cover) : "No cover in the files or the folder."}
+            </figcaption>
+          </figure>
+          <div>
+            <h1>{release.album ?? "Loose files"}</h1>
+            <p class="tm-muted">
+              {release.artist ?? "Unknown artist"} · {release.trackCount} files ·{" "}
+              <span class="tm-path">{release.folder || "/"}</span>
+            </p>
+          </div>
+        </div>
         <h2>Release tags</h2>
         <table class="tm-table tm-kv">
           <tbody>

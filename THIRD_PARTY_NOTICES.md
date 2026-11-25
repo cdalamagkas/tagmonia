@@ -52,6 +52,7 @@ Self-hosted in `web/public/fonts/`; the license text ships alongside as `web/pub
 | Preact                                               | MIT                                     | Web UI (bundled into `web/dist`)                                     |
 | mutagen (Debian `python3-mutagen`)                   | GPL-2.0-or-later                        | Tag reading/writing via the TagIO sidecar (Tagmonia is GPL-3.0, D17) |
 | Python 3 (Debian `python3`)                          | PSF-2.0                                 | Runs the TagIO sidecar                                               |
+| Pillow (Debian `python3-pil`)                        | MIT-CMU (HPND)                          | Cover thumbnails (D50)                                               |
 | Chromaprint `fpcalc` (Debian `libchromaprint-tools`) | LGPL-2.1-or-later (binary links FFmpeg) | Audio fingerprints                                                   |
 
 Debian packages carry their full license texts under `/usr/share/doc/<package>/copyright`

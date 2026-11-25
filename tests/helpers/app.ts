@@ -42,6 +42,7 @@ export async function makeTestApp(
     logger?: Logger;
     now?: () => number;
     envCredentials?: EnvCredentials;
+    tagio?: AppContext["tagio"];
   } = {},
 ): Promise<TestApp> {
   const musicDir = await Deno.makeTempDir({ prefix: "tagmonia-music-" });
@@ -63,6 +64,7 @@ export async function makeTestApp(
     throttle: new LoginThrottle(undefined, opts.now),
     logger,
     creds: new CredentialStore(db, await Vault.open({ configDir }), opts.envCredentials ?? {}),
+    tagio: opts.tagio,
   };
   const app = createApp(ctx);
   return {
