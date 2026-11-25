@@ -36,6 +36,11 @@ export interface ArtistResolution {
   suggestions: ArtistSuggestion[];
   /** When not found: MusicBrainz's "Add artist" form, filled in. */
   createUrl: string | null;
+  /**
+   * When chosen by the user (so not linked to these provider pages on MusicBrainz): the artist's
+   * edit form with the pages filled in, so future releases find the artist by them.
+   */
+  addLinksUrl: string | null;
 }
 
 /** Every artist credited on the release or a track, once, with all its provider pages. */
@@ -57,6 +62,17 @@ export function collectArtists(
   return [...out.values()];
 }
 
+function seedLinks(q: URLSearchParams, links: ArtistLink[]): void {
+  let i = 0;
+  for (const l of links) {
+    for (const type of l.linkTypeIds.length ? l.linkTypeIds : [null]) {
+      q.set(`edit-artist.url.${i}.text`, l.url);
+      if (type !== null) q.set(`edit-artist.url.${i}.link_type_id`, String(type));
+      i++;
+    }
+  }
+}
+
 /** MusicBrainz's "Add artist" form, seeded by GET as Harmony seeds artist edits (`edit-artist.*`). */
 export function artistCreateUrl(
   server: string,
@@ -64,22 +80,40 @@ export function artistCreateUrl(
   releaseUrl: string,
 ): string {
   const q = new URLSearchParams({ "edit-artist.name": artist.name });
-  let i = 0;
-  for (const l of artist.links) {
-    for (const type of l.linkTypeIds.length ? l.linkTypeIds : [null]) {
-      q.set(`edit-artist.url.${i}.text`, l.url);
-      if (type !== null) q.set(`edit-artist.url.${i}.link_type_id`, String(type));
-      i++;
-    }
-  }
+  seedLinks(q, artist.links);
   q.set("edit-artist.edit_note", `Artist of ${releaseUrl}, added while importing that release with Tagmonia.`);
   return `${server}/artist/create?${q}`;
 }
 
+/** An existing artist's edit form with its provider pages filled in, as Harmony seeds them. */
+export function artistAddLinksUrl(
+  server: string,
+  mbid: string,
+  links: ArtistLink[],
+  releaseUrl: string,
+): string | null {
+  if (links.length === 0) return null;
+  const q = new URLSearchParams();
+  seedLinks(q, links);
+  q.set("edit-artist.edit_note", `Matched artist while importing ${releaseUrl} with Tagmonia.`);
+  return `${server}/artist/${mbid}/edit?${q}`;
+}
+
 export async function resolveArtists(
-  mb: Pick<MusicBrainzClient, "artistsForUrl" | "searchArtists">,
+  mb: Pick<MusicBrainzClient, "artistsForUrl" | "searchArtists" | "lookupArtist">,
   artists: { name: string; links: ArtistLink[] }[],
-  opts: { server: string; releaseUrl: string; chosen: Record<string, string>; signal?: AbortSignal },
+  opts: {
+    server: string;
+    releaseUrl: string;
+    chosen: Record<string, string>;
+    /**
+     * The test server's search index misses artists its database has (seen: 0 hits for an artist
+     * musicbrainz.org finds at score 100, same MBID). Its database is a copy of musicbrainz.org's, so
+     * musicbrainz.org's search is asked too, keeping only artists that exist on the server.
+     */
+    fallbackSearch?: Pick<MusicBrainzClient, "searchArtists">;
+    signal?: AbortSignal;
+  },
 ): Promise<ArtistResolution[]> {
   const fresh = { signal: opts.signal, maxAgeMs: 0 };
   const out: ArtistResolution[] = [];
@@ -101,15 +135,21 @@ export async function resolveArtists(
     }
     let suggestions: ArtistSuggestion[] = [];
     if (!mbid) {
-      suggestions = (await mb.searchArtists(a.name, { ...fresh, limit: 5 })).value
-        .filter((h) => (h.score ?? 0) >= 80)
-        .map((h) => ({
-          mbid: h.id,
-          name: h.name,
-          disambiguation: h.disambiguation || null,
-          country: h.country ?? null,
-          score: h.score ?? null,
-        }));
+      const toSuggestion = (h: Awaited<ReturnType<typeof mb.searchArtists>>["value"][number]) => ({
+        mbid: h.id,
+        name: h.name,
+        disambiguation: h.disambiguation || null,
+        country: h.country ?? null,
+        score: h.score ?? null,
+      });
+      const good = (hits: Awaited<ReturnType<typeof mb.searchArtists>>["value"]) =>
+        hits.filter((h) => (h.score ?? 0) >= 80).slice(0, 3);
+      suggestions = good((await mb.searchArtists(a.name, { ...fresh, limit: 5 })).value).map(toSuggestion);
+      if (suggestions.length === 0 && opts.fallbackSearch) {
+        for (const h of good((await opts.fallbackSearch.searchArtists(a.name, { ...fresh, limit: 5 })).value)) {
+          if (await mb.lookupArtist(h.id, fresh)) suggestions.push(toSuggestion(h));
+        }
+      }
     }
     out.push({
       name: a.name,
@@ -118,6 +158,7 @@ export async function resolveArtists(
       via,
       suggestions,
       createUrl: mbid ? null : artistCreateUrl(opts.server, a, opts.releaseUrl),
+      addLinksUrl: via === "chosen" && mbid ? artistAddLinksUrl(opts.server, mbid, a.links, opts.releaseUrl) : null,
     });
   }
   return out;

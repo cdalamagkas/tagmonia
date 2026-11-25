@@ -357,6 +357,8 @@ export interface SubmissionArtistDto {
     score: number | null;
   }[];
   createUrl: string | null;
+  /** For an artist matched by hand: its edit form with the provider pages filled in. */
+  addLinksUrl: string | null;
 }
 
 export type SubmissionState = "checking" | "ready" | "seeded" | "verifying" | "returned" | "failed" | "abandoned";

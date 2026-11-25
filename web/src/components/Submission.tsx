@@ -72,6 +72,14 @@ function Artists(
                   <a href={`${s.server}/artist/${a.mbid}`} target="_blank" rel="noopener noreferrer">
                     {a.via === "chosen" ? "your choice" : "found by its provider page"}
                   </a>
+                  {a.via === "chosen" && a.addLinksUrl && (
+                    <>
+                      {" · "}
+                      <a href={a.addLinksUrl} target="_blank" rel="noopener noreferrer">
+                        add its {a.links.length === 1 ? "provider page" : "provider pages"} on {host(s.server)}
+                      </a>
+                    </>
+                  )}
                   {a.via === "chosen" && (
                     <>
                       {" · "}
@@ -90,14 +98,10 @@ function Artists(
               : (
                 <>
                   <span class="tm-badge tm-badge-warn tm-inline">not found on {host(s.server)}</span>{" "}
-                  {a.createUrl && (
-                    <a href={a.createUrl} target="_blank" rel="noopener noreferrer">
-                      Add this artist on {host(s.server)}
-                    </a>
-                  )}
                   {a.suggestions.length > 0 && (
-                    <div class="tm-muted tm-small-note">
-                      Or is it one of these? {a.suggestions.map((g, i) => (
+                    <div>
+                      Is it {a.suggestions.length === 1 ? "this artist" : "one of these"}?{" "}
+                      {a.suggestions.map((g, i) => (
                         <span key={g.mbid}>
                           {i > 0 && " · "}
                           <a href={`${s.server}/artist/${g.mbid}`} target="_blank" rel="noopener noreferrer">
@@ -107,14 +111,23 @@ function Artists(
                             ` (${[g.disambiguation, g.country].filter(Boolean).join(", ")})`}{" "}
                           <button
                             type="button"
-                            class="tm-linklike tm-small-link"
+                            class="tm-button tm-secondary tm-small"
                             disabled={busy}
                             onClick={() => onChoose(a.name, g.mbid)}
                           >
-                            use
+                            Use this artist
                           </button>
                         </span>
                       ))}
+                    </div>
+                  )}
+                  <PasteArtist server={s.server} busy={busy} onUse={(link) => onChoose(a.name, link)} />
+                  {a.createUrl && (
+                    <div class="tm-small-note">
+                      {a.suggestions.length > 0 ? "None of these? " : ""}
+                      <a href={a.createUrl} target="_blank" rel="noopener noreferrer">
+                        Add this artist on {host(s.server)}
+                      </a>
                     </div>
                   )}
                 </>
@@ -124,8 +137,8 @@ function Artists(
       </ul>
       {missing.length > 0 && (
         <p class="tm-muted">
-          The release editor links an artist only when it already exists on {host(s.server)}. Add{" "}
-          {missing.length === 1 ? "it" : "them"}{" "}
+          The release editor links an artist only when it already exists on{" "}
+          {host(s.server)}. Use the matching artist, or add {missing.length === 1 ? "it" : "them"}{" "}
           with the link above (the form is filled in with the provider pages, so Tagmonia can find{" "}
           {missing.length === 1 ? "it" : "them"} afterwards), then{" "}
           <button type="button" class="tm-linklike" disabled={busy} onClick={onRecheck}>check again</button>. You can
@@ -133,6 +146,29 @@ function Artists(
         </p>
       )}
     </div>
+  );
+}
+
+/** A MusicBrainz artist link (or MBID) for an artist the search did not find. */
+function PasteArtist({ server, busy, onUse }: { server: string; busy: boolean; onUse: (link: string) => void }) {
+  const [link, setLink] = useState("");
+  return (
+    <form
+      class="tm-inline-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (link.trim()) onUse(link.trim());
+      }}
+    >
+      <input
+        type="url"
+        placeholder={`or paste the artist's ${host(server)} link`}
+        aria-label="MusicBrainz artist link"
+        value={link}
+        onInput={(e) => setLink(e.currentTarget.value)}
+      />
+      <button type="submit" class="tm-button tm-secondary tm-small" disabled={busy || !link.trim()}>Use</button>
+    </form>
   );
 }
 

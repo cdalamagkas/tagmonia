@@ -60,6 +60,7 @@ async function withApp(
             : [],
           snapshotId: 0,
         }),
+      lookupArtist: (mbid: string) => Promise.resolve({ id: mbid, name: "x" }),
       searchArtists: () =>
         Promise.resolve({
           value: [
@@ -224,6 +225,10 @@ Deno.test("an artist MusicBrainz lacks: an Add artist link and suggestions; a ch
     await t.queue.drain();
     [artist] = (await latest()).artists;
     assertEquals([artist.mbid, artist.via, artist.createUrl], [SUGGESTED, "chosen", null]);
+    // Matched by hand: offered the artist's edit form with its Deezer page, so future releases find it.
+    const addLinks = new URL(artist.addLinksUrl!);
+    assertEquals(addLinks.pathname, `/artist/${SUGGESTED}/edit`);
+    assertEquals(addLinks.searchParams.get("edit-artist.url.0.text"), "https://www.deezer.com/artist/9");
     const form = (await (await post(`/api/submissions/${id}/open`)).json()) as SubmissionOpenResponse;
     assertEquals(form.fields["artist_credit.names.0.mbid"], SUGGESTED);
 
