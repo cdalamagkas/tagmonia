@@ -449,7 +449,7 @@ function FieldTable({ groups, ...props }: { groups: Group[] } & Omit<RowProps, "
         <thead>
           <tr>
             <th>Field</th>
-            <th>In the files now</th>
+            <th>Current</th>
             <th>Proposed</th>
             <th>Decision</th>
           </tr>
@@ -612,7 +612,7 @@ export function Review(
         )}
         <label class="tm-check">
           <input type="checkbox" checked={showUnchanged} onChange={(e) => setShowUnchanged(e.currentTarget.checked)} />
-          Show fields that are already right
+          Show all fields
         </label>
 
         {p.cover && (
