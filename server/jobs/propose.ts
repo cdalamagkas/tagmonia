@@ -35,6 +35,9 @@ import { missingParentWorks, tagsFromMusicBrainz } from "../proposal/musicbrainz
 import type { Cited } from "../providers/musicbrainz/client.ts";
 import { mbidSchema, type MbRelease, type MbReleaseExtras, type MbWork } from "../providers/musicbrainz/schema.ts";
 import { buildEvidence } from "./identify.ts";
+import { getEvidenceLink } from "../db/repo/evidence.ts";
+import { applyEvidence, youtubeMatch } from "../proposal/evidence.ts";
+import { parseYouTubeUrl, type YouTubeEvidence, type YouTubeLink } from "../providers/youtube.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
 
 export const PROPOSE_JOB = "propose";
@@ -66,9 +69,34 @@ export interface ProposeJobDeps {
   covers?: CoverDeps | null;
   /** Deezer, iTunes and Discogs through Harmony (D47); absent = MusicBrainz only. */
   enrichment?: EnrichmentDeps | null;
+  /** YouTube evidence (§9.5, D55): null while no API key is set. */
+  youtube?: () => Promise<{ evidence(link: YouTubeLink, signal?: AbortSignal): Promise<YouTubeEvidence> } | null>;
   settings: () => ProposalSettings;
   logger: Logger;
   now?: () => number;
+}
+
+/** The release's YouTube link, looked up again for every proposal; null when it has none. */
+export async function evidenceMatch(
+  deps: ProposeJobDeps,
+  candidateId: number,
+  trackCount: number,
+  signal?: AbortSignal,
+): Promise<ProviderMatch | null> {
+  const link = getEvidenceLink(deps.db, candidateId);
+  if (!link) return null;
+  const base = { provider: "youtube" as const, via: "link" as const, url: link.url, release: null };
+  const parsed = parseYouTubeUrl(new URL(link.url));
+  if ("error" in parsed) return { ...base, status: "error", reason: parsed.error };
+  const client = await deps.youtube?.();
+  if (!client) return { ...base, status: "skipped", reason: "no YouTube API key (Settings → Providers)" };
+  try {
+    return youtubeMatch(await client.evidence(parsed, signal), trackCount);
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    // A refused key or a deleted playlist must not stop the proposal: the row says why.
+    return { ...base, status: "error", reason: (e as Error).message.slice(0, 300) };
+  }
 }
 
 const payloadSchema = z.union([
@@ -157,6 +185,9 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       ? await findOnProviders(deps.enrichment, targetOfMb(rel.value), linksOf(extras?.value ?? null))
       : null;
     const merged = mergeProviders(proposed, rel.value, matches ?? []);
+    const youtube = await evidenceMatch(deps, candidateId, targetOfMb(rel.value).trackCount, signal);
+    applyEvidence(merged, youtube);
+    const rows = youtube ? [...(matches ?? []), youtube] : matches;
     const build = buildFieldProposals({
       candidateId,
       files: files.map((f) => ({ id: f.id, tags: f.tags })),
@@ -178,7 +209,7 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
         unmappedFiles: [...build.unmappedFiles, ...found.files.filter((f) => f.readError).map((f) => f.id)],
       },
     }, now());
-    if (matches) saveProviderMatches(deps.db, proposalId, matches, now());
+    if (rows) saveProviderMatches(deps.db, proposalId, rows, now());
     if (deps.covers) {
       const mappedIds = new Set(mapping.pairs.map((p) => p.fileId));
       await proposeCover(
@@ -280,6 +311,9 @@ async function proposeFromProvider(
   }
   const merged = mergeProviderReleases(releaseMap, primaryName);
   const proposed = tagsFromProviders(merged, primary);
+  const youtube = await evidenceMatch(deps, found.release.id, targetOfHarmony(release).trackCount, signal);
+  applyEvidence(proposed, youtube);
+  if (youtube) matches.push(youtube);
 
   const files = found.files.filter((f) => !f.readError);
   const { mapping } = scoreRelease(

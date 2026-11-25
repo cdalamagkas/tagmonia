@@ -35,6 +35,7 @@ const PROVIDERS: Record<string, string> = {
   itunes: "iTunes",
   discogs: "Discogs",
   bandcamp: "Bandcamp",
+  youtube: "YouTube",
 };
 
 /** "Also found on": where the release is on other providers, and why not when it is not (D47). */
@@ -43,6 +44,7 @@ function ProviderMatches({ matches, fromLink }: { matches: ProposalDto["provider
   const label = (m: ProposalDto["providers"][number]) => {
     switch (m.status) {
       case "found":
+        if (m.provider === "youtube") return "your link, as many videos as tracks (evidence)";
         return m.via !== "link"
           ? "found (by barcode)"
           : fromLink

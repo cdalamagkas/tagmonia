@@ -20,6 +20,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   itunes: "iTunes",
   discogs: "Discogs",
   bandcamp: "Bandcamp",
+  youtube: "YouTube",
 };
 
 /** The provider of a "not on MusicBrainz" proposal's page, by its host. */

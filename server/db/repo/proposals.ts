@@ -369,7 +369,7 @@ export function saveProviderMatches(db: Db, proposalId: number, matches: Provide
         m.via,
         m.url,
         m.reason,
-        m.release ? JSON.stringify(m.release) : null,
+        m.release ? JSON.stringify(m.release) : m.evidence ? JSON.stringify(m.evidence) : null,
         now,
       );
     }
@@ -387,5 +387,8 @@ export function providerMatches(db: Db, proposalId: number): ProviderMatch[] {
     reason: string | null;
     data: string | null;
   }[];
-  return rows.map((r) => ({ ...r, release: r.data ? JSON.parse(r.data) : null }));
+  return rows.map((r) => {
+    const data = r.data ? JSON.parse(r.data) : null;
+    return r.provider === "youtube" ? { ...r, release: null, evidence: data ?? undefined } : { ...r, release: data };
+  });
 }

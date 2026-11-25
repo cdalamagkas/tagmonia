@@ -121,6 +121,7 @@ function state(
       job: null,
       readOnly: false,
       locks: [],
+      evidence: null,
       ...over.response,
     },
     history: { batches: [], job: null, ...over.history },

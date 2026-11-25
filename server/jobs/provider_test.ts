@@ -100,6 +100,27 @@ export async function testProvider(id: ProviderId, deps: ProviderTestDeps): Prom
         ? { ok: true, message: "Bandcamp answered" }
         : { ok: false, message: `Bandcamp answered HTTP ${res.status}` };
     }
+    case "youtube": {
+      const { apiKey } = await deps.creds.get("youtube");
+      if (!apiKey) return { ok: false, message: "no API key" };
+      // One unit of the day's quota; the key goes in a header, never in the URL (§9.5).
+      const res = await get(deps, "https://www.googleapis.com/youtube/v3/videos?part=id&id=jNQXAC9IVRw", {
+        "X-Goog-Api-Key": apiKey,
+      });
+      if (res.ok) {
+        await res.body?.cancel();
+        return { ok: true, message: "the key works" };
+      }
+      const text = await res.text();
+      if (/quotaExceeded|dailyLimitExceeded/.test(text)) return { ok: false, message: "the day's quota is used up" };
+      if (/API key not valid|keyInvalid|API_KEY_INVALID/.test(text)) {
+        return { ok: false, message: "the key was refused" };
+      }
+      if (/accessNotConfigured|SERVICE_DISABLED/.test(text)) {
+        return { ok: false, message: "the YouTube Data API v3 is not enabled for this key's project" };
+      }
+      return { ok: false, message: `YouTube answered HTTP ${res.status}` };
+    }
     case "jellyfin": {
       const { url, apiKey, library } = await deps.creds.get("jellyfin");
       if (!url || !apiKey) return { ok: false, message: "no server URL or API key" };
@@ -133,7 +154,7 @@ export function registerProviderTestJob(queue: JobQueue, deps: ProviderTestDeps)
   const now = deps.now ?? Date.now;
   queue.register(PROVIDER_TEST_JOB, async ({ job }) => {
     const p = z.object({
-      provider: z.enum(["musicbrainz", "acoustid", "deezer", "itunes", "discogs", "bandcamp", "jellyfin"]),
+      provider: z.enum(["musicbrainz", "acoustid", "deezer", "itunes", "discogs", "bandcamp", "youtube", "jellyfin"]),
     })
       .safeParse(job.payload);
     if (!p.success) throw new PermanentJobError("invalid provider test payload");

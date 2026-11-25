@@ -7,6 +7,7 @@
  */
 import type { MbRelease } from "./musicbrainz/schema.ts";
 import type { HarmonizedRelease, HarmonyRegistry, HarmonyReleaseOptions } from "./harmony_adapter.ts";
+import type { YouTubeEvidence } from "./youtube.ts";
 
 export type EnrichmentProvider = "deezer" | "itunes" | "discogs";
 /** Providers a proposal can start from (§10.4): the enrichment ones, and Bandcamp when switched on (D16). */
@@ -16,7 +17,8 @@ export const ENRICHMENT_PROVIDERS: readonly EnrichmentProvider[] = ["deezer", "i
 export type MatchStatus = "found" | "different_edition" | "not_found" | "skipped" | "error";
 
 export interface ProviderMatch {
-  provider: SourceProvider;
+  /** YouTube is evidence from a pasted link (§9.5, D55), never a source of a proposal. */
+  provider: SourceProvider | "youtube";
   status: MatchStatus;
   via: "link" | "barcode" | null;
   /** The release's page on the provider. */
@@ -25,6 +27,8 @@ export interface ProviderMatch {
   reason: string | null;
   /** The provider's data, for "found" and "different_edition". */
   release: HarmonizedRelease | null;
+  /** YouTube's facts, in place of `release`. */
+  evidence?: YouTubeEvidence;
 }
 
 export interface EnrichmentDeps {

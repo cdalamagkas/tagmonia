@@ -13,12 +13,14 @@ const MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type LinkKind =
   | { kind: "musicbrainz"; mbid: string }
   | { kind: "provider"; url: string }
+  /** Evidence for the tags, not a source (§9.5, D55). */
+  | { kind: "youtube"; url: string }
   | { kind: "invalid"; message: string };
 
 /**
  * One link box for every source: a MusicBrainz release link (or a bare MBID) chooses that release; any
- * other https link is handed to the server, which accepts Deezer, iTunes, Discogs and Bandcamp album
- * pages and says why it refuses anything else (§14.5).
+ * YouTube link adds evidence; any other https link is handed to the server, which accepts Deezer, iTunes,
+ * Discogs and Bandcamp album pages and says why it refuses anything else (§14.5).
  */
 export function classifyLink(text: string): LinkKind {
   const s = text.trim();
@@ -37,6 +39,7 @@ export function classifyLink(text: string): LinkKind {
     return { kind: "musicbrainz", mbid: m[1].toLowerCase() };
   }
   if (url.protocol !== "https:") return { kind: "invalid", message: "Links must start with https://" };
+  if (/^((www|m|music)\.)?youtube\.com$|^youtu\.be$/.test(url.hostname)) return { kind: "youtube", url: url.href };
   return { kind: "provider", url: url.href };
 }
 

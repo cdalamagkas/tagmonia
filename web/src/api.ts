@@ -8,6 +8,7 @@ import {
   CSRF_HEADER,
   type CurrentCoverDto,
   type DecisionRequest,
+  type EvidenceResponse,
   type HealthResponse,
   type HistoryResponse,
   type IdentificationDto,
@@ -88,6 +89,11 @@ export const api = {
   identification: (id: number) => request<IdentificationDto>("GET", `/api/library/releases/${id}/identification`),
   proposal: (id: number) => request<ProposalResponse>("GET", `/api/library/releases/${id}/proposal`),
   propose: (id: number, body: ProposeRequest) => request<JobDto>("POST", `/api/library/releases/${id}/proposal`, body),
+  // YouTube evidence (§9.5, D55)
+  setEvidence: (releaseId: number, url: string) =>
+    request<EvidenceResponse>("PUT", `/api/library/releases/${releaseId}/evidence`, { url }),
+  removeEvidence: (releaseId: number) =>
+    request<EvidenceResponse>("DELETE", `/api/library/releases/${releaseId}/evidence`),
   // MusicBrainz submission (§12)
   submission: (releaseId: number) =>
     request<{ submission: SubmissionDto | null }>("GET", `/api/library/releases/${releaseId}/submission`),

@@ -433,6 +433,7 @@ export function ReleasePage({ id }: { id: number }) {
             releaseId={id}
             data={data.identification}
             proposal={p}
+            evidence={data.proposal.evidence}
             files={files}
             onReload={reload}
             onChoose={(releaseMbid) => propose({ releaseMbid })}

@@ -18,6 +18,8 @@ export interface PoliteFetchOptions {
   maxDelayMs?: number;
   timeoutMs?: number;
   random?: () => number;
+  /** Extra request headers, e.g. an API key that must stay out of URLs, caches and logs. */
+  headers?: Record<string, string>;
 }
 
 export class ProviderHttpError extends Error {
@@ -77,6 +79,7 @@ export async function politeFetch(
         headers: {
           "User-Agent": opts.userAgent,
           Accept: "application/json",
+          ...opts.headers,
           ...(body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
         },
         body: body ? body.form.toString() : undefined,
