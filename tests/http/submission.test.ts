@@ -64,7 +64,8 @@ async function withApp(
       searchArtists: () =>
         Promise.resolve({
           value: [
-            { id: SUGGESTED, name: "Niklas Blumenthaler", score: 100, disambiguation: "pianist" },
+            // Not the exact name, so offered rather than linked.
+            { id: SUGGESTED, name: "N. Blumenthaler", score: 95, disambiguation: "pianist" },
             { id: "c3", name: "Nicklas Blum", score: 40 },
           ],
           snapshotId: 0,
@@ -231,6 +232,13 @@ Deno.test("an artist MusicBrainz lacks: an Add artist link and suggestions; a ch
     assertEquals(addLinks.searchParams.get("edit-artist.url.0.text"), "https://www.deezer.com/artist/9");
     const form = (await (await post(`/api/submissions/${id}/open`)).json()) as SubmissionOpenResponse;
     assertEquals(form.fields["artist_credit.names.0.mbid"], SUGGESTED);
+
+    // "Not this artist": the choice is replaced by a rejection; the artist is unlinked again.
+    assertEquals((await post(`/api/submissions/${id}/artists`, { name: artist.name, artist: "none" })).status, 202);
+    await t.queue.drain();
+    [artist] = (await latest()).artists;
+    assertEquals([artist.mbid, artist.via], [null, null]);
+    await post(`/api/submissions/${id}/open`);
 
     // Re-checking keeps working after the editor was opened (e.g. once the artist was added there).
     assertEquals((await post(`/api/submissions/${id}/recheck`)).status, 202);
