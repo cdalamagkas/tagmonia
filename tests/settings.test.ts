@@ -66,3 +66,16 @@ Deno.test("covers are embedded at full size by default; the mode changes without
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("the file naming template is checked on save, and the reason is given (D57)", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "tagmonia-settings-" });
+  const s = await loadSettings(dir);
+  await assertRejects(
+    () => updateSettings(dir, s, { files: { template: "{album}/{titel}" } }),
+    SettingsError,
+    'files.template: The template has unknown field "titel"',
+  );
+  assertEquals(s.files.template, DEFAULT_SETTINGS.files.template, "nothing was changed");
+  await updateSettings(dir, s, { files: { template: "{albumartist}/{album}/{tracknumber:02} {title}" } });
+  assertEquals((await loadSettings(dir)).files.template, "{albumartist}/{album}/{tracknumber:02} {title}");
+});

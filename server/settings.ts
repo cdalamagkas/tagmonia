@@ -3,6 +3,7 @@
  * validated against a schema at startup. Missing keys take defaults; an
  * invalid file stops startup rather than silently resetting the user's choices.
  */
+import { DEFAULT_TEMPLATE, validateTemplate } from "../shared/naming.ts";
 import { join } from "node:path";
 import { z } from "zod";
 import type { IdentifyConfig } from "./identify/identify.ts";
@@ -82,6 +83,16 @@ export const settingsSchema = z.object({
      * or embed about 1200 px and save the full-size cover.jpg.
      */
     mode: z.enum(["embed_1200", "embed_full", "folder", "both"]).default("embed_full"),
+  }).prefault({}),
+  files: z.object({
+    /**
+     * Where a written album goes, relative to the library (D57; shared/naming.ts). Inbox albums are moved by it
+     * on Write; renaming albums already in the library is opt-in.
+     */
+    template: z.string().max(500).default(DEFAULT_TEMPLATE).superRefine((t, ctx) => {
+      const error = validateTemplate(t);
+      if (error) ctx.addIssue({ code: "custom", message: error });
+    }),
   }).prefault({}),
   auth: z.object({
     /** Sessions end after this long without a request. */
@@ -167,7 +178,11 @@ export class SettingsError extends Error {
 export async function updateSettings(configDir: string, settings: Settings, patch: unknown): Promise<string[]> {
   const parsed = settingsSchema.safeParse(deepMerge(structuredClone(settings), patch));
   if (!parsed.success) {
-    throw new SettingsError(`invalid settings: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`);
+    // A rule's own message ("The template has unknown field …") says what to fix; the generic ones only where.
+    const what = parsed.error.issues.map((i) =>
+      i.code === "custom" ? `${i.path.join(".")}: ${i.message}` : i.path.join(".")
+    );
+    throw new SettingsError(`invalid settings: ${what.join(", ")}`);
   }
   const changed = changedPaths(settings, parsed.data);
   const path = join(configDir, "settings.json");

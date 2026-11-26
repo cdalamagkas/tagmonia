@@ -7,6 +7,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { CredentialFieldDto, ProviderDto, SettingsDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { when } from "../format.ts";
+import { DEFAULT_TEMPLATE, renderPath, TEMPLATE_FIELDS, validateTemplate } from "../../../shared/naming.ts";
 
 const TIER: Record<ProviderDto["tier"], string> = {
   core: "core",
@@ -240,6 +241,133 @@ function CoverSettings() {
 
 type SubmitServer = SettingsDto["submission"]["server"];
 
+/** Two albums to show the template on: a two-disc classical release and a single-disc one. */
+const EXAMPLES: { tags: Record<string, unknown>; ext: string }[] = [
+  {
+    tags: {
+      album: "Lukas Sternath plays Franz Schubert and Franz Liszt",
+      albumartist: "Lukas Sternath",
+      artist: "Franz Schubert & Franz Liszt",
+      title: "Der Wanderer S 558/11 (after D 489)",
+      date: "2026-10-23",
+      tracknumber: 1,
+      discnumber: 1,
+      totaldiscs: 2,
+      label: ["NO SILENCE"],
+    },
+    ext: "flac",
+  },
+  {
+    tags: {
+      album: "Is This It",
+      albumartist: "The Strokes",
+      artist: "The Strokes",
+      title: "Last Nite",
+      date: "2001-07-30",
+      tracknumber: 7,
+      discnumber: 1,
+      totaldiscs: 1,
+      label: ["Rough Trade"],
+    },
+    ext: "MP3",
+  },
+];
+
+/** Settings → Files (D57): the template that names written albums, with a live example. */
+function FileSettings() {
+  const [saved, setSaved] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+  useEffect(() => {
+    api.settings().then((s) => {
+      setSaved(s.files.template);
+      setText(s.files.template);
+    }).catch((e) => setNote({ text: e.message, error: true }));
+  }, []);
+  const problem = validateTemplate(text);
+  const save = async (value: string) => {
+    try {
+      const r = await api.updateSettings({ files: { template: value } });
+      setSaved(r.settings.files.template);
+      setText(r.settings.files.template);
+      setNote({ text: "Saved." });
+    } catch (e) {
+      setNote({ text: (e as Error).message, error: true });
+    }
+  };
+  return (
+    <section class="tm-card">
+      <h2>Files</h2>
+      <p class="tm-muted tm-section-note">
+        How written albums are named, relative to the library. Moving albums from an inbox and renaming albums already
+        in the library use it; both are still to come (D57), so nothing is renamed yet.
+      </p>
+      {saved !== null && (
+        <form
+          class="tm-template-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!problem) save(text.trim());
+          }}
+        >
+          <label>
+            Template
+            <input
+              type="text"
+              class="tm-mono"
+              value={text}
+              spellcheck={false}
+              onInput={(e) => {
+                setText(e.currentTarget.value);
+                setNote(null);
+              }}
+            />
+          </label>
+          {problem ? <p class="tm-error" role="alert">{problem}</p> : (
+            <div class="tm-template-examples">
+              <span class="tm-muted">For example:</span>
+              {EXAMPLES.map((x) => <code key={x.tags.title as string}>{renderPath(text, x.tags, x.ext)}</code>)}
+            </div>
+          )}
+          <p>
+            <button type="submit" class="tm-button" disabled={!!problem || text.trim() === saved}>Save</button>{" "}
+            <button
+              type="button"
+              class="tm-button tm-secondary"
+              disabled={text === DEFAULT_TEMPLATE}
+              onClick={() => setText(DEFAULT_TEMPLATE)}
+            >
+              Use the default
+            </button>
+          </p>
+          <details class="tm-fold">
+            <summary>How templates work</summary>
+            <ul class="tm-small-note">
+              <li>
+                <code>{"{field}"}</code> is a tag as it will be after writing; <code>/</code> separates folders.
+              </li>
+              <li>
+                <code>{"{date:4}"}</code> keeps the first 4 characters; <code>{"{tracknumber:02}"}</code>{" "}
+                pads with zeros to 2 digits.
+              </li>
+              <li>
+                <code>{"{albumartist|artist}"}</code> takes the first that has a value; <code>{"{disc-}"}</code>{" "}
+                gives "2-" only on releases with more than one disc.
+              </li>
+              <li>
+                Characters that some systems refuse (<code>{'/ \\ : * ? " < > |'}</code>) become{" "}
+                <code>_</code>; a missing value becomes "[unknown …]".
+              </li>
+              <li>Fields: {TEMPLATE_FIELDS.join(", ")}.</li>
+            </ul>
+          </details>
+        </form>
+      )}
+      {note && <p class={note.error ? "tm-error" : "tm-muted"} role={note.error ? "alert" : undefined}>{note.text}</p>}
+    </section>
+  );
+}
+
 /** Settings → MusicBrainz submissions (D52): where releases missing from MusicBrainz are added. */
 function SubmissionSettings() {
   const [server, setServer] = useState<SubmitServer | null>(null);
@@ -331,6 +459,7 @@ export function SettingsPage() {
       {providers?.map((p) => <ProviderCard key={p.id} p={p} onChanged={load} />)}
       <CoverSettings />
       <SubmissionSettings />
+      <FileSettings />
     </main>
   );
 }

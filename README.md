@@ -59,6 +59,9 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   kept, and undo puts back the previous pictures and folder image exactly.
 - **Shows each release's current cover**: a thumbnail in the library list, and on the release page the cover with its
   size, type and where it is (embedded in the files or an image in the album folder).
+- **Naming template** (Settings → Files): how written albums will be named, with a live example; by default
+  `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`. Renaming on write and an inbox folder are being
+  built (D57).
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
 
