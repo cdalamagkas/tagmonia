@@ -1,6 +1,6 @@
 # Inbox and renaming
 
-**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template), PR 2 (renaming on write) and PR 3 (the inbox) done.
+**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template), PR 2 (renaming on write) and PR 3 (the inbox) done; destinations added (D59).
 **Decided by the maintainer:** a separate inbox folder; new arrivals are prepared automatically but written by you; renaming
 happens as part of Write, in the same batch and undone by the same Undo; the default template names album folders like
 the maintainer's own test folder.
@@ -110,6 +110,8 @@ Four PRs, each usable on its own:
    library".
 4. **Watching:** `watchFs`, polling, the quiet period.
 
+Added on request after PR 3: **destinations** (D59), below.
+
 Every PR is tested on temporary directories only; any check against real folders works on a copy, backed up first
 (CLAUDE.md safety rule 1).
 
@@ -159,6 +161,34 @@ Every PR is tested on temporary directories only; any check against real folders
   scanned into Inbox (1), proposed from the Deezer link, and written. They landed in the library as
   `Interstellar Epic Piano Suite (2023)/01 Katherine Cordova - …flac`, with the folder's `notes.txt`, and the inbox was
   left empty. Undo back into the inbox is tested on real audio.
+
+## Destinations (D59)
+
+Libraries are not always Artist / Album. A soundtrack collection may be kept by film or series, with as many artists
+as tracks. Tagmonia does not try to know such schemes; it lets you put an album in any folder.
+
+- **Where:** the Changes tab's Files section. "Choose a folder instead…" (or "Move the album to a folder…" when
+  nothing would move) opens a picker:
+  - browse the library's folders (hidden folders, symlinks and the inbox's reserved name are left out);
+  - "Used before" lists earlier choices, most used first;
+  - "New folder" names one or more new folders; they are made only when the album is written, so nothing changes on
+    disk before Write, and read-only mode can still choose. Characters that Windows or SMB refuse become "_", as in
+    templates, and the picker says so.
+- **What it does:** the album folder and file names still come from the template, but only its last folder level:
+  `Soundtracks/Interstellar` + `{albumartist}/{album} ({date:4})/…` gives
+  `Soundtracks/Interstellar/Interstellar (2014)/…`, with no artist folder. "Use the template's folders" goes back.
+- **When it applies:** inbox albums always move. A library album with a destination moves on Write even when "Rename
+  albums when writing them" is off, since choosing a folder asks for it. The Files checkbox can still leave the move
+  out of one write.
+- **Kept with the album,** not with one proposal, so building the changes again keeps it, and a later write keeps the
+  album there.
+- **Undo** moves the album back and removes the album folder the write made, but never the chosen folder, even empty.
+- **Not covered:** moving an album that has nothing left to write. The Files section is part of the Changes tab, so
+  it needs open changes.
+- **Checked** in headless Chromium with a scratch library (`Soundtracks/Dune`, `Classical`) and inbox: chose
+  `Soundtracks`, made "Interstellar: the film?" (named `Interstellar_ the film_`), wrote the album into
+  `Soundtracks/Interstellar_ the film_/Interstellar Epic Piano Suite (2023)/`, undid it back into the inbox (the
+  chosen folder stayed), and checked the picker at 390 px.
 
 ## Open points (defaults chosen; say if you want otherwise)
 

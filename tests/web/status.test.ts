@@ -123,6 +123,7 @@ function state(
       readOnly: false,
       locks: [],
       evidence: null,
+      destination: null,
       ...over.response,
     },
     history: { batches: [], job: null, ...over.history },

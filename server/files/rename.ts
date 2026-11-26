@@ -5,7 +5,7 @@
  * before it restores their tags (§11.3).
  */
 import { basename, dirname, extname, join } from "node:path";
-import { renderPath } from "../../shared/naming.ts";
+import { renderPath, renderUnder } from "../../shared/naming.ts";
 import type { Db } from "../db/db.ts";
 import { isInboxPath, Roots } from "../fs/safe_path.ts";
 import { AUDIO_EXTENSIONS } from "../scanner/walk.ts";
@@ -48,8 +48,16 @@ const key = (p: string) => p.normalize("NFC").toLowerCase();
  * New paths for an album's files. Two files that would get the same name get " (2)", " (3)" … before the
  * extension. `taken` is every other path in the library (any case): a target there is a conflict, since
  * nothing is ever overwritten. Names compare without case: Windows and SMB shares ignore it.
+ * With a `destination` (D59), the album goes under that folder, named by the template's album part.
  */
-export function planRenames(template: string, files: RenameFile[], taken: Iterable<string>): RenamePlan {
+export function planRenames(
+  template: string,
+  files: RenameFile[],
+  taken: Iterable<string>,
+  destination: string | null = null,
+): RenamePlan {
+  const render = (tags: Record<string, unknown>, ext: string) =>
+    destination === null ? renderPath(template, tags, ext) : renderUnder(destination, template, tags, ext);
   const mine = new Set(files.map((f) => key(f.path)));
   const others = new Set([...taken].map(key).filter((p) => !mine.has(p)));
   const used = new Set<string>();
@@ -58,9 +66,9 @@ export function planRenames(template: string, files: RenameFile[], taken: Iterab
   const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
   for (const f of sorted) {
     const ext = extname(f.path).slice(1);
-    let to = renderPath(template, f.tags as Record<string, unknown>, ext);
+    let to = render(f.tags as Record<string, unknown>, ext);
     for (let n = 2; used.has(key(to)); n++) {
-      to = renderPath(template, f.tags as Record<string, unknown>, ext).replace(/(\.[^./]+)?$/, ` (${n})$1`);
+      to = render(f.tags as Record<string, unknown>, ext).replace(/(\.[^./]+)?$/, ` (${n})$1`);
     }
     used.add(key(to));
     if (others.has(key(to))) conflicts.push(`${to} already exists`);
@@ -139,10 +147,14 @@ export async function moveFile(fromAbs: string, toAbs: string): Promise<void> {
   await Deno.remove(fromAbs);
 }
 
-/** Removes `folder` and its parents while they are empty, never a root itself (library or inbox). */
-export async function removeEmptyFolders(roots: Roots, folder: string): Promise<void> {
+/**
+ * Removes `folder` and its parents while they are empty, never a root itself (library or inbox), nor `keep`
+ * or a folder above it: a destination the user chose stays, even empty (D59).
+ */
+export async function removeEmptyFolders(roots: Roots, folder: string, keep: string | null = null): Promise<void> {
   let rel = folder;
   while (rel && rel !== "." && rel !== "@inbox") {
+    if (keep !== null && (keep === rel || keep.startsWith(`${rel}/`))) return;
     let abs: string;
     try {
       abs = roots.target(rel);
@@ -247,15 +259,38 @@ export async function applyRenames(
     for (const r of done.reverse()) {
       await moveFile(roots.target(r.to), roots.target(r.from)).catch(() => {});
     }
-    for (const r of done) await removeEmptyFolders(roots, folderOf(r.to));
+    const keep = destinationOf(db, candidateId);
+    for (const r of done) await removeEmptyFolders(roots, folderOf(r.to), keep);
     throw new RenameError(`not renamed: ${(e as Error).message}`);
   }
   for (const r of done) ins.run(batchId, r.fileId, r.kind, r.from, r.to);
   const upd = db.prepare("UPDATE library_file SET path = ?, folder = ? WHERE id = ?");
   for (const r of done) if (r.fileId !== null) upd.run(r.to, folderOf(r.to), r.fileId);
   setCandidateFolder(db, candidateId);
-  for (const f of new Set(done.map((r) => folderOf(r.from)))) await removeEmptyFolders(roots, f);
+  const keep = destinationOf(db, candidateId);
+  for (const f of new Set(done.map((r) => folderOf(r.from)))) await removeEmptyFolders(roots, f, keep);
   return done.filter((r) => r.kind === "audio").length;
+}
+
+/** The library folder the user chose for the release (D59), or null: the template decides. */
+export function destinationOf(db: Db, candidateId: number): string | null {
+  const r = db.prepare("SELECT destination FROM candidate WHERE id = ?").get(candidateId) as
+    | { destination: string | null }
+    | undefined;
+  return r?.destination ?? null;
+}
+
+/** Sets or clears the release's destination; false when there is no such release. */
+export function setDestination(db: Db, candidateId: number, folder: string | null): boolean {
+  return db.prepare("UPDATE candidate SET destination = ? WHERE id = ?").run(folder, candidateId).changes > 0;
+}
+
+/** Destinations chosen before, most used first, for quick picks. */
+export function recentDestinations(db: Db, limit = 8): string[] {
+  return (db.prepare(
+    `SELECT destination FROM candidate WHERE destination IS NOT NULL
+     GROUP BY destination ORDER BY count(*) DESC, max(updated_at) DESC, destination LIMIT ?`,
+  ).all(limit) as { destination: string }[]).map((r) => r.destination);
 }
 
 /** The release's folder: the deepest folder holding all its files (the album folder, or a multi-disc parent). */
@@ -315,7 +350,8 @@ export async function undoRenames(
       if (r.kind === "audio") blocked.set(r.from_path, `not moved back: ${why}`);
     }
   }
-  for (const f of new Set(rows.map((r) => folderOf(r.to_path)))) await removeEmptyFolders(roots, f);
+  const keep = candidateId === null ? null : destinationOf(db, candidateId);
+  for (const f of new Set(rows.map((r) => folderOf(r.to_path)))) await removeEmptyFolders(roots, f, keep);
   if (candidateId !== null) setCandidateFolder(db, candidateId);
   return { moved, blocked };
 }

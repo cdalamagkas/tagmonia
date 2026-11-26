@@ -21,6 +21,7 @@ import type {
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { folderLabel, tagValue } from "../format.ts";
+import { FolderPicker } from "./FolderPicker.tsx";
 import { buildChanges, type ChangeItem, coverProposes, locksOf } from "../release/changes.ts";
 import { isOpen } from "../release/status.ts";
 
@@ -451,6 +452,78 @@ function RenameLine(
   );
 }
 
+/**
+ * Where the album goes (D59): the naming template's folders, or a library folder chosen for this album, under
+ * which only the template's album folder and file names apply. The move itself happens on Write.
+ */
+function Destination(
+  { destination, moving, busy, onSet }: {
+    destination: string | null;
+    /** The write renames or moves the files (there is a Files line above). */
+    moving: boolean;
+    busy: boolean;
+    onSet: (folder: string | null) => void;
+  },
+) {
+  const [picking, setPicking] = useState(false);
+  const choose = (folder: string | null) => {
+    setPicking(false);
+    onSet(folder);
+  };
+  return (
+    <div class="tm-destination">
+      {destination === null
+        ? (
+          <p class="tm-muted">
+            {moving ? "The folders come from the naming template. " : "The files stay where they are. "}
+            {!picking && (
+              <button
+                type="button"
+                class="tm-button tm-secondary tm-small"
+                disabled={busy}
+                onClick={() => setPicking(true)}
+              >
+                {moving ? "Choose a folder instead…" : "Move the album to a folder…"}
+              </button>
+            )}
+          </p>
+        )
+        : (
+          <p>
+            Chosen for this album:{" "}
+            <span class="tm-path">
+              {destination ? `Library / ${destination.split("/").join(" / ")}` : "the top of the library"}
+            </span>{" "}
+            {!picking && (
+              <>
+                <button
+                  type="button"
+                  class="tm-linklike tm-small-link"
+                  disabled={busy}
+                  onClick={() => setPicking(true)}
+                >
+                  Change folder
+                </button>
+                {" · "}
+                <button type="button" class="tm-linklike tm-small-link" disabled={busy} onClick={() => choose(null)}>
+                  Use the template's folders
+                </button>
+              </>
+            )}
+          </p>
+        )}
+      {picking && (
+        <FolderPicker
+          initial={destination}
+          busy={busy}
+          onChoose={choose}
+          onCancel={() => setPicking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 /** The current value: one, or "differs across files" with each value on hover. */
 function Current({ item }: { item: ChangeItem }) {
   if (item.current.length > 1) {
@@ -657,14 +730,24 @@ export function Review(
           </div>
         )}
 
-        {p.rename && (
+        {(p.rename || open) && (
           <div class="tm-change-section">
             <h3>Files</h3>
-            <RenameLine
-              rename={p.rename}
-              busy={a.busy}
-              onInclude={(include) => act(() => api.renameDecision(p.id, include))}
-            />
+            {p.rename && (
+              <RenameLine
+                rename={p.rename}
+                busy={a.busy}
+                onInclude={(include) => act(() => api.renameDecision(p.id, include))}
+              />
+            )}
+            {open && (
+              <Destination
+                destination={data.destination}
+                moving={!!p.rename?.include}
+                busy={a.busy}
+                onSet={(folder) => act(() => api.setDestination(releaseId, folder))}
+              />
+            )}
           </div>
         )}
 

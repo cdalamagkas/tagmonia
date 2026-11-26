@@ -103,6 +103,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
           : null,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
       naming: () => namingOf(ctx.settings),
+      musicDir: config.musicDir,
       inbox: !!config.inboxDir,
       covers,
       sources: ctx.harmony

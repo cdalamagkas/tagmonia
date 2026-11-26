@@ -28,8 +28,11 @@ import { enqueuePropose, enqueueProviderPropose, proposeDedupeKey } from "../../
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
 import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
-import type { ProposalDto, ProposalResponse, RenameProposalDto } from "../../../shared/types.ts";
+import type { FolderListDto, ProposalDto, ProposalResponse, RenameProposalDto } from "../../../shared/types.ts";
 import { inInbox, renamePlanFor } from "../../write/apply.ts";
+import { destinationOf, recentDestinations, setDestination } from "../../files/rename.ts";
+import { validateDestination } from "../../../shared/naming.ts";
+import { INBOX, PathEscapeError, Roots } from "../../fs/safe_path.ts";
 import type { CandidateStatus } from "../../../shared/types.ts";
 import type { Job, JobQueue } from "../../jobs/queue.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -98,6 +101,26 @@ function checkProviderUrl(sources: LibraryRouteDeps["sources"], raw: string): { 
 }
 
 const evidenceBody = z.object({ url: z.string().max(500) }).strict();
+const destinationBody = z.object({ folder: z.string().max(4000).nullable() }).strict();
+const folderQuery = z.object({ path: z.string().max(4000).default("") });
+/** Enough for any real folder; a list longer than this needs typing, not scrolling. */
+export const MAX_LISTED_FOLDERS = 1000;
+
+/**
+ * A library folder's subfolders (D59). Hidden folders, symlinks and the inbox's reserved name are left out:
+ * a destination is a plain folder inside the library.
+ */
+export async function listFolders(musicDir: string, path: string): Promise<{ folders: string[]; truncated: boolean }> {
+  const roots = await Roots.open(musicDir);
+  const abs = await roots.resolve(path);
+  const folders: string[] = [];
+  for await (const e of Deno.readDir(abs)) {
+    if (!e.isDirectory || e.isSymlink || e.name.startsWith(".") || (path === "" && e.name === INBOX)) continue;
+    folders.push(e.name.normalize("NFC"));
+  }
+  folders.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+  return { folders: folders.slice(0, MAX_LISTED_FOLDERS), truncated: folders.length > MAX_LISTED_FOLDERS };
+}
 
 /** The new names a write of an open proposal would give (D57); null when renaming is off or nothing changes. */
 function renameDto(
@@ -190,6 +213,8 @@ export interface LibraryRouteDeps {
   inbox?: boolean;
   /** Renaming on write (D57): the template in use and whether library albums are renamed; read per request. */
   naming?: () => { template: string; renameLibrary: boolean };
+  /** The library folder, for choosing a destination (D59); without it no folders are listed. */
+  musicDir?: string;
   /** Provider links a proposal can start from (§10.4, D51); null = MusicBrainz releases only. */
   sources?: {
     providerFor(url: URL): string | undefined;
@@ -380,6 +405,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         readOnly: deps.readOnly,
         locks: locksFor(db, id),
         evidence: evidenceOf(id),
+        destination: destinationOf(db, id),
       };
       return c.json(body);
     })
@@ -434,6 +460,36 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       if (!removeEvidenceLink(db, id)) return c.json({ error: "not found" }, 404);
       const job = rebuild(id);
       return c.json({ evidence: null, job: job ? toJobDto(job) : null });
+    })
+    // Destinations (D59): only reading folders and saving a choice; the move happens on Write.
+    .get("/folders", async (c) => {
+      const q = folderQuery.safeParse({ path: c.req.query("path") ?? "" });
+      if (!q.success || (q.data.path !== "" && validateDestination(q.data.path))) {
+        return c.json({ error: "not a library folder" }, 400);
+      }
+      if (!deps.musicDir) return c.json({ error: "not available" }, 404);
+      try {
+        const { folders, truncated } = await listFolders(deps.musicDir, q.data.path);
+        const body: FolderListDto = { path: q.data.path, folders, truncated, recent: recentDestinations(db) };
+        return c.json(body);
+      } catch (e) {
+        if (
+          e instanceof Deno.errors.NotFound || e instanceof Deno.errors.NotADirectory || e instanceof PathEscapeError
+        ) {
+          return c.json({ error: "no such folder in the library" }, 404);
+        }
+        throw e;
+      }
+    })
+    .put("/releases/:id{[0-9]+}/destination", async (c) => {
+      const id = Number(c.req.param("id"));
+      const body = destinationBody.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: "Give folder: a library folder, or null" }, 400);
+      const folder = body.data.folder === null ? null : body.data.folder.normalize("NFC").replace(/\/+$/, "");
+      const why = folder === null ? null : validateDestination(folder);
+      if (why) return c.json({ error: why }, 400);
+      if (!setDestination(db, id, folder)) return c.json({ error: "not found" }, 404);
+      return c.body(null, 204);
     })
     // Scanning only reads the library, so it is allowed in read-only mode.
     .post("/scan", (c) => c.json(toJobDto(enqueueScan(queue)) as ScanJobDto, 202));
