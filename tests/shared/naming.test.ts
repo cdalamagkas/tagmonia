@@ -2,10 +2,13 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   activeTemplate,
+  albumPart,
   DEFAULT_TEMPLATE,
   PRESET_TEMPLATES,
   renderPath,
+  renderUnder,
   sanitizeName,
+  validateDestination,
   validateNamingSettings,
   validateTemplate,
 } from "../../shared/naming.ts";
@@ -106,4 +109,25 @@ Deno.test("built-in templates are valid; saved ones need a unique name, a valid 
   ]);
   // A deleted template that is still chosen falls back to the default when used.
   assertEquals(activeTemplate({ active: "custom-gone", renameLibrary: false, templates: [] }).id, "album-year");
+});
+
+Deno.test("destinations (D59): any safe library folder; under one, only the template's album part applies", () => {
+  for (const ok of ["", "Soundtracks", "Soundtracks/Interstellar", "Séries/Dark (2017)"]) {
+    assertEquals(validateDestination(ok), null, ok);
+  }
+  for (
+    const bad of ["/abs", "C:/x", "a\\b", "a//b", "a/", "../x", "a/./b", "a/b:c", "a/ trailing ", ".hidden", "@inbox/x"]
+  ) {
+    assertEquals(typeof validateDestination(bad), "string", bad);
+  }
+  assertEquals(validateDestination(Array(21).fill("a").join("/")), "At most 20 folders deep");
+  assertEquals(albumPart("{albumartist}/{album} ({date:4})/{title}"), "{album} ({date:4})/{title}");
+  assertEquals(albumPart("{title}"), "{title}");
+  const tags = { albumartist: "Hans Zimmer", album: "Interstellar", date: "2014-11-17", title: "Cornfield Chase" };
+  assertEquals(
+    renderUnder("Films/Interstellar", "{albumartist}/{album} ({date:4})/{title}", tags, "FLAC"),
+    "Films/Interstellar/Interstellar (2014)/Cornfield Chase.flac",
+    "no artist folder under a film's folder",
+  );
+  assertEquals(renderUnder("", "{albumartist}/{album}/{title}", tags, "mp3"), "Interstellar/Cornfield Chase.mp3");
 });

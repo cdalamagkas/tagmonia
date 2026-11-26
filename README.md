@@ -68,6 +68,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 - **An inbox for new music** (`TAGMONIA_INBOX_DIR`): albums dropped there are scanned with the library, identified
   and prepared; when you write one, it moves into the library under the template's name. The library page has an
   Inbox filter.
+- **Choose where an album goes** (Changes tab → Files): pick any library folder, or name a new one (made when you
+  write), for example a film's folder for its soundtrack. The album folder and file names still follow the template.
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
 

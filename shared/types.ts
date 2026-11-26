@@ -431,6 +431,24 @@ export interface ProposalResponse {
   locks: LockDto[];
   /** The release's YouTube link, if the user gave one (§9.5, D55). */
   evidence: EvidenceLinkDto | null;
+  /** The library folder chosen for the release (D59); "" is the top; null: the naming template decides. */
+  destination: string | null;
+}
+
+/** GET /api/library/folders?path=: the library's subfolders of one folder, for choosing a destination (D59). */
+export interface FolderListDto {
+  /** The folder listed, relative to the library ("" is the top). */
+  path: string;
+  folders: string[];
+  /** More subfolders than the list holds. */
+  truncated: boolean;
+  /** Destinations chosen before, most used first. */
+  recent: string[];
+}
+
+/** PUT /api/library/releases/:id/destination; null goes back to the naming template. */
+export interface DestinationRequest {
+  folder: string | null;
 }
 
 export interface EvidenceLinkDto {

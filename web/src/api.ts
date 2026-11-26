@@ -8,7 +8,9 @@ import {
   CSRF_HEADER,
   type CurrentCoverDto,
   type DecisionRequest,
+  type DestinationRequest,
   type EvidenceResponse,
+  type FolderListDto,
   type HealthResponse,
   type HistoryResponse,
   type IdentificationDto,
@@ -121,6 +123,10 @@ export const api = {
   /** Renaming on write (D57): include it in this proposal's write, or leave the names alone. */
   renameDecision: (proposalId: number, include: boolean) =>
     request<void>("POST", `/api/proposals/${proposalId}/rename`, { include }),
+  /** Destinations (D59): the library's folders, and the folder chosen for a release (null: the template's). */
+  folders: (path: string) => request<FolderListDto>("GET", `/api/library/folders?${new URLSearchParams({ path })}`),
+  setDestination: (releaseId: number, folder: string | null) =>
+    request<void>("PUT", `/api/library/releases/${releaseId}/destination`, { folder } satisfies DestinationRequest),
   coverDecision: (proposalId: number, body: CoverDecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/cover/decision`, body),
   write: (proposalId: number) => request<JobDto>("POST", `/api/proposals/${proposalId}/write`),

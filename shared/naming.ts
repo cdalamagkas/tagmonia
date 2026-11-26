@@ -260,3 +260,41 @@ export function renderPath(template: string, tags: TemplateTags, extension: stri
     return truncateBytes(c, MAX_NAME_BYTES - new TextEncoder().encode(suffix).length) + suffix;
   }).join("/");
 }
+
+/**
+ * Destinations (D59): a library folder an album goes into, chosen per album. Under one, only the template's
+ * album folder and file name apply ("Album (Year)/01 …"), not the folders above them, so a soundtrack can
+ * sit under its film whatever the template says about artists.
+ */
+export const MAX_DESTINATION_DEPTH = 20;
+
+/** Why a destination cannot be used, or null. "" is the top of the library. */
+export function validateDestination(folder: string): string | null {
+  if (folder === "") return null;
+  if (folder.startsWith("/") || /^[A-Za-z]:/.test(folder) || folder.includes("\\")) {
+    return "Give a folder inside the library, with / between folders";
+  }
+  const parts = folder.split("/");
+  if (parts.length > MAX_DESTINATION_DEPTH) return `At most ${MAX_DESTINATION_DEPTH} folders deep`;
+  for (const p of parts) {
+    if (!p) return "A folder name is empty (two slashes, or a slash at the end)";
+    if (p === "." || p === "..") return '"." and ".." are not allowed';
+    if (sanitizeName(p) !== p) {
+      return `"${p}" is not a safe folder name (no / \\ : * ? " < > |, leading dots or trailing spaces)`;
+    }
+    if (new TextEncoder().encode(p).length > MAX_NAME_BYTES) return `"${p.slice(0, 40)}…" is too long`;
+  }
+  if (parts[0].startsWith("@")) return "Folders starting with @ are reserved";
+  return null;
+}
+
+/** The part of a template a destination keeps: its last folder and the file name (or the file name alone). */
+export function albumPart(template: string): string {
+  return template.trim().split("/").slice(-2).join("/");
+}
+
+/** A file's path under a destination: the album part of the template, below the chosen folder. */
+export function renderUnder(destination: string, template: string, tags: TemplateTags, extension: string): string {
+  const rel = renderPath(albumPart(template), tags, extension);
+  return destination ? `${destination}/${rel}` : rel;
+}

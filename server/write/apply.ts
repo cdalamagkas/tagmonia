@@ -20,7 +20,7 @@ import { folderCoverPath, readFolderCover, removeFolderCover, writeFolderCover }
 import { coverWrites, getCover } from "../db/repo/covers.ts";
 import type { Picture } from "../tagio/mod.ts";
 import { backupPictures, type PictureRef, pictureShas, readBlob, restorePictures, storeBlob } from "./blobs.ts";
-import { applyRenames, planRenames, type RenamePlan, undoRenames } from "../files/rename.ts";
+import { applyRenames, destinationOf, planRenames, type RenamePlan, undoRenames } from "../files/rename.ts";
 
 export interface WriteDeps {
   db: Db;
@@ -40,7 +40,7 @@ export interface WriteDeps {
 /**
  * The renaming a write of this proposal makes (D57), from the files' tags after the write: the tags it
  * writes applied to what each file has. Only the proposal's own files move; every other path in the
- * library is a name they cannot take. Null when renaming is off.
+ * library is a name they cannot take. Null when renaming is off and the album has no destination (D59).
  */
 export function renamePlanFor(
   db: Db,
@@ -50,7 +50,9 @@ export function renamePlanFor(
 ): RenamePlan | null {
   // An inbox album always moves into the library: that is what the inbox is for (D57).
   const inbox = inInbox(db, proposal.candidateId);
-  if (!naming?.renameLibrary && !inbox) return null;
+  // A destination is a request to move the album there, whatever the library setting says.
+  const destination = destinationOf(db, proposal.candidateId);
+  if (!naming?.renameLibrary && !inbox && destination === null) return null;
   const template = naming?.template ?? DEFAULT_TEMPLATE;
   const plans = plansFromProposal(proposal.fields.map(reviewed));
   const ids = [...new Set(proposal.fields.map((f) => f.fileId))];
@@ -66,7 +68,7 @@ export function renamePlanFor(
     tags: written ? JSON.parse(r.current_tags) : tagsAfter(JSON.parse(r.current_tags), plans.get(r.id)?.change),
   }));
   const taken = (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
-  return planRenames(template, files, taken);
+  return planRenames(template, files, taken, destination);
 }
 
 /** The release is in the inbox (its folder is under `@inbox/`, D58). */
@@ -396,7 +398,8 @@ export async function writeProposal(deps: WriteDeps, proposalId: number, signal?
   let renameError: string | null = null;
   const naming = deps.naming?.();
   const inbox = inInbox(db, proposal.candidateId);
-  if (((naming?.renameLibrary && !proposal.renameSkip) || inbox) && !signal?.aborted) {
+  const moves = (naming?.renameLibrary || destinationOf(db, proposal.candidateId) !== null) && !proposal.renameSkip;
+  if ((moves || inbox) && !signal?.aborted) {
     if (failed > 0 || skipped > 0) {
       renameError = inbox
         ? "not moved to the library: some files were not written"

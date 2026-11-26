@@ -5,7 +5,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { join } from "node:path";
 import { latestProposal, saveProposal, setProposalState, setRenameSkip } from "../../server/db/repo/proposals.ts";
-import { planRenames, tagsAfter } from "../../server/files/rename.ts";
+import { planRenames, setDestination, tagsAfter } from "../../server/files/rename.ts";
 import { nullLogger } from "../../server/log.ts";
 import { buildFieldProposals } from "../../server/proposal/build.ts";
 import { scanLibrary } from "../../server/scanner/scan.ts";
@@ -23,7 +23,7 @@ globalThis.addEventListener("unload", () => void tagio.close?.());
 const TEMPLATE = "{album}/{title}";
 
 /** Three tracks in "Old Folder" with a cover and a booklet; optionally another album's track in the same folder. */
-async function setup(opts: { neighbour?: boolean; renameLibrary?: boolean } = {}) {
+async function setup(opts: { neighbour?: boolean; renameLibrary?: boolean; template?: string } = {}) {
   const root = await Deno.makeTempDir({ prefix: "tagmonia-rename-" });
   await Deno.mkdir(join(root, "Old Folder"));
   const names = ["01.flac", "02.mp3", "03.m4a"];
@@ -55,7 +55,7 @@ async function setup(opts: { neighbour?: boolean; renameLibrary?: boolean } = {}
     path: f.path,
     tags: JSON.parse(f.current_tags) as CanonicalTags,
   }));
-  const naming = { template: TEMPLATE, renameLibrary: opts.renameLibrary ?? true };
+  const naming = { template: opts.template ?? TEMPLATE, renameLibrary: opts.renameLibrary ?? true };
   return {
     root,
     db,
@@ -269,4 +269,44 @@ Deno.test("an inbox album: scanned under @inbox, written into the library, and u
     await Deno.remove(lib, { recursive: true });
     await Deno.remove(inbox, { recursive: true });
   }
+});
+
+Deno.test("the plan under a destination (D59): the chosen folder, then the template's album part", () => {
+  const p = planRenames(
+    "{artist}/{album}/{title}",
+    [{ id: 1, path: "x/1.flac", tags: { artist: "A", album: "B", title: "T" } }],
+    [],
+    "Films/F",
+  );
+  assertEquals(p.moves.map((m) => m.to), ["Films/F/B/T.flac"]);
+  assertEquals(p.folders, [{ from: "x", to: "Films/F/B" }]);
+});
+
+Deno.test("a destination moves the album there on write, even with renaming off; undo keeps the chosen folder", async () => {
+  await using s = await setup({ renameLibrary: false, template: "{artist}/{album}/{title}" });
+  // A folder the user made by hand, still empty.
+  await Deno.mkdir(join(s.root, "Films", "Interstellar"), { recursive: true });
+  setDestination(s.db, s.candidateId, "Films/Interstellar");
+  const w = await writeProposal(s.deps, propose(s));
+  assertEquals([w.status, w.written], ["done", 3]);
+  const placed = NEW.map((p) => `Films/Interstellar/${p}`);
+  for (const p of [...placed, "Films/Interstellar/New Album/cover.jpg"]) assert(await s.exists(p), p);
+  assertEquals(
+    (s.db.prepare("SELECT folder FROM candidate").get() as { folder: string }).folder,
+    "Films/Interstellar/New Album",
+  );
+  const u = await undoBatch(s.deps, w.batchId);
+  assertEquals(u.status, "done");
+  for (const p of OLD) assert(await s.exists(p), p);
+  assert(!(await s.exists("Films/Interstellar/New Album")), "the album folder the write made is gone");
+  assert(await s.exists("Films/Interstellar"), "the chosen folder stays, though empty");
+});
+
+Deno.test("a destination that does not exist yet is made on write", async () => {
+  await using s = await setup({ renameLibrary: false });
+  setDestination(s.db, s.candidateId, "Series/Dark (2017)");
+  const w = await writeProposal(s.deps, propose(s));
+  assertEquals(w.status, "done");
+  for (const p of NEW) assert(await s.exists(`Series/Dark (2017)/${p}`), p);
+  assert(!(await s.exists("Old Folder")));
 });
