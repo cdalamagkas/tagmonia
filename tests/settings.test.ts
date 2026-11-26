@@ -66,3 +66,30 @@ Deno.test("covers are embedded at full size by default; the mode changes without
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("naming templates: built-in ones to choose from, saved ones checked on save with the reason (D57)", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "tagmonia-settings-" });
+  const s = await loadSettings(dir);
+  assertEquals(s.files, { active: "album-year", templates: [] });
+  await assertRejects(
+    () =>
+      updateSettings(dir, s, {
+        files: { templates: [{ id: "custom-a", name: "Mine", template: "{album}/{titel}" }] },
+      }),
+    SettingsError,
+    'files.templates.0.template: "Mine": The template has unknown field "titel"',
+  );
+  await assertRejects(
+    () => updateSettings(dir, s, { files: { active: "custom-gone" } }),
+    SettingsError,
+    "does not exist",
+  );
+  assertEquals(s.files, DEFAULT_SETTINGS.files, "nothing was changed");
+
+  const mine = { id: "custom-a", name: "Mine", template: "{albumartist}/{album}/{tracknumber:02} {title}" };
+  await updateSettings(dir, s, { files: { active: "custom-a", templates: [mine] } });
+  assertEquals((await loadSettings(dir)).files, { active: "custom-a", templates: [mine] });
+  // Choosing a built-in one keeps the saved ones.
+  await updateSettings(dir, s, { files: { active: "picard" } });
+  assertEquals((await loadSettings(dir)).files, { active: "picard", templates: [mine] });
+});

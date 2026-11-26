@@ -962,3 +962,44 @@ table.tm-review {
 .tm-review tr.tm-change-off th {
   opacity: 0.6;
 }
+
+/* Settings → Files (D57) */
+.tm-template-form input {
+  width: 100%;
+}
+.tm-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.tm-template-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.tm-template-examples code {
+  overflow-wrap: anywhere;
+}
+.tm-template-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--tm-rule);
+}
+.tm-template-item code,
+.tm-template-item .tm-small-note {
+  overflow-wrap: anywhere;
+}
+.tm-template-item > label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.tm-built-in {
+  margin-left: 0.35em;
+}
+.tm-template-actions {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
