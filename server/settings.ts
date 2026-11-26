@@ -17,6 +17,11 @@ export const settingsSchema = z.object({
   scanner: z.object({
     /** Globs relative to the music root, e.g. "Podcasts/**" or "**\/_Incoming". */
     ignore: z.array(z.string().min(1)).default([]),
+    /**
+     * The inbox (D60) is also looked at this often, for file systems that send no change events (SMB/NFS
+     * mounts, WSL's /mnt/c); 0 = change events only.
+     */
+    inboxPollMinutes: z.number().int().min(0).max(1440).default(5),
   }).prefault({}),
   providers: z.object({
     musicbrainz: z.object({

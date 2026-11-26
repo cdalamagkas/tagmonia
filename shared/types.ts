@@ -101,8 +101,11 @@ export interface LibrarySummary {
   scan: ScanJobDto | null;
   /** The music server told to rescan after writes (§13); null when none is configured. */
   musicServer: MusicServerStatus | null;
-  /** The inbox (D57): null when TAGMONIA_INBOX_DIR is not set; else how many albums wait in it. */
-  inbox: { releases: number } | null;
+  /**
+   * The inbox (D57): null when TAGMONIA_INBOX_DIR is not set; else how many albums wait in it, and its last scan
+   * on its own (when the watcher saw new files settle, D60).
+   */
+  inbox: { releases: number; lastScan: ScanJobDto | null } | null;
 }
 
 export interface MusicServerStatus {

@@ -5,6 +5,12 @@ export function scanActive(s: LibrarySummary | null): boolean {
   return !!s?.scan && (s.scan.state === "queued" || s.scan.state === "running");
 }
 
+/** The watcher's inbox scan (D60) is queued or running. */
+export function inboxScanActive(s: LibrarySummary | null): boolean {
+  const j = s?.inbox?.lastScan;
+  return !!j && (j.state === "queued" || j.state === "running");
+}
+
 export function ScanStatus({ summary }: { summary: LibrarySummary }) {
   const scan = summary.scan;
   if (!scan) return <span class="tm-muted">Never scanned</span>;

@@ -3,7 +3,8 @@
 **Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phases 0–5 and the release page restructure are done.** Tagmonia identifies releases against
+> **Status: Phases 0–5 and the release page restructure are done; from Phase 6, YouTube evidence, file naming and
+> renaming, and a watched inbox.** Tagmonia identifies releases against
 > MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art, writes
 > everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can be tagged from
 > Deezer, iTunes, Discogs or Bandcamp and added to MusicBrainz through its release editor.
@@ -66,8 +67,9 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   first, the album's cover and booklet files move with it, nothing is ever overwritten, and Undo puts the old names
   back.
 - **An inbox for new music** (`TAGMONIA_INBOX_DIR`): albums dropped there are scanned with the library, identified
-  and prepared; when you write one, it moves into the library under the template's name. The library page has an
-  Inbox filter.
+  and prepared; when you write one, it moves into the library under the template's name. The inbox is watched:
+  albums copied there appear by themselves once the copy has finished (also checked every 5 minutes, for network
+  shares). The library page has an Inbox filter.
 - **Choose where an album goes** (Changes tab → Files): pick any library folder, or name a new one (made when you
   write), for example a film's folder for its soundtrack. The album folder and file names still follow the template.
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per

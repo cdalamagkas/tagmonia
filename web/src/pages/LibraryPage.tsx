@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { LibrarySummary, ReleaseSummary } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { folderLabel } from "../format.ts";
-import { MusicServerStatus, scanActive, ScanStatus } from "../components/ScanStatus.tsx";
+import { inboxScanActive, MusicServerStatus, scanActive, ScanStatus } from "../components/ScanStatus.tsx";
 import { onLinkClick } from "../router.ts";
 import { StatusBadge } from "../components/Identification.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
@@ -48,13 +48,18 @@ export function LibraryPage() {
     return () => clearTimeout(t);
   }, [q, where]);
 
-  // Poll while a scan runs; reload the list when it finishes.
+  // Poll while a scan runs; reload the list when it finishes. With an inbox, look now and then too: the
+  // watcher scans new albums by itself (D60), and the list should show them without a reload.
+  const lastInboxScan = useRef<number | null | undefined>(undefined);
   useEffect(() => {
-    const active = scanActive(summary);
-    if (wasActive.current && !active) load(q, 0);
+    const active = scanActive(summary) || inboxScanActive(summary);
+    const inboxScan = summary?.inbox?.lastScan?.finishedAt ?? null;
+    const inboxChanged = lastInboxScan.current !== undefined && inboxScan !== lastInboxScan.current;
+    if (summary) lastInboxScan.current = inboxScan;
+    if ((wasActive.current && !active) || inboxChanged) load(q, 0, where);
     wasActive.current = active;
-    if (!active) return;
-    const t = setTimeout(refreshSummary, 1000);
+    if (!active && !summary?.inbox) return;
+    const t = setTimeout(refreshSummary, active ? 1000 : 30_000);
     return () => clearTimeout(t);
   }, [summary]);
 
@@ -94,6 +99,13 @@ export function LibraryPage() {
             </p>
           )}
           {summary && <ScanStatus summary={summary} />}
+          {summary?.inbox && (
+            <p class="tm-muted tm-small-note">
+              {inboxScanActive(summary)
+                ? "New music arrived in the inbox: scanning it…"
+                : "The inbox is watched: new albums appear here by themselves once they finish copying."}
+            </p>
+          )}
           {summary && <MusicServerStatus summary={summary} />}
         </div>
         <div class="tm-actions">

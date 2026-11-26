@@ -1,6 +1,6 @@
 # Inbox and renaming
 
-**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template), PR 2 (renaming on write) and PR 3 (the inbox) done; destinations added (D59).
+**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Done: PR 1 (the template), PR 2 (renaming on write), PR 3 (the inbox), destinations (D59) and PR 4 (watching, D60).
 **Decided by the maintainer:** a separate inbox folder; new arrivals are prepared automatically but written by you; renaming
 happens as part of Write, in the same batch and undone by the same Undo; the default template names album folders like
 the maintainer's own test folder.
@@ -42,7 +42,8 @@ albums, prepares their tags, and on Write moves them into the library under a co
 - `Deno.watchFs` on the inbox, plus polling every 5 minutes (setting). Polling is what works on SMB/NFS mounts and on
   WSL's `/mnt/c`, where change events do not arrive.
 - **Quiet period:** an album folder is scanned only once nothing in it changed for 30 seconds and its file sizes are
-  the same on two looks, so a copy in progress is never picked up.
+  the same on two looks, so a copy in progress is never picked up. As built (D60), the whole inbox must be quiet,
+  since the scan reads all of it.
 - The scan covers only the inbox; then identification and the automatic proposal run as for the library. Nothing is
   written by itself.
 
@@ -161,6 +162,29 @@ Every PR is tested on temporary directories only; any check against real folders
   scanned into Inbox (1), proposed from the Deezer link, and written. They landed in the library as
   `Interstellar Epic Piano Suite (2023)/01 Katherine Cordova - …flac`, with the folder's `notes.txt`, and the inbox was
   left empty. Undo back into the inbox is tested on real audio.
+
+## PR 4 as built
+
+- `server/inbox/watch.ts`: change events (reads ignored) and the poll only start a **look**:
+  - list every file with its size and time;
+  - wait 30 seconds;
+  - list again.
+
+  If anything changed, it waits again. When the list holds still and differs from what was last scanned, a
+  `scan_inbox` job scans only the inbox; new albums then go on to identification and their proposals as usual. Nothing
+  is written by itself.
+- **Startup** looks once, so albums that arrived while Tagmonia was down are found.
+- **Polling:** Settings → Files, "checked every 5 minutes" (`scanner.inboxPollMinutes`; 0 = change events only). It
+  is what finds new files on SMB/NFS shares and WSL's `/mnt/c`. If change events cannot be set up, a warning is logged
+  and polling carries on.
+- **Library page:** "The inbox is watched…"; while an inbox scan runs, "New music arrived in the inbox: scanning it…".
+  With an inbox, the page checks every 30 seconds and reloads the list after an inbox scan. The inbox's scans are
+  shown apart from the library's, so "Scan library" still shows the last full scan.
+- **Checked** on a scratch instance with an empty inbox and the library page open:
+  - an album copied in slowly (8 KB every 0.7 s, 15 s in all);
+  - the inbox was scanned once, 46 s after the copy ended, with every file at its full size;
+  - the album appeared under Inbox (1) without a reload or a Scan click;
+  - the poll interval saved from Settings.
 
 ## Destinations (D59)
 

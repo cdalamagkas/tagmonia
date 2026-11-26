@@ -15,7 +15,7 @@ import type {
 } from "../../../shared/types.ts";
 import type { Db } from "../../db/db.ts";
 import { getRelease, librarySummary, listReleases, type StoredFile } from "../../db/repo/library.ts";
-import { enqueueScan, SCAN_JOB } from "../../jobs/scan.ts";
+import { enqueueScan, INBOX_SCAN_JOB, SCAN_JOB } from "../../jobs/scan.ts";
 import { REFRESH_JOB } from "../../jobs/refresh.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
@@ -268,12 +268,15 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
   return new Hono<AuthEnv>()
     .get("/summary", async (c) => {
       const scan = queue.latest(SCAN_JOB);
+      const inboxScan = queue.latest(INBOX_SCAN_JOB);
       const refresh = queue.latest(REFRESH_JOB);
       const server = deps.musicServer ? await deps.musicServer() : null;
       const { inboxReleases, ...counts } = librarySummary(db);
       const body: LibrarySummary = {
         ...counts,
-        inbox: deps.inbox ? { releases: inboxReleases } : null,
+        inbox: deps.inbox
+          ? { releases: inboxReleases, lastScan: inboxScan ? (toJobDto(inboxScan) as ScanJobDto) : null }
+          : null,
         readOnly: deps.readOnly,
         scan: scan ? (toJobDto(scan) as ScanJobDto) : null,
         musicServer: server ? { ...server, lastRefresh: refresh ? toJobDto(refresh) : null } : null,
