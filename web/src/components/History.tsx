@@ -44,6 +44,9 @@ export function History(
                     {b.counts.written} written
                     {b.counts.skipped > 0 && `, ${b.counts.skipped} skipped`}
                     {b.counts.failed > 0 && `, ${b.counts.failed} failed`}
+                    {b.moves.some((m) => m.status === "moved") &&
+                      ` · ${b.moves.filter((m) => m.kind === "audio" && m.status === "moved").length} renamed`}
+                    {b.error && <span class="tm-muted">{` · ${b.error}`}</span>}
                   </td>
                   <td>
                     {b.undoable && !readOnly && (
@@ -68,6 +71,13 @@ export function History(
                           <li key={f.path}>
                             <span class="tm-path">{f.path}</span> — {f.status.replace("_", " ")}
                             {f.error && <span class="tm-muted">: {f.error}</span>}
+                          </li>
+                        ))}
+                        {b.moves.map((m) => (
+                          <li key={`${m.from}>${m.to}`}>
+                            <span class="tm-path">{m.from}</span> → <span class="tm-path">{m.to}</span>
+                            {m.status !== "moved" && <span class="tm-muted">{` — ${m.status}`}</span>}
+                            {m.error && <span class="tm-muted">: {m.error}</span>}
                           </li>
                         ))}
                       </ul>

@@ -9,15 +9,17 @@ import { getProposal, setProposalState } from "../db/repo/proposals.ts";
 import { resolveInRoot } from "../fs/safe_path.ts";
 import type { Logger } from "../log.ts";
 import { candidateContentHash } from "../scanner/scan.ts";
-import type { AudioFormat, CanonicalTags, TagChange, TagIO } from "../tagio/mod.ts";
+import type { AudioFormat, CanonicalField, CanonicalTags, TagChange, TagIO } from "../tagio/mod.ts";
 import { verifyChange } from "../tagio/mod.ts";
 import { changedSinceWrite, inverseChange, plansFromProposal, staleFields } from "./change.ts";
+import { tagsAfter } from "../files/rename.ts";
 import { basename, dirname } from "node:path";
 import { sha256Hex } from "../covers/fetch.ts";
 import { folderCoverPath, readFolderCover, removeFolderCover, writeFolderCover } from "../covers/folder.ts";
 import { coverWrites, getCover } from "../db/repo/covers.ts";
 import type { Picture } from "../tagio/mod.ts";
 import { backupPictures, type PictureRef, pictureShas, readBlob, restorePictures, storeBlob } from "./blobs.ts";
+import { applyRenames, planRenames, type RenamePlan, undoRenames } from "../files/rename.ts";
 
 export interface WriteDeps {
   db: Db;
@@ -28,7 +30,60 @@ export interface WriteDeps {
   now?: () => number;
   /** Cover art (D49): the downloaded images, and where pictures are backed up before a write. */
   covers?: { read(sha256: string, mime: string): Promise<Uint8Array>; backupDir: string } | null;
+  /** Renaming on write (D57): the template in use, and whether library albums are renamed; read per write. */
+  naming?: () => { template: string; renameLibrary: boolean };
 }
+
+/**
+ * The renaming a write of this proposal makes (D57), from the files' tags after the write: the tags it
+ * writes applied to what each file has. Only the proposal's own files move; every other path in the
+ * library is a name they cannot take. Null when renaming is off.
+ */
+export function renamePlanFor(
+  db: Db,
+  naming: { template: string; renameLibrary: boolean } | undefined,
+  proposal: { candidateId: number; fields: ReviewedRow[] },
+  written = false,
+): RenamePlan | null {
+  if (!naming?.renameLibrary) return null;
+  const plans = plansFromProposal(proposal.fields.map(reviewed));
+  const ids = [...new Set(proposal.fields.map((f) => f.fileId))];
+  const rows = ids.map((id) =>
+    db.prepare("SELECT id, path, current_tags FROM library_file WHERE id = ? AND read_error IS NULL").get(id) as
+      | { id: number; path: string; current_tags: string }
+      | undefined
+  ).filter((r) => !!r);
+  const files = rows.map((r) => ({
+    id: r.id,
+    path: r.path,
+    // After the write the files already hold the written tags.
+    tags: written ? JSON.parse(r.current_tags) : tagsAfter(JSON.parse(r.current_tags), plans.get(r.id)?.change),
+  }));
+  const taken = (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
+  return planRenames(naming.template, files, taken);
+}
+
+type ReviewedRow = {
+  fileId: number;
+  field: CanonicalField;
+  current: unknown;
+  proposed: unknown;
+  edited: unknown;
+  status: "changed" | "added" | "unchanged";
+  decision: "auto" | "accepted" | "kept_current" | "edited";
+  locked: boolean;
+};
+
+const reviewed = (f: ReviewedRow) => ({
+  fileId: f.fileId,
+  field: f.field,
+  current: f.current,
+  proposed: f.proposed,
+  edited: f.edited,
+  status: f.status,
+  decision: f.decision,
+  locked: f.locked,
+});
 
 export class ReadOnlyError extends Error {
   override name = "ReadOnlyError";
@@ -325,10 +380,30 @@ export async function writeProposal(deps: WriteDeps, proposalId: number, signal?
     else failed++;
   }
 
+  // Renaming (D57): only once every file's tags are written and verified, all or nothing for the album.
+  let renameError: string | null = null;
+  const naming = deps.naming?.();
+  if (naming?.renameLibrary && !proposal.renameSkip && !signal?.aborted) {
+    if (failed > 0 || skipped > 0) {
+      renameError = "not renamed: some files were not written";
+    } else {
+      try {
+        const plan = renamePlanFor(db, naming, proposal, true)!;
+        const moved = await applyRenames(db, rootReal, batchId, plan, proposal.candidateId);
+        // A rename-only write: the moved files are what it wrote.
+        if (written === 0) written = moved;
+      } catch (e) {
+        renameError = (e as Error).message;
+        deps.logger.warn("renaming failed; the tags are written", { error: renameError });
+      }
+    }
+  }
+
   await refreshCandidateHash(db, proposal.candidateId);
-  const status = statusOf(written, skipped, failed);
+  let status = statusOf(written, skipped, failed);
+  if (renameError && status === "done") status = "partial";
   transaction(db, () => {
-    finishBatch(db, batchId, { status, written, skipped, failed }, null, now());
+    finishBatch(db, batchId, { status, written, skipped, failed }, renameError, now());
     // Fully written: done. Anything skipped or failed: back to review, so it can be rebuilt and retried.
     setProposalState(db, proposal.id, status === "done" ? "written" : "needs_review", now());
     if (status === "done" && written > 0) {
@@ -443,10 +518,18 @@ export async function undoBatch(deps: WriteDeps, batchId: number, signal?: Abort
   const rootReal = await Deno.realPath(deps.musicDir);
   const undoId = startBatch(db, "undo", batch.candidate_id, batch.proposal_id, batchId, now());
   let written = 0, skipped = 0, failed = 0;
+  // Names first (D57): the backups know each file by the path it had when it was written.
+  const { moved, blocked } = await undoRenames(db, rootReal, batchId, undoId, batch.candidate_id);
 
   for (const b of backups) {
     if (signal?.aborted) break;
     const file = { id: b.file_id, path: b.path };
+    const stuck = blocked.get(b.path);
+    if (stuck) {
+      skipped++;
+      recordFile(db, undoId, file, { status: "skipped_changed", error: stuck });
+      continue;
+    }
     if (b.kind === "folder_image") {
       const r = await undoFolderImage(deps, rootReal, undoId, b);
       if (r === "written") written++;
@@ -521,7 +604,9 @@ export async function undoBatch(deps: WriteDeps, batchId: number, signal?: Abort
   }
 
   if (batch.candidate_id !== null) await refreshCandidateHash(db, batch.candidate_id);
-  const status = statusOf(written, skipped, failed);
+  // A rename-only write has no tag backups: moving the files back is the whole undo.
+  if (backups.length === 0) written += moved;
+  const status = statusOf(written, skipped + (backups.length === 0 ? blocked.size : 0), failed);
   transaction(db, () => {
     finishBatch(db, undoId, { status, written, skipped, failed }, null, now());
     if (status === "done") {

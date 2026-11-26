@@ -61,8 +61,10 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   size, type and where it is (embedded in the files or an image in the album folder).
 - **Naming templates** (Settings → Files): how written albums will be named. Choose a built-in template (Album
   (Year), Artist / Album (Year), Picard's default, Composer / Album (Year)) or create and save your own, each with a
-  live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`. Renaming on write and an inbox folder are being
-  built (D57).
+  live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.
+- **Renames albums when writing them** (off by default, Settings → Files): the Changes tab shows every file's new name
+  first, the album's cover and booklet files move with it, nothing is ever overwritten, and Undo puts the old names
+  back. An inbox folder is being built (D57).
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
 

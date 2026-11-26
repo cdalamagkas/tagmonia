@@ -276,6 +276,8 @@ export interface ProposalDto {
   providers: ProviderMatchDto[];
   /** The proposed front cover (D49); null for a proposal built before cover art existed. */
   cover: CoverProposalDto | null;
+  /** The new file names a write would give (D57), when renaming is on and any name changes. */
+  rename: RenameProposalDto | null;
 }
 
 export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "discogs" | "bandcamp";
@@ -388,6 +390,17 @@ export interface SubmissionOpenResponse {
   fields: Record<string, string>;
 }
 
+/** Renaming on write (D57): every file's current and new path, relative to the music root. */
+export interface RenameProposalDto {
+  /** Part of the write (the checkbox). */
+  include: boolean;
+  /** The album's new folder (where its files and companion files go). */
+  folder: string;
+  moves: { fileId: number; from: string; to: string }[];
+  /** Names already taken by other files: the album is not renamed while any remains. */
+  conflicts: string[];
+}
+
 /** POST /api/proposals/:id/cover/decision */
 export interface CoverDecisionRequest {
   decision: "accepted" | "kept_current";
@@ -457,6 +470,14 @@ export interface WriteBatchDto {
   counts: { written: number; skipped: number; failed: number };
   error: string | null;
   files: WriteFileResultDto[];
+  /** Files renamed or moved by the batch (D57), relative to the music root. */
+  moves: {
+    kind: "audio" | "companion";
+    from: string;
+    to: string;
+    status: "moved" | "undone" | "failed";
+    error: string | null;
+  }[];
   /** A finished write whose files can be put back as they were. */
   undoable: boolean;
 }

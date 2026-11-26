@@ -70,7 +70,7 @@ Deno.test("covers are embedded at full size by default; the mode changes without
 Deno.test("naming templates: built-in ones to choose from, saved ones checked on save with the reason (D57)", async () => {
   const dir = await Deno.makeTempDir({ prefix: "tagmonia-settings-" });
   const s = await loadSettings(dir);
-  assertEquals(s.files, { active: "album-year", templates: [] });
+  assertEquals(s.files, { active: "album-year", renameLibrary: false, templates: [] });
   await assertRejects(
     () =>
       updateSettings(dir, s, {
@@ -88,8 +88,8 @@ Deno.test("naming templates: built-in ones to choose from, saved ones checked on
 
   const mine = { id: "custom-a", name: "Mine", template: "{albumartist}/{album}/{tracknumber:02} {title}" };
   await updateSettings(dir, s, { files: { active: "custom-a", templates: [mine] } });
-  assertEquals((await loadSettings(dir)).files, { active: "custom-a", templates: [mine] });
+  assertEquals((await loadSettings(dir)).files, { active: "custom-a", renameLibrary: false, templates: [mine] });
   // Choosing a built-in one keeps the saved ones.
   await updateSettings(dir, s, { files: { active: "picard" } });
-  assertEquals((await loadSettings(dir)).files, { active: "picard", templates: [mine] });
+  assertEquals((await loadSettings(dir)).files, { active: "picard", renameLibrary: false, templates: [mine] });
 });

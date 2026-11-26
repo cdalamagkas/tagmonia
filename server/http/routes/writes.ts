@@ -36,6 +36,9 @@ export function history(db: Db, candidateId: number, writeLive: boolean): WriteB
     candidateId,
   ) as unknown as BatchRow[];
   const files = db.prepare("SELECT path, status, error FROM file_backup WHERE write_batch_id = ? ORDER BY path");
+  const moves = db.prepare(
+    'SELECT kind, from_path AS "from", to_path AS "to", status, error FROM file_move WHERE write_batch_id = ? ORDER BY id',
+  );
   return rows.map((b) => ({
     id: b.id,
     kind: b.kind,
@@ -47,6 +50,7 @@ export function history(db: Db, candidateId: number, writeLive: boolean): WriteB
     counts: { written: b.files_written, skipped: b.files_skipped, failed: b.files_failed },
     error: b.error,
     files: files.all(b.id) as unknown as WriteBatchDto["files"],
+    moves: moves.all(b.id) as unknown as WriteBatchDto["moves"],
     undoable: b.kind === "write" && (b.status === "done" || b.status === "partial") && b.files_written > 0 &&
       !writeLive,
   }));

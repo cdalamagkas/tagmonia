@@ -101,6 +101,7 @@ function proposal(over: Partial<ProposalDto> = {}): ProposalDto {
     fields: [field()],
     providers: [],
     cover: null,
+    rename: null,
     ...over,
   };
 }
@@ -329,6 +330,20 @@ Deno.test("a submission under way takes the status line (D52, PR 4)", () => {
     "Follow-ups",
   ]);
   assertEquals(say(at(back, { ...fromNew, stale: true }))[2], "build", "a stale proposal comes first");
+});
+
+Deno.test("renaming counts as one change, only when included and no name is taken (D57)", () => {
+  const rename = {
+    include: true,
+    folder: "A",
+    moves: [{ fileId: 1, from: "x/1.flac", to: "A/1.flac" }],
+    conflicts: [],
+  };
+  const only = proposal({ fields: [field({ status: "unchanged" })], rename });
+  assertEquals(changesToWrite(only), 1);
+  assertEquals(say(state({ proposal: only }))[1], "1 change ready: new file names");
+  assertEquals(changesToWrite({ ...only, rename: { ...rename, include: false } }), 0);
+  assertEquals(changesToWrite({ ...only, rename: { ...rename, conflicts: ["A/1.flac already exists"] } }), 0);
 });
 
 Deno.test("no proposal yet: identification decides the next action", () => {

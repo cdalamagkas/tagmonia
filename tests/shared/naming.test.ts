@@ -89,19 +89,21 @@ Deno.test("built-in templates are valid; saved ones need a unique name, a valid 
   for (const t of PRESET_TEMPLATES) assertEquals(validateTemplate(t.template), null, t.name);
   assertEquals(PRESET_TEMPLATES[0].template, DEFAULT_TEMPLATE);
   const ok = { id: "custom-1", name: "Mine", template: "{album}/{title}" };
-  assertEquals(validateNamingSettings({ active: "custom-1", templates: [ok] }), []);
+  assertEquals(validateNamingSettings({ renameLibrary: false, active: "custom-1", templates: [ok] }), []);
   const why = (files: Parameters<typeof validateNamingSettings>[0]) =>
     validateNamingSettings(files).map((i) => `${i.path.join(".")}: ${i.message}`);
-  assertEquals(why({ active: "album-year", templates: [{ ...ok, name: "album (YEAR)" }] }), [
+  assertEquals(why({ renameLibrary: false, active: "album-year", templates: [{ ...ok, name: "album (YEAR)" }] }), [
     'templates.0.name: A template is already called "album (YEAR)"',
   ]);
-  assertEquals(why({ active: "album-year", templates: [ok, { ...ok, name: "Other" }] }), [
+  assertEquals(why({ renameLibrary: false, active: "album-year", templates: [ok, { ...ok, name: "Other" }] }), [
     "templates.1.id: Invalid template id",
   ]);
-  assertEquals(why({ active: "album-year", templates: [{ ...ok, id: "../x" }] }), [
+  assertEquals(why({ renameLibrary: false, active: "album-year", templates: [{ ...ok, id: "../x" }] }), [
     "templates.0.id: Invalid template id",
   ]);
-  assertEquals(why({ active: "nope", templates: [] }), ["active: The chosen template does not exist"]);
+  assertEquals(why({ renameLibrary: false, active: "nope", templates: [] }), [
+    "active: The chosen template does not exist",
+  ]);
   // A deleted template that is still chosen falls back to the default when used.
-  assertEquals(activeTemplate({ active: "custom-gone", templates: [] }).id, "album-year");
+  assertEquals(activeTemplate({ active: "custom-gone", renameLibrary: false, templates: [] }).id, "album-year");
 });

@@ -3,7 +3,15 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { LockDto } from "../../../shared/types.ts";
 import type { Db } from "../../db/db.ts";
-import { addLock, discardProposal, removeLock, ReviewError, setDecisions } from "../../db/repo/proposals.ts";
+import {
+  addLock,
+  discardProposal,
+  getProposal,
+  removeLock,
+  ReviewError,
+  setDecisions,
+  setRenameSkip,
+} from "../../db/repo/proposals.ts";
 import { canonicalTagsSchema } from "../../tagio/schema.ts";
 import { getCover, setCoverDecision } from "../../db/repo/covers.ts";
 import { coverCachePath } from "../../covers/fetch.ts";
@@ -57,6 +65,18 @@ export function reviewRoutes(deps: { db: Db; coverDir: string; now?: () => numbe
         if (e instanceof ReviewError) return c.json({ error: e.message }, e.message.includes("not found") ? 404 : 409);
         throw e;
       }
+      return c.body(null, 204);
+    })
+    // Renaming (D57): include it in this proposal's write, or leave the file names alone this time.
+    .post("/proposals/:id{[0-9]+}/rename", async (c) => {
+      const body = z.object({ include: z.boolean() }).strict().safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: "Give include: true or false" }, 400);
+      const p = getProposal(db, Number(c.req.param("id")));
+      if (!p) return c.json({ error: "not found" }, 404);
+      if (p.state === "written" || p.state === "discarded") {
+        return c.json({ error: `This proposal is already ${p.state}` }, 409);
+      }
+      setRenameSkip(db, p.id, !body.data.include);
       return c.body(null, 204);
     })
     .post("/proposals/:id{[0-9]+}/decisions", async (c) => {

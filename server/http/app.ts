@@ -16,7 +16,7 @@ import type { Config } from "../config.ts";
 import type { Db } from "../db/db.ts";
 import type { JobQueue } from "../jobs/queue.ts";
 import type { Logger } from "../log.ts";
-import type { Settings } from "../settings.ts";
+import { namingOf, type Settings } from "../settings.ts";
 import { type AuthEnv, authRoutes, originGuard, requireCsrf, requireSession } from "./auth.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { jobRoutes, libraryRoutes } from "./routes/library.ts";
@@ -101,6 +101,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
           ? { name: "jellyfin", library: (await ctx.creds.get("jellyfin")).library ?? null }
           : null,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
+      naming: () => namingOf(ctx.settings),
       covers,
       sources: ctx.harmony
         ? {

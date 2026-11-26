@@ -28,7 +28,8 @@ import { enqueuePropose, enqueueProviderPropose, proposeDedupeKey } from "../../
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
 import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
-import type { ProposalDto, ProposalResponse } from "../../../shared/types.ts";
+import type { ProposalDto, ProposalResponse, RenameProposalDto } from "../../../shared/types.ts";
+import { renamePlanFor } from "../../write/apply.ts";
 import type { CandidateStatus } from "../../../shared/types.ts";
 import type { Job, JobQueue } from "../../jobs/queue.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -98,6 +99,35 @@ function checkProviderUrl(sources: LibraryRouteDeps["sources"], raw: string): { 
 
 const evidenceBody = z.object({ url: z.string().max(500) }).strict();
 
+/** The new names a write of an open proposal would give (D57); null when renaming is off or nothing changes. */
+function renameDto(
+  db: Db,
+  naming: { template: string; renameLibrary: boolean } | undefined,
+  p: NonNullable<ReturnType<typeof latestProposal>>,
+): RenameProposalDto | null {
+  if (!["draft", "needs_review", "approved"].includes(p.state)) return null;
+  const plan = renamePlanFor(db, naming, p);
+  if (!plan || plan.moves.length === 0) return null;
+  const folders = [...new Set(plan.moves.map((m) => m.to.split("/").slice(0, -1).join("/")))];
+  return {
+    include: !p.renameSkip,
+    folder: folders.length === 1 ? folders[0] : commonFolder(folders),
+    moves: plan.moves,
+    conflicts: plan.conflicts,
+  };
+}
+
+function commonFolder(folders: string[]): string {
+  let common = folders[0].split("/");
+  for (const f of folders.slice(1)) {
+    const parts = f.split("/");
+    let i = 0;
+    while (i < common.length && common[i] === parts[i]) i++;
+    common = common.slice(0, i);
+  }
+  return common.join("/");
+}
+
 const listQuery = z.object({
   q: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -152,6 +182,8 @@ export interface LibraryRouteDeps {
   thresholds: () => { auto: number; review: number };
   /** The releases' current covers (D50); null = none served. */
   covers?: CurrentCovers | null;
+  /** Renaming on write (D57): the template in use and whether library albums are renamed; read per request. */
+  naming?: () => { template: string; renameLibrary: boolean };
   /** Provider links a proposal can start from (§10.4, D51); null = MusicBrainz releases only. */
   sources?: {
     providerFor(url: URL): string | undefined;
@@ -326,6 +358,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
           // The provider's own data stays server-side; the UI needs only the outcome.
           providers: providerMatches(db, p.id).map(({ release: _data, evidence: _e, ...m }) => m),
           cover: coverDto(db, p.id, p.fields.map((f) => f.fileId)),
+          rename: renameDto(db, deps.naming?.(), p),
           // Snapshot ids are internal provenance, not part of the API.
           fields: p.fields.map((f) => ({
             ...f,

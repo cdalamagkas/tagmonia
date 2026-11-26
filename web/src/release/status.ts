@@ -49,7 +49,8 @@ const RELEASE = new Set<string>(RELEASE_FIELDS);
 export function changesToWrite(p: ProposalDto): number {
   const rows = p.fields.filter(writes);
   const albumFields = new Set(rows.filter((r) => RELEASE.has(r.field)).map((r) => r.field));
-  return albumFields.size + rows.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0);
+  return albumFields.size + rows.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0) +
+    (renames(p) ? 1 : 0);
 }
 
 /**
@@ -60,6 +61,11 @@ export function openChoices(p: ProposalDto): number {
   const open = p.fields.filter((r) => r.conflict && r.decision === "auto" && !r.locked);
   return new Set(open.filter((r) => RELEASE.has(r.field)).map((r) => r.field)).size +
     open.filter((r) => !RELEASE.has(r.field)).length;
+}
+
+/** The write renames the files (D57): renaming is on, included, and no new name is taken. The move counts as one change. */
+export function renames(p: ProposalDto): boolean {
+  return !!p.rename && p.rename.include && p.rename.conflicts.length === 0;
 }
 
 export function isOpen(p: ProposalDto): boolean {
@@ -207,7 +213,7 @@ export function releaseStatus(s: ReleaseState): ReleaseStatus {
         secondary: extra.slice(1),
       };
     }
-    const cover = p.cover?.writes && n === 1 ? ": a new cover" : "";
+    const cover = n !== 1 ? "" : p.cover?.writes ? ": a new cover" : renames(p) ? ": new file names" : "";
     return {
       tone: "attention",
       sentence: `${plural(n, "change")} ready${cover}`,
