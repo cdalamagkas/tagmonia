@@ -42,6 +42,8 @@ export interface StoredProposal {
   basedOnHash: string;
   snapshotIds: number[];
   unmappedFiles: number[];
+  /** The user chose to leave the file names alone for this write (D57). */
+  renameSkip: boolean;
   createdAt: number;
   updatedAt: number;
   fields: StoredFieldProposal[];
@@ -123,6 +125,7 @@ interface ProposalRow {
   based_on_hash: string;
   snapshot_ids: string;
   unmapped_files: string;
+  rename_skip: number;
   created_at: number;
   updated_at: number;
 }
@@ -193,6 +196,7 @@ function loadProposal(db: Db, p: ProposalRow): StoredProposal {
     state: p.state,
     chosenBy: p.chosen_by,
     basedOnHash: p.based_on_hash,
+    renameSkip: p.rename_skip === 1,
     snapshotIds: JSON.parse(p.snapshot_ids),
     unmappedFiles: JSON.parse(p.unmapped_files),
     createdAt: p.created_at,
@@ -391,4 +395,9 @@ export function providerMatches(db: Db, proposalId: number): ProviderMatch[] {
     const data = r.data ? JSON.parse(r.data) : null;
     return r.provider === "youtube" ? { ...r, release: null, evidence: data ?? undefined } : { ...r, release: data };
   });
+}
+
+/** Include the renaming in this proposal's write, or leave the names alone (D57). */
+export function setRenameSkip(db: Db, proposalId: number, skip: boolean): void {
+  db.prepare("UPDATE proposal SET rename_skip = ? WHERE id = ?").run(skip ? 1 : 0, proposalId);
 }

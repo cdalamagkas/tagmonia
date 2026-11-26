@@ -25,7 +25,7 @@ import { AcoustIdClient } from "./providers/acoustid.ts";
 import { YouTubeClient } from "./providers/youtube.ts";
 import { RateLimiter } from "./providers/ratelimit.ts";
 import { SnapshotCache } from "./providers/snapshots.ts";
-import { identifyConfig, loadSettings } from "./settings.ts";
+import { identifyConfig, loadSettings, namingOf } from "./settings.ts";
 import { createTagIO } from "./tagio/mod.ts";
 import { PROJECT_URL, USER_AGENT, VERSION } from "./version.ts";
 import { createHarmonyRegistry } from "./providers/harmony_adapter.ts";
@@ -159,6 +159,7 @@ async function main() {
     readOnly: config.readOnly,
     logger,
     covers: { read: (sha, mime) => covers.read(sha, mime), backupDir: join(config.configDir, "backups", "pictures") },
+    naming: () => namingOf(settings),
     // §13: tell the music server once the files changed (when one is configured).
     afterBatch: (r) => {
       creds.configured("jellyfin").then((on) => {

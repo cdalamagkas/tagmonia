@@ -13,7 +13,7 @@
  */
 import type { FieldProposalDto, LockDto, ProposalDto } from "../../../shared/types.ts";
 import { RELEASE_FIELDS } from "../format.ts";
-import { writes } from "./status.ts";
+import { renames, writes } from "./status.ts";
 
 const RELEASE = new Set<string>(RELEASE_FIELDS);
 
@@ -145,12 +145,13 @@ export function buildChanges(p: ProposalDto, fileOrder: number[]): ChangesModel 
   const tracks = trackFiles.map((fileId) => ({ fileId, rows: perTrack.get(fileId)!.sort(byRank(TRACK_ORDER)) }));
 
   const items = [...needsChoice, ...album, ...tracks.flatMap((t) => t.rows)];
-  const total = items.filter((it) => !it.right).reduce((n, it) => n + it.weight, 0) + (coverProposes(p) ? 1 : 0);
+  const total = items.filter((it) => !it.right).reduce((n, it) => n + it.weight, 0) + (coverProposes(p) ? 1 : 0) +
+    (p.rename ? 1 : 0);
 
   // Selected: as the write counts it (status.ts changesToWrite), which is what the header says.
   const writing = p.fields.filter(writes);
   const selected = new Set(writing.filter((r) => RELEASE.has(r.field)).map((r) => r.field)).size +
-    writing.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0);
+    writing.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0) + (renames(p) ? 1 : 0);
   const alreadyRight = items.filter((it) => it.right).length;
 
   return { needsChoice, album, tracks, selected, total, alreadyRight };

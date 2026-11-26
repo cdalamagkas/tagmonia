@@ -40,6 +40,7 @@ function proposal(fields: FieldProposalDto[], over: Partial<ProposalDto> = {}): 
     fields,
     providers: [],
     cover: null,
+    rename: null,
     ...over,
   };
 }

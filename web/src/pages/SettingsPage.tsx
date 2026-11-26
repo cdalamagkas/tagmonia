@@ -377,9 +377,31 @@ function FileSettings() {
     <section class="tm-card">
       <h2>Files</h2>
       <p class="tm-muted tm-section-note">
-        How written albums are named, relative to the library. Moving albums from an inbox and renaming albums already
-        in the library use the template chosen here; both are still to come (D57), so nothing is renamed yet.
+        How written albums are named, relative to the library. The Changes tab shows the new names before you write, and
+        Undo puts the old ones back.
       </p>
+      <label class="tm-check">
+        <input
+          type="checkbox"
+          checked={files.renameLibrary}
+          onChange={(e) =>
+            save(
+              { ...files, renameLibrary: e.currentTarget.checked },
+              e.currentTarget.checked
+                ? "Albums are renamed by the template in use when you write them."
+                : "File names are left alone.",
+            )}
+        />
+        <span>
+          Rename albums when writing them
+          <br />
+          <span class="tm-muted tm-small-note">
+            Off: Tagmonia changes tags only. On: each write also renames the album's files and moves them into the
+            template's folder, with the album's cover and booklet files; a name that is taken is never overwritten.
+          </span>
+        </span>
+      </label>
+      <h3>Template in use</h3>
       <div class="tm-radio-list tm-template-list" role="radiogroup" aria-label="Template in use">
         {all.map((t) => (
           <div key={t.id} class="tm-template-item">

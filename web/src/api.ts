@@ -113,6 +113,9 @@ export const api = {
     `/api/library/releases/${releaseId}/cover?size=${size}${v ? `&v=${v}` : ""}`,
   coverInfo: (releaseId: number) =>
     request<{ cover: CurrentCoverDto | null }>("GET", `/api/library/releases/${releaseId}/cover/info`),
+  /** Renaming on write (D57): include it in this proposal's write, or leave the names alone. */
+  renameDecision: (proposalId: number, include: boolean) =>
+    request<void>("POST", `/api/proposals/${proposalId}/rename`, { include }),
   coverDecision: (proposalId: number, body: CoverDecisionRequest) =>
     request<void>("POST", `/api/proposals/${proposalId}/cover/decision`, body),
   write: (proposalId: number) => request<JobDto>("POST", `/api/proposals/${proposalId}/write`),

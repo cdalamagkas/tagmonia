@@ -3,7 +3,7 @@
  * validated against a schema at startup. Missing keys take defaults; an
  * invalid file stops startup rather than silently resetting the user's choices.
  */
-import { DEFAULT_TEMPLATE_ID, validateNamingSettings } from "../shared/naming.ts";
+import { activeTemplate, DEFAULT_TEMPLATE_ID, validateNamingSettings } from "../shared/naming.ts";
 import { join } from "node:path";
 import { z } from "zod";
 import type { IdentifyConfig } from "./identify/identify.ts";
@@ -91,6 +91,8 @@ export const settingsSchema = z.object({
      * albums already in the library is opt-in.
      */
     active: z.string().max(60).default(DEFAULT_TEMPLATE_ID),
+    /** Rename (and move) albums already in the library when writing them; off by default (D57). */
+    renameLibrary: z.boolean().default(false),
     templates: z.array(
       z.object({
         id: z.string().max(60),
@@ -200,4 +202,9 @@ export async function updateSettings(configDir: string, settings: Settings, patc
     (settings as Record<string, unknown>)[k] = parsed.data[k];
   }
   return changed.filter((c) => STARTUP_ONLY.some((s) => c === s || c.startsWith(`${s}.`)));
+}
+
+/** Renaming on write (D57): the template in use and whether albums in the library are renamed. */
+export function namingOf(s: Settings): { template: string; renameLibrary: boolean } {
+  return { template: activeTemplate(s.files).template, renameLibrary: s.files.renameLibrary };
 }

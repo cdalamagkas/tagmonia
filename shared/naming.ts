@@ -47,6 +47,8 @@ export const CUSTOM_ID = /^custom-[a-z0-9-]{1,40}$/;
 export interface FileNamingSettings {
   /** The template in use: a preset's id or a saved one's. */
   active: string;
+  /** Rename albums already in the library when writing them. */
+  renameLibrary: boolean;
   /** The user's own templates. */
   templates: NamingTemplate[];
 }

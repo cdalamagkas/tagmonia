@@ -1,6 +1,6 @@
 # Inbox and renaming
 
-**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template).
+**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template) and PR 2 (renaming on write) done.
 **Decided by the maintainer:** a separate inbox folder; new arrivals are prepared automatically but written by you; renaming
 happens as part of Write, in the same batch and undone by the same Undo; the default template names album folders like
 the maintainer's own test folder.
@@ -112,6 +112,34 @@ Four PRs, each usable on its own:
 
 Every PR is tested on temporary directories only; any check against real folders works on a copy, backed up first
 (CLAUDE.md safety rule 1).
+
+## PR 2 as built
+
+- `server/files/rename.ts`:
+  - the plan is pure: each file's tags after the write, through the template in use;
+  - two files with the same new name are numbered " (2)", " (3)";
+  - names compare without case, since SMB shares and Windows ignore it;
+  - a name another file has is a conflict.
+- **Companion files** are every other regular file in a folder whose audio all goes to one new folder (cover,
+  booklet, cue sheet and so on), simpler than a list of patterns. A folder that still holds another album's audio keeps
+  them. Subfolders stay. A companion whose name is taken in the new folder stays where it is.
+- **Order in the write:** tags, verified, then renames, only when every file was written. Every target is checked
+  before anything moves; any failure moves back what was moved. The batch is then "partial" with the reason, and the
+  tags stay written.
+- **Undo:** moves back first (refusing files moved again since, or whose old name is taken), then restores the tags
+  of the files that are back. A rename-only write is undone by the moves alone.
+- **Database:** the files keep their IDs, the release's folder follows (the deepest folder holding all its files),
+  and its content hash is recomputed, so a rescan finds nothing changed.
+- **UI:**
+  - Settings → Files: "Rename albums when writing them" (off by default).
+  - Changes tab: a **Files** section with its checkbox ("Rename 17 files and move them to …"), any taken names, and
+    every file's new name in a fold. It counts as one change, and a taken name blocks the write until renaming is left
+    out of it.
+  - History: "17 renamed", with each move.
+- **Checked** on a scratch copy of the 17-track album:
+  - with the default template there is nothing to rename: it reproduces the maintainer's own names exactly;
+  - with "Artist / Album (Year)": 17 files moved, then undone. Names, tags, pictures and audio (FLAC MD5) were equal
+    to the backup, and no folder was left behind.
 
 ## Open points (defaults chosen; say if you want otherwise)
 

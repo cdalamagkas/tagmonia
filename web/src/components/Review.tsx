@@ -17,6 +17,7 @@ import type {
   LockDto,
   ProposalDto,
   ProposalResponse,
+  RenameProposalDto,
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { tagValue } from "../format.ts";
@@ -394,6 +395,60 @@ function CoverLine(
   );
 }
 
+/**
+ * Renaming on write (D57): one change, with its checkbox. The new folder, then every file's current and new
+ * name. A taken name blocks the renaming (never overwritten), not the tags.
+ */
+function RenameLine(
+  { rename, busy, onInclude }: { rename: RenameProposalDto; busy: boolean; onInclude: (include: boolean) => void },
+) {
+  const n = rename.moves.length;
+  const name = (p: string) => p.split("/").pop();
+  return (
+    <div class={`tm-rename${rename.include ? "" : " tm-change-off"}`}>
+      <label class="tm-check">
+        <input
+          type="checkbox"
+          checked={rename.include}
+          disabled={busy}
+          onChange={(e) => onInclude(e.currentTarget.checked)}
+        />
+        <span>
+          Rename {n === 1 ? "1 file" : `${n} files`} and move them to{" "}
+          <span class="tm-path">{rename.folder || "/"}</span>{" "}
+          <a class="tm-small-link" href="/settings" title="Settings → Files">(how files are named)</a>
+        </span>
+      </label>
+      {rename.conflicts.length > 0 && (
+        <p class="tm-error">
+          Taken, so nothing would be renamed: {rename.conflicts.join("; ")}
+        </p>
+      )}
+      <details class="tm-fold">
+        <summary>Show every file's new name</summary>
+        <div class="tm-table-wrap">
+          <table class="tm-table">
+            <thead>
+              <tr>
+                <th>Now</th>
+                <th>New</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rename.moves.map((m) => (
+                <tr key={m.fileId}>
+                  <td class="tm-path" title={m.from}>{name(m.from)}</td>
+                  <td class="tm-path" title={m.to}>{m.to}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 /** The current value: one, or "differs across files" with each value on hover. */
 function Current({ item }: { item: ChangeItem }) {
   if (item.current.length > 1) {
@@ -532,6 +587,8 @@ export function Review(
     ? "The files changed since these changes were prepared: build them again (above)"
     : unresolved > 0
     ? "Choose a value for each field that needs your choice first"
+    : p.rename?.include && p.rename.conflicts.length > 0
+    ? "Some new file names are taken: leave the names as they are (Files, above), or change the template"
     : m.selected === 0
     ? "Nothing selected"
     : undefined;
@@ -594,6 +651,17 @@ export function Review(
               filesVersion={filesVersion}
               busy={a.busy}
               onDecide={(decision) => act(() => api.coverDecision(p.id, { decision }))}
+            />
+          </div>
+        )}
+
+        {p.rename && (
+          <div class="tm-change-section">
+            <h3>Files</h3>
+            <RenameLine
+              rename={p.rename}
+              busy={a.busy}
+              onInclude={(include) => act(() => api.renameDecision(p.id, include))}
             />
           </div>
         )}
