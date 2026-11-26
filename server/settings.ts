@@ -3,7 +3,7 @@
  * validated against a schema at startup. Missing keys take defaults; an
  * invalid file stops startup rather than silently resetting the user's choices.
  */
-import { DEFAULT_TEMPLATE, validateTemplate } from "../shared/naming.ts";
+import { DEFAULT_TEMPLATE_ID, validateNamingSettings } from "../shared/naming.ts";
 import { join } from "node:path";
 import { z } from "zod";
 import type { IdentifyConfig } from "./identify/identify.ts";
@@ -86,14 +86,21 @@ export const settingsSchema = z.object({
   }).prefault({}),
   files: z.object({
     /**
-     * Where a written album goes, relative to the library (D57; shared/naming.ts). Inbox albums are moved by it
-     * on Write; renaming albums already in the library is opt-in.
+     * How written albums are named, relative to the library (D57; shared/naming.ts): the template in use, a
+     * built-in one or one of the user's saved templates. Inbox albums are moved by it on Write; renaming
+     * albums already in the library is opt-in.
      */
-    template: z.string().max(500).default(DEFAULT_TEMPLATE).superRefine((t, ctx) => {
-      const error = validateTemplate(t);
-      if (error) ctx.addIssue({ code: "custom", message: error });
-    }),
-  }).prefault({}),
+    active: z.string().max(60).default(DEFAULT_TEMPLATE_ID),
+    templates: z.array(
+      z.object({
+        id: z.string().max(60),
+        name: z.string().max(80),
+        template: z.string().max(500),
+      }).strict(),
+    ).default([]),
+  }).prefault({}).superRefine((files, ctx) => {
+    for (const issue of validateNamingSettings(files)) ctx.addIssue({ code: "custom", ...issue });
+  }),
   auth: z.object({
     /** Sessions end after this long without a request. */
     sessionIdleHours: z.number().positive().max(24 * 90).default(24 * 7),

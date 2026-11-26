@@ -13,8 +13,11 @@ albums, prepares their tags, and on Write moves them into the library under a co
 
 ## What the user sees
 
-- **Settings → Files:** the inbox (from `TAGMONIA_INBOX_DIR`, shown read-only), the template with a live example, and
-  "Rename albums already in the library when writing" (off by default).
+- **Settings → Files:**
+  - the inbox (from `TAGMONIA_INBOX_DIR`, shown read-only);
+  - the template in use, chosen from built-in templates and your own saved ones, each shown with an example;
+  - **New template**, and copy, edit and delete for saved ones, with a live example while typing;
+  - "Rename albums already in the library when writing" (off by default).
 - **Library page:** an **Inbox (3)** filter next to the list; inbox albums carry an "inbox" badge.
 - **Release page of an inbox album:**
   - the header reads "In the inbox · 15 changes ready" with **Write and move to the library**;
@@ -45,6 +48,11 @@ albums, prepares their tags, and on Write moves them into the library under a co
 
 ### The template
 
+- **Several to choose from** (setting `files.active` and `files.templates`):
+  - built in: "Album (Year)" (the default), "Artist / Album (Year)", "Picard's default" and "Composer / Album (Year)"
+    for classical music;
+  - up to 20 saved templates of your own, each with a unique name;
+  - the one in use cannot be deleted; if the chosen one is missing, the default applies.
 - **Default:** `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`, which gives
   `Lukas Sternath plays Franz Schubert and Franz Liszt (2026)/1-01 Franz Schubert & Franz Liszt - Der Wanderer S 558_11 (after D 489).flac`.
 - **Variables:** any canonical tag (§6.2), as it will be **after** the write.
@@ -89,7 +97,8 @@ Order: write and verify every file's tags (§11.3), **then** move. Rules:
 
 Four PRs, each usable on its own:
 
-1. **Template:** the template engine and its validation; Settings → Files with the template and a live example.
+1. **Template:** the template engine and its validation; Settings → Files with built-in and saved templates to choose
+   from, created and edited with a live example.
    Nothing is renamed yet, and the page says so.
 2. **Renaming on write:**
    - the Files section of the Changes tab, previewing the new names (with "Rename albums already in the library");

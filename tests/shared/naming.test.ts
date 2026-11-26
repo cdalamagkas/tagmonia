@@ -1,6 +1,14 @@
 /** File naming templates (D57): validation, rendering and safe names. */
 import { assertEquals, assertThrows } from "@std/assert";
-import { DEFAULT_TEMPLATE, renderPath, sanitizeName, validateTemplate } from "../../shared/naming.ts";
+import {
+  activeTemplate,
+  DEFAULT_TEMPLATE,
+  PRESET_TEMPLATES,
+  renderPath,
+  sanitizeName,
+  validateNamingSettings,
+  validateTemplate,
+} from "../../shared/naming.ts";
 
 const LUKAS = {
   album: "Lukas Sternath plays Franz Schubert and Franz Liszt",
@@ -75,4 +83,25 @@ Deno.test("templates that cannot work are refused, with the reason", () => {
     assertEquals(e !== null && why.test(e), true, `${tpl}: ${e}`);
   }
   assertThrows(() => renderPath("{nope}/{title}", {}, "flac"));
+});
+
+Deno.test("built-in templates are valid; saved ones need a unique name, a valid template and an id", () => {
+  for (const t of PRESET_TEMPLATES) assertEquals(validateTemplate(t.template), null, t.name);
+  assertEquals(PRESET_TEMPLATES[0].template, DEFAULT_TEMPLATE);
+  const ok = { id: "custom-1", name: "Mine", template: "{album}/{title}" };
+  assertEquals(validateNamingSettings({ active: "custom-1", templates: [ok] }), []);
+  const why = (files: Parameters<typeof validateNamingSettings>[0]) =>
+    validateNamingSettings(files).map((i) => `${i.path.join(".")}: ${i.message}`);
+  assertEquals(why({ active: "album-year", templates: [{ ...ok, name: "album (YEAR)" }] }), [
+    'templates.0.name: A template is already called "album (YEAR)"',
+  ]);
+  assertEquals(why({ active: "album-year", templates: [ok, { ...ok, name: "Other" }] }), [
+    "templates.1.id: Invalid template id",
+  ]);
+  assertEquals(why({ active: "album-year", templates: [{ ...ok, id: "../x" }] }), [
+    "templates.0.id: Invalid template id",
+  ]);
+  assertEquals(why({ active: "nope", templates: [] }), ["active: The chosen template does not exist"]);
+  // A deleted template that is still chosen falls back to the default when used.
+  assertEquals(activeTemplate({ active: "custom-gone", templates: [] }).id, "album-year");
 });

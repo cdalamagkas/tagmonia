@@ -13,6 +13,82 @@
 
 export const DEFAULT_TEMPLATE = "{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}";
 
+export interface NamingTemplate {
+  /** Built-in templates have fixed ids; saved ones start with "custom-". */
+  id: string;
+  name: string;
+  template: string;
+}
+
+/** Built in, cannot be changed or deleted; the first is the default. */
+export const PRESET_TEMPLATES: readonly NamingTemplate[] = [
+  { id: "album-year", name: "Album (Year)", template: DEFAULT_TEMPLATE },
+  {
+    id: "artist-album-year",
+    name: "Artist / Album (Year)",
+    template: "{albumartist|artist}/{album} ({date:4})/{disc-}{tracknumber:02} {title}",
+  },
+  {
+    id: "picard",
+    name: "Picard's default",
+    template: "{albumartist|artist}/{album}/{disc-}{tracknumber:02} {title}",
+  },
+  {
+    id: "composer-album-year",
+    name: "Composer / Album (Year), for classical music",
+    template: "{composer|albumartist}/{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}",
+  },
+];
+
+export const DEFAULT_TEMPLATE_ID = PRESET_TEMPLATES[0].id;
+export const MAX_SAVED_TEMPLATES = 20;
+export const CUSTOM_ID = /^custom-[a-z0-9-]{1,40}$/;
+
+export interface FileNamingSettings {
+  /** The template in use: a preset's id or a saved one's. */
+  active: string;
+  /** The user's own templates. */
+  templates: NamingTemplate[];
+}
+
+/** Built-in templates, then the saved ones. */
+export function allTemplates(files: FileNamingSettings): NamingTemplate[] {
+  return [...PRESET_TEMPLATES, ...files.templates];
+}
+
+/** The template in use (the default when the chosen one no longer exists). */
+export function activeTemplate(files: FileNamingSettings): NamingTemplate {
+  return allTemplates(files).find((t) => t.id === files.active) ?? PRESET_TEMPLATES[0];
+}
+
+/** What is wrong with the saved templates and the choice, with where (for the settings API); empty when fine. */
+export function validateNamingSettings(files: FileNamingSettings): { path: (string | number)[]; message: string }[] {
+  const out: { path: (string | number)[]; message: string }[] = [];
+  if (files.templates.length > MAX_SAVED_TEMPLATES) {
+    out.push({ path: ["templates"], message: `At most ${MAX_SAVED_TEMPLATES} saved templates` });
+  }
+  const ids = new Set<string>();
+  const names = new Set(PRESET_TEMPLATES.map((t) => t.name.toLowerCase()));
+  files.templates.forEach((t, i) => {
+    if (!CUSTOM_ID.test(t.id) || ids.has(t.id)) {
+      out.push({ path: ["templates", i, "id"], message: "Invalid template id" });
+    }
+    ids.add(t.id);
+    const name = t.name.trim();
+    if (!name) out.push({ path: ["templates", i, "name"], message: "Give the template a name" });
+    else if (names.has(name.toLowerCase())) {
+      out.push({ path: ["templates", i, "name"], message: `A template is already called "${name}"` });
+    }
+    names.add(name.toLowerCase());
+    const error = validateTemplate(t.template);
+    if (error) out.push({ path: ["templates", i, "template"], message: `"${name}": ${error}` });
+  });
+  if (!allTemplates(files).some((t) => t.id === files.active)) {
+    out.push({ path: ["active"], message: "The chosen template does not exist" });
+  }
+  return out;
+}
+
 /** The tags a template may use: everything a file name could want, nothing structured (performer). */
 export const TEMPLATE_FIELDS = [
   "album",
