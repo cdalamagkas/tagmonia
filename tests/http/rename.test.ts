@@ -68,6 +68,7 @@ Deno.test("the proposal shows the new names when renaming is on, and the choice 
     };
     assertEquals(await rename(), {
       include: true,
+      inbox: false,
       folder: "New Name",
       moves: [{ fileId, from: "Old/01.flac", to: "New Name/One.flac" }],
       conflicts: [],

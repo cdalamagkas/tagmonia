@@ -1,6 +1,6 @@
 # Inbox and renaming
 
-**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template) and PR 2 (renaming on write) done.
+**Status:** accepted 2026-11-26 (D57); Phase 6, W7 and §11.3's optional rename/move. Progress: PR 1 (the template), PR 2 (renaming on write) and PR 3 (the inbox) done.
 **Decided by the maintainer:** a separate inbox folder; new arrivals are prepared automatically but written by you; renaming
 happens as part of Write, in the same batch and undone by the same Undo; the default template names album folders like
 the maintainer's own test folder.
@@ -32,10 +32,10 @@ albums, prepares their tags, and on Write moves them into the library under a co
 
 - `TAGMONIA_INBOX_DIR` (optional, e.g. `/inbox`). Without it, nothing in this note changes Tagmonia, except opt-in
   renaming inside the library.
-- `library_file` and `candidate` get a `root` column (`library` | `inbox`). Paths stay relative to their root (CLAUDE.md),
-  and `path` is unique per root (a table rebuild in the migration).
-- Startup refuses an inbox inside the library or the library inside the inbox. Every path is resolved and checked
-  against its own root (§14.4).
+- **As built (D58):** inbox files are stored as `@inbox/<path in the inbox>`, not with a `root` column. One path column
+  stays unique, and units, grouping and hashes work as they do for the library. `Roots` resolves a stored path in its
+  own root, and every path is checked to stay inside it (§14.4). A real `@inbox` folder in the library is skipped.
+- Startup refuses an inbox that is the library, inside it, or contains it.
 
 ### Noticing new arrivals (W7)
 
@@ -140,6 +140,25 @@ Every PR is tested on temporary directories only; any check against real folders
   - with the default template there is nothing to rename: it reproduces the maintainer's own names exactly;
   - with "Artist / Album (Year)": 17 files moved, then undone. Names, tags, pictures and audio (FLAC MD5) were equal
     to the backup, and no folder was left behind.
+
+## PR 3 as built
+
+- **Scanning:** "Scan library" scans the library, then the inbox. Each scan compares only its own rows, so neither
+  removes the other's files. Inbox albums are identified and prepared like any other.
+- **Writing:** an inbox album always moves into the library by the template in use, whether or not library renaming
+  is on (there is no checkbox). Everything else is PR 2's rules: after the tags verify, all or nothing, never over an
+  existing file, its other files along. The inbox folder is removed once empty, never the inbox itself. Undo moves the
+  album back into the inbox.
+- **Fingerprints, covers and thumbnails** read inbox files through the same resolver.
+- **UI:**
+  - Library: All / Library / Inbox (N), an "inbox" badge, and folders shown as "Inbox / …".
+  - Release page: "In the inbox · 26 changes ready" with **Write and move to the library**.
+  - Changes tab: "Move 3 files from the inbox into the library, to …".
+  - Settings → Files: how many albums wait in the inbox, or how to set one up.
+- **Checked** in headless Chromium with a scratch library and inbox: silent stand-ins for a 3-track Deezer album were
+  scanned into Inbox (1), proposed from the Deezer link, and written. They landed in the library as
+  `Interstellar Epic Piano Suite (2023)/01 Katherine Cordova - …flac`, with the folder's `notes.txt`, and the inbox was
+  left empty. Undo back into the inbox is tested on real audio.
 
 ## Open points (defaults chosen; say if you want otherwise)
 

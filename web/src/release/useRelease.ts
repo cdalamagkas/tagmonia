@@ -49,6 +49,7 @@ export function useRelease(id: number) {
         proposal,
         history,
         submission: sub.submission,
+        inInbox: detail.release.inInbox,
         cover,
         filesVersion: filesVersion.current,
       };

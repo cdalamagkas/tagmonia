@@ -6,7 +6,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { CurrentCoverDto, LibraryFileDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
-import { bytes, duration, METHOD_LABELS, RELEASE_FIELDS, tagValue } from "../format.ts";
+import { bytes, duration, folderLabel, METHOD_LABELS, RELEASE_FIELDS, tagValue } from "../format.ts";
 import { onLinkClick } from "../router.ts";
 import { Identification } from "../components/Identification.tsx";
 import { Review } from "../components/Review.tsx";
@@ -215,7 +215,7 @@ function Header(
         <h1>{release.album ?? "Loose files"}</h1>
         <p class="tm-muted">
           {release.artist ?? "Unknown artist"} · {release.trackCount} {formats} files ·{" "}
-          <span class="tm-path">{release.folder || "/"}</span>
+          <span class="tm-path">{folderLabel(release.folder)}</span>
         </p>
         <p class="tm-source">
           <span class="tm-muted">Source:</span>{" "}

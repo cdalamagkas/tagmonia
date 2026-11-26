@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { LibrarySummary, ReleaseSummary } from "../../../shared/types.ts";
 import { api } from "../api.ts";
+import { folderLabel } from "../format.ts";
 import { MusicServerStatus, scanActive, ScanStatus } from "../components/ScanStatus.tsx";
 import { onLinkClick } from "../router.ts";
 import { StatusBadge } from "../components/Identification.tsx";
@@ -13,12 +14,14 @@ export function LibraryPage() {
   const [items, setItems] = useState<ReleaseSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
+  /** All, only the library, or only the inbox (D57). */
+  const [where, setWhere] = useState<"inbox" | "library" | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const wasActive = useRef(false);
 
-  const load = useCallback(async (query: string, offset: number) => {
+  const load = useCallback(async (query: string, offset: number, w = where) => {
     try {
-      const page = await api.releases(query, offset, PAGE);
+      const page = await api.releases(query, offset, PAGE, w);
       setTotal(page.total);
       setItems((prev) => (offset === 0 ? page.items : [...prev, ...page.items]));
       setError(null);
@@ -41,9 +44,9 @@ export function LibraryPage() {
 
   // Debounced search.
   useEffect(() => {
-    const t = setTimeout(() => load(q, 0), 250);
+    const t = setTimeout(() => load(q, 0, where), 250);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, where]);
 
   // Poll while a scan runs; reload the list when it finishes.
   useEffect(() => {
@@ -111,6 +114,24 @@ export function LibraryPage() {
           value={q}
           onInput={(e) => setQ(e.currentTarget.value)}
         />
+        {summary?.inbox && (
+          <div class="tm-filter" role="group" aria-label="Show">
+            {([[undefined, "All"], ["library", "Library"], ["inbox", `Inbox (${summary.inbox.releases})`]] as const)
+              .map((
+                [w, label],
+              ) => (
+                <button
+                  key={label}
+                  type="button"
+                  class={`tm-linklike${where === w ? " tm-on" : ""}`}
+                  aria-pressed={where === w}
+                  onClick={() => setWhere(w)}
+                >
+                  {label}
+                </button>
+              ))}
+          </div>
+        )}
         {items.length === 0
           ? (
             <p class="tm-muted">
@@ -152,13 +173,16 @@ export function LibraryPage() {
                         </a>
                         {r.errorCount > 0 && <span class="tm-badge tm-badge-error">{r.errorCount} unreadable</span>}
                         {r.mbid && <span class="tm-badge" title={r.mbid}>MBID</span>}
+                        {r.inInbox && (
+                          <span class="tm-badge tm-badge-warn" title="Written, it moves into the library">inbox</span>
+                        )}
                       </td>
                       <td class="tm-num">{r.trackCount}</td>
                       <td>
                         <StatusBadge status={r.status} />
                       </td>
                       <td>{r.formats.join(", ")}</td>
-                      <td class="tm-path tm-hide-sm">{r.folder || "/"}</td>
+                      <td class="tm-path tm-hide-sm">{folderLabel(r.folder)}</td>
                     </tr>
                   ))}
                 </tbody>

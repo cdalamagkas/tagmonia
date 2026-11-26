@@ -4,6 +4,7 @@
  * ("matched"), or when the user picks a release or edition. Reads stored tags
  * and calls MusicBrainz; never touches the library, so it runs in read-only mode.
  */
+import { Roots } from "../fs/safe_path.ts";
 import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { getRelease } from "../db/repo/library.ts";
@@ -59,6 +60,8 @@ export interface CoverDeps {
   fetcher: Pick<CoverFetcher, "listing" | "download">;
   mode: () => CoverMode;
   musicDir: string;
+  /** The inbox (D58): a cover.jpg for an inbox album is written there, and moves with it. */
+  inboxDir?: string | null;
 }
 
 export interface ProposeJobDeps {
@@ -251,7 +254,7 @@ async function proposeCover(
   if (cover?.folder) {
     const name = folderFileName(cover.folder.mime);
     try {
-      const abs = await folderCoverPath(await Deno.realPath(deps.musicDir), folder, name);
+      const abs = await folderCoverPath(await Roots.open(deps.musicDir, deps.inboxDir), folder, name);
       folderCurrent = (await readFolderCover(abs))?.sha256 ?? null;
       folderPath = folder === "" ? name : `${folder}/${name}`;
     } catch (e) {

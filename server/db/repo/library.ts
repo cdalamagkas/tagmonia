@@ -1,4 +1,5 @@
 /** Data access for library_file and candidate (ARCHITECTURE.md §6.1). */
+import { INBOX, isInboxPath } from "../../fs/safe_path.ts";
 import type { Db } from "../db.ts";
 import type { CanonicalTags } from "../../tagio/mod.ts";
 import { inUnit } from "../../scanner/group.ts";
@@ -199,6 +200,8 @@ export function reconcileUnit(db: Db, root: string, groups: CandidateRecord[], n
 
 export interface ReleaseListQuery {
   q?: string;
+  /** Only the inbox's albums, or only the library's (D57); both when absent. */
+  in?: "inbox" | "library";
   limit: number;
   offset: number;
 }
@@ -206,6 +209,7 @@ export interface ReleaseListQuery {
 export interface ReleaseRow {
   id: number;
   folder: string;
+  inInbox: boolean;
   artist: string | null;
   album: string | null;
   mbid: string | null;
@@ -242,6 +246,7 @@ function toRelease(r: ReleaseSqlRow): ReleaseRow {
   return {
     id: r.id,
     folder: r.folder,
+    inInbox: isInboxPath(r.folder),
     artist: r.hint_artist,
     album: r.hint_album,
     mbid: r.hint_mbid,
@@ -260,10 +265,17 @@ function likePattern(q: string): string {
 
 export function listReleases(db: Db, query: ReleaseListQuery): { total: number; items: ReleaseRow[] } {
   const q = query.q?.trim();
-  const where = q
-    ? "WHERE c.hint_artist LIKE ? ESCAPE '\\' OR c.hint_album LIKE ? ESCAPE '\\' OR c.folder LIKE ? ESCAPE '\\'"
-    : "";
-  const args = q ? [likePattern(q), likePattern(q), likePattern(q)] : [];
+  const conds: string[] = [];
+  const args: string[] = [];
+  if (q) {
+    conds.push("(c.hint_artist LIKE ? ESCAPE '\\' OR c.hint_album LIKE ? ESCAPE '\\' OR c.folder LIKE ? ESCAPE '\\')");
+    args.push(likePattern(q), likePattern(q), likePattern(q));
+  }
+  // The inbox's albums have folders under "@inbox" (D58).
+  if (query.in) {
+    conds.push(`${query.in === "inbox" ? "" : "NOT "}(c.folder = '${INBOX}' OR c.folder LIKE '${INBOX}/%')`);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const total = (db.prepare(`SELECT count(*) n FROM candidate c ${where}`).get(...args) as { n: number }).n;
   const rows = db.prepare(
     `${RELEASE_SELECT} ${where}
@@ -282,11 +294,14 @@ export function getRelease(db: Db, id: number): { release: ReleaseRow; files: St
   return { release: toRelease(r), files };
 }
 
-export function librarySummary(db: Db): { files: number; releases: number; unreadable: number } {
+export function librarySummary(
+  db: Db,
+): { files: number; releases: number; unreadable: number; inboxReleases: number } {
   const row = db.prepare(
     `SELECT (SELECT count(*) FROM library_file) files, (SELECT count(*) FROM candidate) releases,
-            (SELECT count(*) FROM library_file WHERE read_error IS NOT NULL) unreadable`,
-  ).get() as { files: number; releases: number; unreadable: number };
+            (SELECT count(*) FROM library_file WHERE read_error IS NOT NULL) unreadable,
+            (SELECT count(*) FROM candidate WHERE folder = '${INBOX}' OR folder LIKE '${INBOX}/%') inboxReleases`,
+  ).get() as { files: number; releases: number; unreadable: number; inboxReleases: number };
   return { ...row };
 }
 

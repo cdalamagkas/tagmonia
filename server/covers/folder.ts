@@ -5,17 +5,24 @@
  * followed, and the write is atomic (temp file, fsync, rename).
  */
 import { join } from "node:path";
-import { resolveInRoot } from "../fs/safe_path.ts";
+import { resolveInRoot, Roots } from "../fs/safe_path.ts";
 import { sha256Hex } from "./fetch.ts";
 
 export class FolderCoverError extends Error {
   override name = "FolderCoverError";
 }
 
-/** The real path of `<folder>/<name>` inside the music root; `name` is a fixed file name, never user input. */
-export async function folderCoverPath(rootReal: string, folderRel: string, name: string): Promise<string> {
+/**
+ * The real path of `<folder>/<name>` inside its root (the library, or the inbox for `@inbox/…` folders, D58);
+ * `name` is a fixed file name, never user input.
+ */
+export async function folderCoverPath(roots: Roots | string, folderRel: string, name: string): Promise<string> {
   if (name.includes("/") || name.includes("\\") || name.startsWith(".")) throw new FolderCoverError("bad file name");
-  const dir = folderRel === "" ? rootReal : await resolveInRoot(rootReal, folderRel);
+  const dir = typeof roots !== "string"
+    ? await roots.resolve(folderRel)
+    : folderRel === ""
+    ? roots
+    : await resolveInRoot(roots, folderRel);
   return join(dir, name);
 }
 

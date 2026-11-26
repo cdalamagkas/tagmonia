@@ -8,6 +8,8 @@ const bool = z.enum(["true", "false", "1", "0"]).transform((v) => v === "true" |
 
 const envSchema = z.object({
   TAGMONIA_MUSIC_DIR: z.string().min(1).default("/music"),
+  /** New albums land here and move into the library when written (D57); no inbox when unset. */
+  TAGMONIA_INBOX_DIR: z.string().min(1).optional(),
   TAGMONIA_CONFIG_DIR: z.string().min(1).default("/config"),
   TAGMONIA_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   TAGMONIA_PUBLIC_URL: z.url({ protocol: /^https?$/ }).optional(),
@@ -30,6 +32,8 @@ const envSchema = z.object({
 
 export interface Config {
   musicDir: string;
+  /** The inbox folder (D57), or undefined. Never inside the library, nor the library inside it. */
+  inboxDir?: string;
   configDir: string;
   port: number;
   publicUrl?: string;
@@ -67,6 +71,7 @@ export function loadConfig(env: Record<string, string | undefined> = Deno.env.to
   }
   return {
     musicDir: e.TAGMONIA_MUSIC_DIR,
+    inboxDir: e.TAGMONIA_INBOX_DIR,
     configDir: e.TAGMONIA_CONFIG_DIR,
     port: e.TAGMONIA_PORT,
     publicUrl: e.TAGMONIA_PUBLIC_URL,
@@ -110,4 +115,18 @@ export function resolveAcoustidKey(config: Config): Promise<string | undefined> 
 /** The Jellyfin API key (§13, D44); read at startup like the AcoustID key. */
 export function resolveJellyfinKey(config: Config): Promise<string | undefined> {
   return resolveSecret(config.jellyfinKey, config.jellyfinKeyFile, "TAGMONIA_JELLYFIN_KEY");
+}
+
+/**
+ * The inbox must be a separate tree: inside the library its albums would be scanned twice, and with the
+ * library inside it, moving an album "into the library" would move it within the inbox. Checked on the
+ * real paths, at startup.
+ */
+export async function checkInbox(config: Config): Promise<void> {
+  if (!config.inboxDir) return;
+  const [lib, inbox] = await Promise.all([Deno.realPath(config.musicDir), Deno.realPath(config.inboxDir)]);
+  const within = (a: string, b: string) => a === b || a.startsWith(b.endsWith("/") ? b : `${b}/`);
+  if (within(inbox, lib) || within(lib, inbox)) {
+    throw new Error("TAGMONIA_INBOX_DIR must not be the music folder, inside it, or contain it");
+  }
 }

@@ -1003,3 +1003,15 @@ table.tm-review {
   gap: 10px;
   align-items: flex-start;
 }
+
+/* Library filter: all, library, inbox (D57) */
+.tm-filter {
+  display: flex;
+  gap: 14px;
+  margin: 8px 0 12px;
+}
+.tm-filter .tm-on {
+  font-weight: var(--tm-weight-label);
+  text-decoration: none;
+  color: var(--tm-navy);
+}

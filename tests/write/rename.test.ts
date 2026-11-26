@@ -200,3 +200,73 @@ Deno.test("another album's track in the folder: its folder, cover and booklet st
     assert(await s.exists(p), p);
   }
 });
+
+Deno.test("an inbox album: scanned under @inbox, written into the library, and undone back into the inbox", async () => {
+  const lib = await Deno.makeTempDir({ prefix: "tagmonia-lib-" });
+  const inbox = await Deno.makeTempDir({ prefix: "tagmonia-inbox-" });
+  const db = await memoryDb();
+  try {
+    await Deno.mkdir(join(inbox, "Download 123"));
+    for (const [i, ext] of ["flac", "mp3", "m4a"].entries()) {
+      await Deno.copyFile(join(AUDIO_DIR, `tagged.${ext}`), join(inbox, "Download 123", `0${i + 1}.${ext}`));
+    }
+    await Deno.writeTextFile(join(inbox, "Download 123", "cover.jpg"), "cover");
+    // A real "@inbox" folder in the library is never scanned: it would collide with the inbox's paths.
+    await Deno.mkdir(join(lib, "@inbox"));
+    await Deno.copyFile(join(AUDIO_DIR, "tagged.flac"), join(lib, "@inbox", "x.flac"));
+    const scan = async () => {
+      const a = await scanLibrary({ db, tagio, rootReal: await Deno.realPath(lib), ignore: [], logger: nullLogger });
+      const b = await scanLibrary({
+        db,
+        tagio,
+        rootReal: await Deno.realPath(inbox),
+        ignore: [],
+        logger: nullLogger,
+        inbox: true,
+      });
+      return { library: a, inbox: b };
+    };
+    await scan();
+    const paths = () =>
+      (db.prepare("SELECT path FROM library_file ORDER BY path").all() as { path: string }[]).map((r) => r.path);
+    assertEquals(paths(), ["@inbox/Download 123/01.flac", "@inbox/Download 123/02.mp3", "@inbox/Download 123/03.m4a"]);
+    assertEquals((await scan()).library.removed, 0, "a library scan leaves the inbox's files alone");
+
+    const candidateId = (db.prepare("SELECT id FROM candidate").get() as { id: number }).id;
+    const files = (db.prepare("SELECT id, path, current_tags FROM library_file ORDER BY path").all() as {
+      id: number;
+      path: string;
+      current_tags: string;
+    }[]).map((f) => ({ id: f.id, path: f.path, tags: JSON.parse(f.current_tags) as CanonicalTags }));
+    const s = { db, candidateId, files } as unknown as Setup;
+    // Renaming in the library is off: an inbox album moves anyway, that is what the inbox is for.
+    const deps = {
+      db,
+      tagio,
+      musicDir: lib,
+      inboxDir: inbox,
+      readOnly: false,
+      logger: nullLogger,
+      naming: () => ({ template: TEMPLATE, renameLibrary: false }),
+    };
+    const w = await writeProposal(deps, propose(s));
+    assertEquals([w.status, w.written], ["done", 3]);
+    assertEquals(paths(), NEW);
+    for (const p of [...NEW, "New Album/cover.jpg"]) assert(await Deno.lstat(join(lib, p)).catch(() => null), p);
+    assert(!(await Deno.lstat(join(inbox, "Download 123")).catch(() => null)), "the inbox folder is emptied away");
+    assert(await Deno.lstat(inbox), "the inbox itself stays");
+    assertEquals((db.prepare("SELECT folder FROM candidate").get() as { folder: string }).folder, "New Album");
+    const again = await scan();
+    assertEquals([again.library.added, again.library.updated, again.inbox.removed], [0, 0, 0], "nothing to rescan");
+
+    const u = await undoBatch(deps, w.batchId);
+    assertEquals(u.status, "done");
+    assertEquals(paths(), ["@inbox/Download 123/01.flac", "@inbox/Download 123/02.mp3", "@inbox/Download 123/03.m4a"]);
+    assert(await Deno.lstat(join(inbox, "Download 123", "cover.jpg")), "the cover went back too");
+    assert(!(await Deno.lstat(join(lib, "New Album")).catch(() => null)));
+  } finally {
+    db.close();
+    await Deno.remove(lib, { recursive: true });
+    await Deno.remove(inbox, { recursive: true });
+  }
+});

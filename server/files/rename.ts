@@ -7,7 +7,7 @@
 import { basename, dirname, extname, join } from "node:path";
 import { renderPath } from "../../shared/naming.ts";
 import type { Db } from "../db/db.ts";
-import { assertSafeRelative, isInside, resolveInRoot } from "../fs/safe_path.ts";
+import { isInboxPath, Roots } from "../fs/safe_path.ts";
 import { AUDIO_EXTENSIONS } from "../scanner/walk.ts";
 import type { CanonicalTags, TagChange } from "../tagio/mod.ts";
 
@@ -139,12 +139,17 @@ export async function moveFile(fromAbs: string, toAbs: string): Promise<void> {
   await Deno.remove(fromAbs);
 }
 
-/** Removes `folder` and its parents while they are empty, never the root itself. */
-export async function removeEmptyFolders(rootReal: string, folder: string): Promise<void> {
+/** Removes `folder` and its parents while they are empty, never a root itself (library or inbox). */
+export async function removeEmptyFolders(roots: Roots, folder: string): Promise<void> {
   let rel = folder;
-  while (rel && rel !== ".") {
-    const abs = join(rootReal, rel);
-    if (!isInside(rootReal, abs) || abs === rootReal) return;
+  while (rel && rel !== "." && rel !== "@inbox") {
+    let abs: string;
+    try {
+      abs = roots.target(rel);
+    } catch {
+      return;
+    }
+    if (abs === roots.library || abs === roots.inbox) return;
     try {
       for await (const _ of Deno.readDir(abs)) return;
       await Deno.remove(abs);
@@ -168,10 +173,10 @@ function isAudio(name: string): boolean {
 }
 
 /** The other files of a folder whose audio all moves: they follow the album; subfolders and audio stay. */
-async function companions(rootReal: string, plan: RenamePlan, moving: Set<string>): Promise<MoveRow[]> {
+async function companions(roots: Roots, plan: RenamePlan, moving: Set<string>): Promise<MoveRow[]> {
   const out: MoveRow[] = [];
   for (const { from, to } of plan.folders) {
-    const abs = await resolveInRoot(rootReal, from || ".");
+    const abs = await roots.resolve(from);
     for await (const e of Deno.readDir(abs)) {
       if (!e.isFile || isAudio(e.name)) continue;
       const src = from ? `${from}/${e.name}` : e.name;
@@ -199,7 +204,7 @@ function foldersWithOtherAudio(db: Db, plan: RenamePlan, ids: Set<number>): Set<
  */
 export async function applyRenames(
   db: Db,
-  rootReal: string,
+  roots: Roots,
   batchId: number,
   plan: RenamePlan,
   candidateId: number,
@@ -211,14 +216,18 @@ export async function applyRenames(
   const safe = { ...plan, folders: plan.folders.filter((f) => !busy.has(f.from)) };
   const rows: MoveRow[] = [
     ...plan.moves.map((m) => ({ kind: "audio" as const, fileId: m.fileId, from: m.from, to: m.to })),
-    ...await companions(rootReal, safe, new Set(plan.moves.map((m) => m.from))),
+    ...await companions(roots, safe, new Set(plan.moves.map((m) => m.from))),
   ];
-  // Every target checked before anything moves.
+  // Every target checked before anything moves. Targets are always in the library, never the inbox.
   for (const r of rows) {
-    assertSafeRelative(r.to);
-    const toAbs = join(rootReal, r.to);
-    if (!isInside(rootReal, toAbs)) throw new RenameError(`${r.to} is outside the library`);
-    const fromAbs = await resolveInRoot(rootReal, r.from);
+    if (isInboxPath(r.to)) throw new RenameError(`${r.to} is not in the library`);
+    let toAbs: string;
+    try {
+      toAbs = roots.target(r.to);
+    } catch {
+      throw new RenameError(`${r.to} is outside the library`);
+    }
+    const fromAbs = await roots.resolve(r.from);
     if (await exists(toAbs) && !(await sameFile(fromAbs, toAbs))) {
       if (r.kind === "audio") throw new RenameError(`${r.to} already exists`);
       r.to = ""; // a companion whose name is taken stays where it is
@@ -231,21 +240,21 @@ export async function applyRenames(
   const done: MoveRow[] = [];
   try {
     for (const r of todo) {
-      await moveFile(await resolveInRoot(rootReal, r.from), join(rootReal, r.to));
+      await moveFile(await roots.resolve(r.from), roots.target(r.to));
       done.push(r);
     }
   } catch (e) {
     for (const r of done.reverse()) {
-      await moveFile(join(rootReal, r.to), join(rootReal, r.from)).catch(() => {});
+      await moveFile(roots.target(r.to), roots.target(r.from)).catch(() => {});
     }
-    for (const r of done) await removeEmptyFolders(rootReal, folderOf(r.to));
+    for (const r of done) await removeEmptyFolders(roots, folderOf(r.to));
     throw new RenameError(`not renamed: ${(e as Error).message}`);
   }
   for (const r of done) ins.run(batchId, r.fileId, r.kind, r.from, r.to);
   const upd = db.prepare("UPDATE library_file SET path = ?, folder = ? WHERE id = ?");
   for (const r of done) if (r.fileId !== null) upd.run(r.to, folderOf(r.to), r.fileId);
   setCandidateFolder(db, candidateId);
-  for (const f of new Set(done.map((r) => folderOf(r.from)))) await removeEmptyFolders(rootReal, f);
+  for (const f of new Set(done.map((r) => folderOf(r.from)))) await removeEmptyFolders(roots, f);
   return done.filter((r) => r.kind === "audio").length;
 }
 
@@ -271,7 +280,7 @@ export function setCandidateFolder(db: Db, candidateId: number): void {
  */
 export async function undoRenames(
   db: Db,
-  rootReal: string,
+  roots: Roots,
   batchId: number,
   undoId: number,
   candidateId: number | null,
@@ -288,14 +297,14 @@ export async function undoRenames(
   const upd = db.prepare("UPDATE library_file SET path = ?, folder = ? WHERE id = ?");
   for (const r of rows) {
     try {
-      const fromAbs = await resolveInRoot(rootReal, r.to_path);
+      const fromAbs = await roots.resolve(r.to_path);
       if (r.file_id !== null) {
         const now = db.prepare("SELECT path FROM library_file WHERE id = ?").get(r.file_id) as
           | { path: string }
           | undefined;
         if (now?.path !== r.to_path) throw new RenameError("moved again since the write");
       }
-      await moveFile(fromAbs, join(rootReal, r.from_path));
+      await moveFile(fromAbs, roots.target(r.from_path));
       mark.run(r.id);
       log.run(undoId, r.file_id, r.kind, r.to_path, r.from_path, "moved", null);
       if (r.file_id !== null) upd.run(r.from_path, folderOf(r.from_path), r.file_id);
@@ -306,7 +315,7 @@ export async function undoRenames(
       if (r.kind === "audio") blocked.set(r.from_path, `not moved back: ${why}`);
     }
   }
-  for (const f of new Set(rows.map((r) => folderOf(r.to_path)))) await removeEmptyFolders(rootReal, f);
+  for (const f of new Set(rows.map((r) => folderOf(r.to_path)))) await removeEmptyFolders(roots, f);
   if (candidateId !== null) setCandidateFolder(db, candidateId);
   return { moved, blocked };
 }

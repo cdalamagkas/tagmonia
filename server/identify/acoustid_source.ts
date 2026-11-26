@@ -5,7 +5,7 @@
  */
 import type { Db } from "../db/db.ts";
 import { getFingerprint, setAcoustidId, setFingerprint } from "../db/repo/library.ts";
-import { resolveInRoot } from "../fs/safe_path.ts";
+import { Roots } from "../fs/safe_path.ts";
 import type { Logger } from "../log.ts";
 import type { AcoustIdClient } from "../providers/acoustid.ts";
 import { FingerprintError, fingerprintFile } from "../tagio/mod.ts";
@@ -27,6 +27,8 @@ export interface AcoustIdSourceDeps {
   db: Db;
   acoustid: AcoustIdClient;
   musicDir: string;
+  /** The inbox (D58): its albums are fingerprinted too. */
+  inboxDir?: string | null;
   logger: Logger;
   /** AcoustID results below this score are ignored. */
   minScore?: number;
@@ -40,13 +42,13 @@ export function createAcoustIdSource(deps: AcoustIdSourceDeps): FingerprintSourc
     async lookup(files, signal) {
       const out = new Map<number, FileFingerprintMatch>();
       // Resolved per run: the mount may appear after startup.
-      const rootReal = await Deno.realPath(deps.musicDir);
+      const roots = await Roots.open(deps.musicDir, deps.inboxDir);
       for (const f of files) {
         signal?.throwIfAborted();
         let fp = getFingerprint(deps.db, f.fileId);
         if (!fp) {
           try {
-            fp = await fingerprint(await resolveInRoot(rootReal, f.path), { signal });
+            fp = await fingerprint(await roots.resolve(f.path), { signal });
           } catch (e) {
             if (!(e instanceof FingerprintError)) throw e;
             // Silence or very short tracks have no usable fingerprint; the other files still count.

@@ -4,6 +4,7 @@
  *
  * Read-only towards the library: this module never writes to the music root.
  */
+import { INBOX, isInboxPath } from "../fs/safe_path.ts";
 import type { ScanProgressDto, ScanResultDto } from "../../shared/types.ts";
 import { transaction } from "../db/db.ts";
 import type { Db } from "../db/db.ts";
@@ -27,8 +28,10 @@ export type ScanResult = ScanResultDto;
 export interface ScanDeps {
   db: Db;
   tagio: TagIO;
-  /** realpath of the music root. */
+  /** realpath of the music root, or of the inbox with `inbox` set. */
   rootReal: string;
+  /** Scanning the inbox (D57, D58): paths are stored under `@inbox/`, and only inbox rows are compared. */
+  inbox?: boolean;
   ignore: string[];
   logger: Logger;
   signal?: AbortSignal;
@@ -101,7 +104,8 @@ export async function scanLibrary(deps: ScanDeps): Promise<ScanResult> {
   const now = deps.now ?? Date.now;
   const { db, logger } = deps;
   const stats: WalkStats = { files: 0, skippedSymlinks: 0, ignored: 0, unreadableDirs: 0 };
-  const known = fileIndex(db);
+  // Each root's scan sees only its own rows: a library scan never removes inbox files, nor the reverse.
+  const known = new Map([...fileIndex(db)].filter(([p]) => isInboxPath(p) === !!deps.inbox));
   const seen = new Set<string>();
   const affectedUnits = new Set<string>();
   const result = { added: 0, updated: 0, removed: 0, unchanged: 0, unreadable: 0 };
@@ -109,8 +113,11 @@ export async function scanLibrary(deps: ScanDeps): Promise<ScanResult> {
   const report = (phase: ScanProgress["phase"]) => deps.progress?.({ phase, seen: seen.size, read });
 
   for await (
-    const e of walkLibrary(deps.rootReal, { ignore: compileIgnore(deps.ignore), signal: deps.signal, stats })
+    const walked of walkLibrary(deps.rootReal, { ignore: compileIgnore(deps.ignore), signal: deps.signal, stats })
   ) {
+    // A real "@inbox" folder in the library would collide with the inbox's stored paths: it is not scanned.
+    if (!deps.inbox && isInboxPath(walked.rel)) continue;
+    const e = deps.inbox ? { ...walked, rel: `${INBOX}/${walked.rel}` } : walked;
     seen.add(e.rel);
     const prev = known.get(e.rel);
     if (prev && prev.size === e.size && prev.mtimeMs === e.mtimeMs) {
