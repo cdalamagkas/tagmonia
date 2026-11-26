@@ -350,8 +350,13 @@ function FileSettings() {
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   /** The inbox (D57): undefined while loading, null when not configured. */
   const [inbox, setInbox] = useState<{ releases: number } | null | undefined>(undefined);
+  /** How often the inbox is also looked at (D60), as saved; null while loading. */
+  const [poll, setPoll] = useState<number | null>(null);
   useEffect(() => {
-    api.settings().then((s) => setFiles(s.files)).catch((e) => setNote({ text: e.message, error: true }));
+    api.settings().then((s) => {
+      setFiles(s.files);
+      setPoll(s.scanner.inboxPollMinutes);
+    }).catch((e) => setNote({ text: e.message, error: true }));
     api.summary().then((s) => setInbox(s.inbox), () => setInbox(undefined));
   }, []);
   const save = async (next: FileNamingSettings, done: string) => {
@@ -391,6 +396,38 @@ function FileSettings() {
                 {inbox.releases === 1 ? "1 album waits" : `${inbox.releases} albums wait`}{" "}
                 there. Albums in the inbox always move into the library, named by the template below, when you write
                 them.
+                <br />
+                <span class="tm-muted tm-small-note">
+                  New albums are scanned by themselves once they have finished copying (nothing changed for 30 seconds).
+                  Network shares and WSL's /mnt/c do not report changes, so the inbox is also checked every
+                </span>{" "}
+                <input
+                  type="number"
+                  class="tm-number-small"
+                  min={0}
+                  max={1440}
+                  step={1}
+                  aria-label="Minutes between inbox checks"
+                  value={poll ?? ""}
+                  onChange={async (e) => {
+                    const n = Number(e.currentTarget.value);
+                    if (!Number.isInteger(n) || n < 0 || n > 1440) {
+                      return setNote({ text: "Give a whole number of minutes, 0 to 1440", error: true });
+                    }
+                    try {
+                      const r = await api.updateSettings({ scanner: { inboxPollMinutes: n } });
+                      setPoll(r.settings.scanner.inboxPollMinutes);
+                      setNote({
+                        text: n === 0
+                          ? "The inbox is no longer checked on a timer."
+                          : `The inbox is checked every ${n} minutes.`,
+                      });
+                    } catch (err) {
+                      setNote({ text: (err as Error).message, error: true });
+                    }
+                  }}
+                />{" "}
+                <span class="tm-muted tm-small-note">minutes (0: only when changes are reported).</span>
               </>
             )
             : (

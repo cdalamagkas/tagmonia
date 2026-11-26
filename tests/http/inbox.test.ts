@@ -32,7 +32,7 @@ Deno.test("library list: all, the library only, or the inbox only; the summary c
     assertEquals(await list("&in=library"), [["Old Album", false]]);
     assertEquals((await t.request(`/api/library/releases?in=elsewhere`, { cookie })).status, 400);
     const summary = (await (await t.request("/api/library/summary", { cookie })).json()) as LibrarySummary;
-    assertEquals(summary.inbox, { releases: 1 });
+    assertEquals(summary.inbox, { releases: 1, lastScan: null });
   } finally {
     await t.cleanup();
     await Deno.remove(inboxDir, { recursive: true });

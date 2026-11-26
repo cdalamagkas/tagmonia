@@ -12,7 +12,8 @@ import { JobQueue } from "./jobs/queue.ts";
 import { enqueueIdentify, registerIdentifyJob } from "./jobs/identify.ts";
 import { enqueuePropose, registerProposeJob } from "./jobs/propose.ts";
 import { registerWriteJobs } from "./jobs/write.ts";
-import { registerScanJob } from "./jobs/scan.ts";
+import { enqueueInboxScan, registerScanJob } from "./jobs/scan.ts";
+import { InboxWatcher } from "./inbox/watch.ts";
 import { createLogger } from "./log.ts";
 import { createMusicBrainzClient, createSubmissionClients } from "./providers/musicbrainz/mod.ts";
 import { registerSubmissionJobs } from "./jobs/submission.ts";
@@ -182,6 +183,17 @@ async function main() {
   });
   queue.start();
 
+  // New music in the inbox is scanned once it settles (D60); nothing is written by itself.
+  const watcher = config.inboxDir
+    ? new InboxWatcher({
+      inboxDir: config.inboxDir,
+      onSettled: () => enqueueInboxScan(queue),
+      pollMs: () => settings.scanner.inboxPollMinutes * 60_000,
+      logger,
+    })
+    : null;
+  watcher?.start();
+
   const sessions = new SessionStore(db, {
     idleMs: settings.auth.sessionIdleHours * 3_600_000,
     maxMs: settings.auth.sessionMaxDays * 86_400_000,
@@ -209,6 +221,7 @@ async function main() {
   const shutdown = async () => {
     logger.info("shutting down");
     clearInterval(purge);
+    await watcher?.stop();
     await server.shutdown();
     await queue.stop();
     await tagio.close?.();
