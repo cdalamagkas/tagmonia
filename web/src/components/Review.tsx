@@ -20,7 +20,7 @@ import type {
   RenameProposalDto,
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
-import { tagValue } from "../format.ts";
+import { folderLabel, tagValue } from "../format.ts";
 import { buildChanges, type ChangeItem, coverProposes, locksOf } from "../release/changes.ts";
 import { isOpen } from "../release/status.ts";
 
@@ -407,14 +407,16 @@ function RenameLine(
   return (
     <div class={`tm-rename${rename.include ? "" : " tm-change-off"}`}>
       <label class="tm-check">
+        {/* An inbox album always moves into the library (D57): nothing to choose. */}
         <input
           type="checkbox"
           checked={rename.include}
-          disabled={busy}
+          disabled={busy || rename.inbox}
           onChange={(e) => onInclude(e.currentTarget.checked)}
         />
         <span>
-          Rename {n === 1 ? "1 file" : `${n} files`} and move them to{" "}
+          {rename.inbox ? "Move" : "Rename"} {n === 1 ? "1 file" : `${n} files`}{" "}
+          {rename.inbox ? "from the inbox into the library, to" : "and move them to"}{" "}
           <span class="tm-path">{rename.folder || "/"}</span>{" "}
           <a class="tm-small-link" href="/settings" title="Settings → Files">(how files are named)</a>
         </span>
@@ -437,7 +439,7 @@ function RenameLine(
             <tbody>
               {rename.moves.map((m) => (
                 <tr key={m.fileId}>
-                  <td class="tm-path" title={m.from}>{name(m.from)}</td>
+                  <td class="tm-path" title={folderLabel(m.from)}>{name(m.from)}</td>
                   <td class="tm-path" title={m.to}>{m.to}</td>
                 </tr>
               ))}

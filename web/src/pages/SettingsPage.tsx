@@ -348,8 +348,11 @@ function FileSettings() {
   /** The editor: a new template (id null), or a saved one being edited. */
   const [editing, setEditing] = useState<{ id: string | null; name: string; template: string } | null>(null);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
+  /** The inbox (D57): undefined while loading, null when not configured. */
+  const [inbox, setInbox] = useState<{ releases: number } | null | undefined>(undefined);
   useEffect(() => {
     api.settings().then((s) => setFiles(s.files)).catch((e) => setNote({ text: e.message, error: true }));
+    api.summary().then((s) => setInbox(s.inbox), () => setInbox(undefined));
   }, []);
   const save = async (next: FileNamingSettings, done: string) => {
     try {
@@ -380,6 +383,25 @@ function FileSettings() {
         How written albums are named, relative to the library. The Changes tab shows the new names before you write, and
         Undo puts the old ones back.
       </p>
+      {inbox !== undefined && (
+        <p class="tm-section-note">
+          <strong>Inbox:</strong> {inbox
+            ? (
+              <>
+                {inbox.releases === 1 ? "1 album waits" : `${inbox.releases} albums wait`}{" "}
+                there. Albums in the inbox always move into the library, named by the template below, when you write
+                them.
+              </>
+            )
+            : (
+              <span class="tm-muted">
+                none. Set <code>TAGMONIA_INBOX_DIR</code>{" "}
+                to a folder for new music (mounted outside the library); its albums are prepared for you and move into
+                the library when you write them.
+              </span>
+            )}
+        </p>
+      )}
       <label class="tm-check">
         <input
           type="checkbox"
@@ -393,7 +415,7 @@ function FileSettings() {
             )}
         />
         <span>
-          Rename albums when writing them
+          Rename albums in the library when writing them
           <br />
           <span class="tm-muted tm-small-note">
             Off: Tagmonia changes tags only. On: each write also renames the album's files and moves them into the

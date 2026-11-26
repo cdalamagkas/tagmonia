@@ -95,3 +95,10 @@ export const RELEASE_FIELDS: (keyof CanonicalTags)[] = [
   "discogs_release_id",
   "deezer_album_id",
 ];
+
+/** A release folder as shown: an inbox album's "@inbox/…" (D58) reads "Inbox / …", the library root "/". */
+export function folderLabel(folder: string): string {
+  if (folder === "@inbox") return "Inbox";
+  if (folder.startsWith("@inbox/")) return `Inbox / ${folder.slice("@inbox/".length)}`;
+  return folder || "/";
+}

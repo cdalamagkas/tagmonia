@@ -16,6 +16,8 @@ services:
       #- TAGMONIA_JELLYFIN_URL=https://jellyfin.home.example
       #- TAGMONIA_JELLYFIN_KEY_FILE=/run/secrets/jellyfin_key
       #- TAGMONIA_JELLYFIN_LIBRARY=Music
+      # Optional: an inbox for new music; written albums move from it into the library (needs write access to both).
+      #- TAGMONIA_INBOX_DIR=/inbox
       - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
     #secrets:
     #  - acoustid_key
@@ -23,6 +25,7 @@ services:
     volumes:
       - /mnt/c/Users/Public/Music:/music:ro
       - tagmonia-config:/config
+      #- /path/to/inbox:/inbox
 volumes:
   tagmonia-config:
 #secrets:

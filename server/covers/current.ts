@@ -8,7 +8,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db } from "../db/db.ts";
-import { resolveInRoot } from "../fs/safe_path.ts";
+import { Roots } from "../fs/safe_path.ts";
 import type { Logger } from "../log.ts";
 import type { Picture, TagIO } from "../tagio/types.ts";
 import { sha256Hex } from "./fetch.ts";
@@ -49,6 +49,8 @@ export interface CurrentCoversOptions {
   db: Db;
   tagio: Pick<TagIO, "read">;
   musicDir: string;
+  /** The inbox (D58): its albums' covers are shown too. */
+  inboxDir?: string | null;
   cacheDir: string;
   logger: Logger;
   python?: string;
@@ -95,7 +97,7 @@ export class CurrentCovers {
       | { folder: string }
       | undefined;
     if (!row) return null;
-    const root = await Deno.realPath(this.#o.musicDir);
+    const root = await Roots.open(this.#o.musicDir, this.#o.inboxDir);
     for (const name of FOLDER_IMAGE_NAMES) {
       try {
         const abs = await folderCoverPath(root, row.folder, name);
@@ -112,7 +114,7 @@ export class CurrentCovers {
 
   /** The source image's bytes and type. */
   async #read(src: CoverSourceRef): Promise<{ bytes: Uint8Array; mime: string } | null> {
-    const root = await Deno.realPath(this.#o.musicDir);
+    const root = await Roots.open(this.#o.musicDir, this.#o.inboxDir);
     if (src.kind === "folder") {
       const dir = src.path.includes("/") ? src.path.slice(0, src.path.lastIndexOf("/")) : "";
       const abs = await folderCoverPath(root, dir, src.path.slice(src.path.lastIndexOf("/") + 1));
@@ -120,7 +122,7 @@ export class CurrentCovers {
       if (!f) return null;
       return { bytes: f.bytes, mime: imageInfo(f.bytes)?.mime ?? "application/octet-stream" };
     }
-    const abs = await resolveInRoot(root, src.path);
+    const abs = await root.resolve(src.path);
     const { pictures } = await this.#o.tagio.read(abs, { pictureData: true });
     const p: Picture | undefined = pictures.find((x) => x.type === "front") ?? pictures[0];
     return p ? { bytes: p.data, mime: p.mime } : null;

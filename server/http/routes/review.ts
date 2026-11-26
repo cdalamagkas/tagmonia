@@ -1,4 +1,5 @@
 /** Review actions (§10): per-field decisions, locks, discarding a proposal. Reviewing never writes files. */
+import { inInbox } from "../../write/apply.ts";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { LockDto } from "../../../shared/types.ts";
@@ -75,6 +76,9 @@ export function reviewRoutes(deps: { db: Db; coverDir: string; now?: () => numbe
       if (!p) return c.json({ error: "not found" }, 404);
       if (p.state === "written" || p.state === "discarded") {
         return c.json({ error: `This proposal is already ${p.state}` }, 409);
+      }
+      if (inInbox(db, p.candidateId)) {
+        return c.json({ error: "An inbox album always moves into the library when it is written" }, 409);
       }
       setRenameSkip(db, p.id, !body.data.include);
       return c.body(null, 204);

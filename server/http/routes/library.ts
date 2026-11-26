@@ -29,7 +29,7 @@ import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
 import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
 import type { ProposalDto, ProposalResponse, RenameProposalDto } from "../../../shared/types.ts";
-import { renamePlanFor } from "../../write/apply.ts";
+import { inInbox, renamePlanFor } from "../../write/apply.ts";
 import type { CandidateStatus } from "../../../shared/types.ts";
 import type { Job, JobQueue } from "../../jobs/queue.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -109,8 +109,11 @@ function renameDto(
   const plan = renamePlanFor(db, naming, p);
   if (!plan || plan.moves.length === 0) return null;
   const folders = [...new Set(plan.moves.map((m) => m.to.split("/").slice(0, -1).join("/")))];
+  const inbox = inInbox(db, p.candidateId);
   return {
-    include: !p.renameSkip,
+    // An inbox album always moves into the library: no choice to offer.
+    include: inbox || !p.renameSkip,
+    inbox,
     folder: folders.length === 1 ? folders[0] : commonFolder(folders),
     moves: plan.moves,
     conflicts: plan.conflicts,
@@ -130,6 +133,7 @@ function commonFolder(folders: string[]): string {
 
 const listQuery = z.object({
   q: z.string().max(200).optional(),
+  in: z.enum(["inbox", "library"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -182,6 +186,8 @@ export interface LibraryRouteDeps {
   thresholds: () => { auto: number; review: number };
   /** The releases' current covers (D50); null = none served. */
   covers?: CurrentCovers | null;
+  /** An inbox is configured (TAGMONIA_INBOX_DIR, D57). */
+  inbox?: boolean;
   /** Renaming on write (D57): the template in use and whether library albums are renamed; read per request. */
   naming?: () => { template: string; renameLibrary: boolean };
   /** Provider links a proposal can start from (§10.4, D51); null = MusicBrainz releases only. */
@@ -239,8 +245,10 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       const scan = queue.latest(SCAN_JOB);
       const refresh = queue.latest(REFRESH_JOB);
       const server = deps.musicServer ? await deps.musicServer() : null;
+      const { inboxReleases, ...counts } = librarySummary(db);
       const body: LibrarySummary = {
-        ...librarySummary(db),
+        ...counts,
+        inbox: deps.inbox ? { releases: inboxReleases } : null,
         readOnly: deps.readOnly,
         scan: scan ? (toJobDto(scan) as ScanJobDto) : null,
         musicServer: server ? { ...server, lastRefresh: refresh ? toJobDto(refresh) : null } : null,

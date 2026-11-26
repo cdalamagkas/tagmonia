@@ -43,3 +43,45 @@ export async function resolveInRoot(rootReal: string, rel: string): Promise<stri
   if (!isInside(rootReal, real)) throw new PathEscapeError("path resolves outside the music root via a symlink");
   return real;
 }
+
+/**
+ * The inbox (D57, D58): its files are stored under this top folder, so one path column serves both roots
+ * and stays unique. A real folder of that name in the library is never scanned.
+ */
+export const INBOX = "@inbox";
+
+export function isInboxPath(rel: string): boolean {
+  return rel === INBOX || rel.startsWith(`${INBOX}/`);
+}
+
+/** The library root and the optional inbox root, both real paths; a stored path says which it is in. */
+export class Roots {
+  constructor(readonly library: string, readonly inbox: string | null = null) {}
+
+  /** Resolves the roots' real paths now: a mount may appear after startup (e.g. a NAS share). */
+  static async open(musicDir: string, inboxDir?: string | null): Promise<Roots> {
+    return new Roots(await Deno.realPath(musicDir), inboxDir ? await Deno.realPath(inboxDir) : null);
+  }
+
+  /** The root a stored path is in, and the path relative to it ("" for the root itself). */
+  locate(rel: string): { root: string; rel: string } {
+    if (!isInboxPath(rel)) return { root: this.library, rel };
+    if (!this.inbox) throw new PathEscapeError("the inbox is not configured (TAGMONIA_INBOX_DIR)");
+    return { root: this.inbox, rel: rel.slice(INBOX.length + 1) };
+  }
+
+  /** An existing file or folder: resolved and checked to stay inside its root (§14.4). */
+  async resolve(rel: string): Promise<string> {
+    const at = this.locate(rel);
+    return at.rel === "" ? at.root : await resolveInRoot(at.root, at.rel);
+  }
+
+  /** Where a new file goes (it need not exist yet): checked lexically to stay inside its root. */
+  target(rel: string): string {
+    const at = this.locate(rel);
+    assertSafeRelative(at.rel);
+    const abs = normalize(join(at.root, at.rel));
+    if (!isInside(at.root, abs)) throw new PathEscapeError();
+    return abs;
+  }
+}

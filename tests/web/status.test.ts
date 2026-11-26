@@ -335,6 +335,7 @@ Deno.test("a submission under way takes the status line (D52, PR 4)", () => {
 Deno.test("renaming counts as one change, only when included and no name is taken (D57)", () => {
   const rename = {
     include: true,
+    inbox: false,
     folder: "A",
     moves: [{ fileId: 1, from: "x/1.flac", to: "A/1.flac" }],
     conflicts: [],
@@ -344,6 +345,15 @@ Deno.test("renaming counts as one change, only when included and no name is take
   assertEquals(say(state({ proposal: only }))[1], "1 change ready: new file names");
   assertEquals(changesToWrite({ ...only, rename: { ...rename, include: false } }), 0);
   assertEquals(changesToWrite({ ...only, rename: { ...rename, conflicts: ["A/1.flac already exists"] } }), 0);
+  // An inbox album: its write is the move into the library (D57).
+  const inbox = releaseStatus({
+    ...state({ proposal: { ...only, rename: { ...rename, inbox: true } } }),
+    inInbox: true,
+  });
+  assertEquals([inbox.sentence, inbox.primary?.label], [
+    "In the inbox · 1 change ready: new file names",
+    "Write and move to the library",
+  ]);
 });
 
 Deno.test("no proposal yet: identification decides the next action", () => {

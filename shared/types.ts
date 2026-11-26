@@ -101,6 +101,8 @@ export interface LibrarySummary {
   scan: ScanJobDto | null;
   /** The music server told to rescan after writes (§13); null when none is configured. */
   musicServer: MusicServerStatus | null;
+  /** The inbox (D57): null when TAGMONIA_INBOX_DIR is not set; else how many albums wait in it. */
+  inbox: { releases: number } | null;
 }
 
 export interface MusicServerStatus {
@@ -114,8 +116,10 @@ export interface MusicServerStatus {
 /** A release candidate (§6.1 `candidate`): files believed to form one release. */
 export interface ReleaseSummary {
   id: number;
-  /** Relative to the music root. */
+  /** Relative to the music root; an inbox album's starts with "@inbox/" (D58). */
   folder: string;
+  /** In the inbox: written, it moves into the library (D57). */
+  inInbox: boolean;
   artist: string | null;
   album: string | null;
   mbid: string | null;
@@ -399,6 +403,8 @@ export interface RenameProposalDto {
   moves: { fileId: number; from: string; to: string }[];
   /** Names already taken by other files: the album is not renamed while any remains. */
   conflicts: string[];
+  /** An inbox album: the move into the library is part of every write, with no checkbox (D57). */
+  inbox: boolean;
 }
 
 /** POST /api/proposals/:id/cover/decision */

@@ -59,6 +59,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
       db,
       tagio: ctx.tagio,
       musicDir: config.musicDir,
+      inboxDir: config.inboxDir,
       cacheDir: join(config.configDir, "thumbs"),
       logger: ctx.logger,
     })
@@ -102,6 +103,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
           : null,
       thresholds: () => ({ auto: ctx.settings.identify.autoThreshold, review: ctx.settings.identify.reviewThreshold }),
       naming: () => namingOf(ctx.settings),
+      inbox: !!config.inboxDir,
       covers,
       sources: ctx.harmony
         ? {

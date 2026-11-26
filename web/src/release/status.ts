@@ -104,6 +104,8 @@ export interface ReleaseState {
   proposal: ProposalResponse;
   history: HistoryResponse;
   submission: SubmissionDto | null;
+  /** The album waits in the inbox; written, it moves into the library (D57). */
+  inInbox?: boolean;
 }
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -165,6 +167,19 @@ function submissionStatus(s: ReleaseState): ReleaseStatus | null {
 }
 
 export function releaseStatus(s: ReleaseState): ReleaseStatus {
+  const status = statusOf(s);
+  if (!s.inInbox || status.tone === "busy") return status;
+  // An inbox album (D57): its write is also the move into the library.
+  const inbox = (a: Action | null) => a?.id === "write" ? { ...a, label: "Write and move to the library" } : a;
+  return {
+    ...status,
+    sentence: `In the inbox · ${status.sentence}`,
+    primary: inbox(status.primary),
+    secondary: status.secondary.map((a) => inbox(a)!),
+  };
+}
+
+function statusOf(s: ReleaseState): ReleaseStatus {
   const { identification: ident, proposal: pr, history } = s;
   const p = pr.proposal;
 

@@ -79,10 +79,15 @@ export const api = {
   },
 
   summary: () => request<LibrarySummary>("GET", "/api/library/summary"),
-  releases: (q: string, offset: number, limit = 50) =>
+  releases: (q: string, offset: number, limit = 50, where?: "inbox" | "library") =>
     request<ReleaseList>(
       "GET",
-      `/api/library/releases?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`,
+      `/api/library/releases?${new URLSearchParams({
+        q,
+        offset: String(offset),
+        limit: String(limit),
+        ...(where ? { in: where } : {}),
+      })}`,
     ),
   release: (id: number) => request<ReleaseDetail>("GET", `/api/library/releases/${id}`),
   scan: () => request<ScanJobDto>("POST", "/api/library/scan"),

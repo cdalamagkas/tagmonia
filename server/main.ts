@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { bootstrapAdmin } from "./auth/bootstrap.ts";
 import { LoginThrottle } from "./auth/ratelimit.ts";
 import { SessionStore } from "./auth/sessions.ts";
-import { loadConfig, resolveAcoustidKey, resolveJellyfinKey } from "./config.ts";
+import { checkInbox, loadConfig, resolveAcoustidKey, resolveJellyfinKey } from "./config.ts";
 import { JellyfinClient } from "./integrations/jellyfin.ts";
 import { enqueueRefresh, folderOfBatch, registerRefreshJob } from "./jobs/refresh.ts";
 import { openMigratedDb } from "./db/db.ts";
@@ -34,6 +34,7 @@ import { CoverFetcher } from "./covers/fetch.ts";
 async function main() {
   const config = loadConfig();
   const logger = createLogger(config.logLevel);
+  await checkInbox(config);
   await Deno.mkdir(config.configDir, { recursive: true });
   const settings = await loadSettings(config.configDir);
   const db = await openMigratedDb(join(config.configDir, "tagmonia.db"));
@@ -45,6 +46,7 @@ async function main() {
     db,
     tagio,
     musicDir: config.musicDir,
+    inboxDir: config.inboxDir,
     ignore: () => settings.scanner.ignore,
     logger,
     onCandidatesTouched: (ids) => enqueueIdentify(queue, ids),
@@ -70,6 +72,7 @@ async function main() {
         source: createAcoustIdSource({
           db,
           musicDir: config.musicDir,
+          inboxDir: config.inboxDir,
           logger,
           minScore: settings.providers.acoustid.minScore,
           acoustid: new AcoustIdClient({
@@ -129,7 +132,7 @@ async function main() {
     db,
     mb,
     mbFor: submissionClients,
-    covers: { fetcher: covers, mode: () => settings.covers.mode, musicDir: config.musicDir },
+    covers: { fetcher: covers, mode: () => settings.covers.mode, musicDir: config.musicDir, inboxDir: config.inboxDir },
     settings: () => settings.proposal,
     logger,
     enrichment: { registry: harmony, enabled: (id) => settings.providers[id].enabled },
@@ -156,6 +159,7 @@ async function main() {
     db,
     tagio,
     musicDir: config.musicDir,
+    inboxDir: config.inboxDir,
     readOnly: config.readOnly,
     logger,
     covers: { read: (sha, mime) => covers.read(sha, mime), backupDir: join(config.configDir, "backups", "pictures") },

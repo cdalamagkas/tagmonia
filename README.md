@@ -64,7 +64,10 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.
 - **Renames albums when writing them** (off by default, Settings → Files): the Changes tab shows every file's new name
   first, the album's cover and booklet files move with it, nothing is ever overwritten, and Undo puts the old names
-  back. An inbox folder is being built (D57).
+  back.
+- **An inbox for new music** (`TAGMONIA_INBOX_DIR`): albums dropped there are scanned with the library, identified
+  and prepared; when you write one, it moves into the library under the template's name. The library page has an
+  Inbox filter.
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
 
@@ -153,6 +156,9 @@ scripts/dk sh -c 'TAGMONIA_TAGIO_IMPL=taglib-wasm deno task test:tagio'
 ```sh
 docker build -t tagmonia .
 docker run -p 8080:8080 -v /path/to/music:/music -v tagmonia-config:/config tagmonia
+# with an inbox for new music:
+docker run -p 8080:8080 -v /path/to/music:/music -v /path/to/inbox:/inbox -e TAGMONIA_INBOX_DIR=/inbox \
+  -v tagmonia-config:/config tagmonia
 ```
 
 See `docker-compose.example.yml`. Configuration variables are listed in

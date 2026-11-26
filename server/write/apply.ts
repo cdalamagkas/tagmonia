@@ -6,7 +6,8 @@
 import { transaction } from "../db/db.ts";
 import type { Db } from "../db/db.ts";
 import { getProposal, setProposalState } from "../db/repo/proposals.ts";
-import { resolveInRoot } from "../fs/safe_path.ts";
+import { isInboxPath, Roots } from "../fs/safe_path.ts";
+import { DEFAULT_TEMPLATE } from "../../shared/naming.ts";
 import type { Logger } from "../log.ts";
 import { candidateContentHash } from "../scanner/scan.ts";
 import type { AudioFormat, CanonicalField, CanonicalTags, TagChange, TagIO } from "../tagio/mod.ts";
@@ -32,6 +33,8 @@ export interface WriteDeps {
   covers?: { read(sha256: string, mime: string): Promise<Uint8Array>; backupDir: string } | null;
   /** Renaming on write (D57): the template in use, and whether library albums are renamed; read per write. */
   naming?: () => { template: string; renameLibrary: boolean };
+  /** The inbox (D57, D58): its albums move into the library on every write. */
+  inboxDir?: string | null;
 }
 
 /**
@@ -45,7 +48,10 @@ export function renamePlanFor(
   proposal: { candidateId: number; fields: ReviewedRow[] },
   written = false,
 ): RenamePlan | null {
-  if (!naming?.renameLibrary) return null;
+  // An inbox album always moves into the library: that is what the inbox is for (D57).
+  const inbox = inInbox(db, proposal.candidateId);
+  if (!naming?.renameLibrary && !inbox) return null;
+  const template = naming?.template ?? DEFAULT_TEMPLATE;
   const plans = plansFromProposal(proposal.fields.map(reviewed));
   const ids = [...new Set(proposal.fields.map((f) => f.fileId))];
   const rows = ids.map((id) =>
@@ -60,7 +66,13 @@ export function renamePlanFor(
     tags: written ? JSON.parse(r.current_tags) : tagsAfter(JSON.parse(r.current_tags), plans.get(r.id)?.change),
   }));
   const taken = (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
-  return planRenames(naming.template, files, taken);
+  return planRenames(template, files, taken);
+}
+
+/** The release is in the inbox (its folder is under `@inbox/`, D58). */
+export function inInbox(db: Db, candidateId: number): boolean {
+  const r = db.prepare("SELECT folder FROM candidate WHERE id = ?").get(candidateId) as { folder: string } | undefined;
+  return !!r && isInboxPath(r.folder);
 }
 
 type ReviewedRow = {
@@ -265,7 +277,7 @@ export async function writeProposal(deps: WriteDeps, proposalId: number, signal?
       if (!plans.has(fileId)) plans.set(fileId, { change: { set: {}, remove: [] }, expected: {} });
     }
   }
-  const rootReal = await Deno.realPath(deps.musicDir);
+  const roots = await Roots.open(deps.musicDir, deps.inboxDir);
   const batchId = startBatch(db, "write", proposal.candidateId, proposal.id, null, now());
   let written = 0, skipped = 0, failed = 0;
 
@@ -280,7 +292,7 @@ export async function writeProposal(deps: WriteDeps, proposalId: number, signal?
     }
     let abs: string;
     try {
-      abs = await resolveInRoot(rootReal, file.path);
+      abs = await roots.resolve(file.path);
     } catch (e) {
       failed++;
       recordFile(db, batchId, file, { status: "failed", error: (e as Error).message });
@@ -374,7 +386,7 @@ export async function writeProposal(deps: WriteDeps, proposalId: number, signal?
   }
 
   if (coverPlan.folder && cover?.folder && cover.folderPath && !signal?.aborted) {
-    const r = await writeFolderImage(deps, rootReal, batchId, cover.folderPath, cover.folder, cover.folderCurrent);
+    const r = await writeFolderImage(deps, roots, batchId, cover.folderPath, cover.folder, cover.folderCurrent);
     if (r === "written") written++;
     else if (r === "skipped") skipped++;
     else failed++;
@@ -383,13 +395,16 @@ export async function writeProposal(deps: WriteDeps, proposalId: number, signal?
   // Renaming (D57): only once every file's tags are written and verified, all or nothing for the album.
   let renameError: string | null = null;
   const naming = deps.naming?.();
-  if (naming?.renameLibrary && !proposal.renameSkip && !signal?.aborted) {
+  const inbox = inInbox(db, proposal.candidateId);
+  if (((naming?.renameLibrary && !proposal.renameSkip) || inbox) && !signal?.aborted) {
     if (failed > 0 || skipped > 0) {
-      renameError = "not renamed: some files were not written";
+      renameError = inbox
+        ? "not moved to the library: some files were not written"
+        : "not renamed: some files were not written";
     } else {
       try {
         const plan = renamePlanFor(db, naming, proposal, true)!;
-        const moved = await applyRenames(db, rootReal, batchId, plan, proposal.candidateId);
+        const moved = await applyRenames(db, roots, batchId, plan, proposal.candidateId);
         // A rename-only write: the moved files are what it wrote.
         if (written === 0) written = moved;
       } catch (e) {
@@ -438,7 +453,7 @@ async function backupRefs(pictures: Picture[]): Promise<PictureRef[]> {
  */
 async function writeFolderImage(
   deps: WriteDeps,
-  rootReal: string,
+  roots: Roots,
   batchId: number,
   rel: string,
   image: { sha256: string; mime: string },
@@ -447,7 +462,7 @@ async function writeFolderImage(
   const { db } = deps;
   const file = { id: null, path: rel };
   try {
-    const abs = await folderCoverPath(rootReal, dirname(rel) === "." ? "" : dirname(rel), basename(rel));
+    const abs = await folderCoverPath(roots, dirname(rel) === "." ? "" : dirname(rel), basename(rel));
     const current = await readFolderCover(abs);
     if ((current?.sha256 ?? null) !== expectedSha) {
       recordFile(db, batchId, file, {
@@ -515,11 +530,11 @@ export async function undoBatch(deps: WriteDeps, batchId: number, signal?: Abort
     `SELECT id, file_id, path, kind, tags_before, change, tags_after, pictures_before, pictures_after FROM file_backup
      WHERE write_batch_id = ? AND status = 'written'`,
   ).all(batchId) as unknown as BackupRow[];
-  const rootReal = await Deno.realPath(deps.musicDir);
+  const roots = await Roots.open(deps.musicDir, deps.inboxDir);
   const undoId = startBatch(db, "undo", batch.candidate_id, batch.proposal_id, batchId, now());
   let written = 0, skipped = 0, failed = 0;
   // Names first (D57): the backups know each file by the path it had when it was written.
-  const { moved, blocked } = await undoRenames(db, rootReal, batchId, undoId, batch.candidate_id);
+  const { moved, blocked } = await undoRenames(db, roots, batchId, undoId, batch.candidate_id);
 
   for (const b of backups) {
     if (signal?.aborted) break;
@@ -531,14 +546,14 @@ export async function undoBatch(deps: WriteDeps, batchId: number, signal?: Abort
       continue;
     }
     if (b.kind === "folder_image") {
-      const r = await undoFolderImage(deps, rootReal, undoId, b);
+      const r = await undoFolderImage(deps, roots, undoId, b);
       if (r === "written") written++;
       else if (r === "skipped") skipped++;
       else failed++;
       continue;
     }
     try {
-      const abs = await resolveInRoot(rootReal, b.path);
+      const abs = await roots.resolve(b.path);
       const before: CanonicalTags = JSON.parse(b.tags_before!);
       const change: TagChange = JSON.parse(b.change!);
       const after: CanonicalTags = JSON.parse(b.tags_after!);
@@ -629,7 +644,7 @@ export async function undoBatch(deps: WriteDeps, batchId: number, signal?: Abort
 /** Puts the folder image back as it was, or removes it if the write created it; never over someone else's change. */
 async function undoFolderImage(
   deps: WriteDeps,
-  rootReal: string,
+  roots: Roots,
   undoId: number,
   b: BackupRow,
 ): Promise<"written" | "skipped" | "failed"> {
@@ -637,7 +652,7 @@ async function undoFolderImage(
   try {
     const before: PictureRef[] = JSON.parse(b.pictures_before ?? "[]");
     const after: PictureRef[] = JSON.parse(b.pictures_after ?? "[]");
-    const abs = await folderCoverPath(rootReal, dirname(b.path) === "." ? "" : dirname(b.path), basename(b.path));
+    const abs = await folderCoverPath(roots, dirname(b.path) === "." ? "" : dirname(b.path), basename(b.path));
     const current = await readFolderCover(abs);
     if (current?.sha256 !== after[0]?.sha256) {
       recordFile(deps.db, undoId, file, {
