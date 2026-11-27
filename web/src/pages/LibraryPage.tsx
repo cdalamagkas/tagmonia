@@ -6,6 +6,14 @@ import { inboxScanActive, MusicServerStatus, scanActive, ScanStatus } from "../c
 import { onLinkClick } from "../router.ts";
 import { StatusBadge } from "../components/Identification.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
+import { changesLabel } from "../release/status.ts";
+import type { ReleaseChangesDto } from "../../../shared/types.ts";
+
+function ChangesBadge({ changes }: { changes: ReleaseChangesDto | null }) {
+  const c = changesLabel(changes);
+  if (!c.tone) return <span class="tm-muted" title={c.title}>{c.label}</span>;
+  return <span class={`tm-badge tm-inline tm-badge-${c.tone}`} title={c.title}>{c.label}</span>;
+}
 
 const PAGE = 50;
 
@@ -165,7 +173,8 @@ export function LibraryPage() {
                     <th>Album artist</th>
                     <th>Album</th>
                     <th class="tm-num">Tracks</th>
-                    <th>Status</th>
+                    <th title="Identification on MusicBrainz">MusicBrainz</th>
+                    <th title="What the prepared changes would add or change in the files">Changes</th>
                     <th>Format</th>
                     <th class="tm-hide-sm">Folder</th>
                   </tr>
@@ -192,6 +201,9 @@ export function LibraryPage() {
                       <td class="tm-num">{r.trackCount}</td>
                       <td>
                         <StatusBadge status={r.status} />
+                      </td>
+                      <td>
+                        <ChangesBadge changes={r.changes} />
                       </td>
                       <td>{r.formats.join(", ")}</td>
                       <td class="tm-path tm-hide-sm">{folderLabel(r.folder)}</td>

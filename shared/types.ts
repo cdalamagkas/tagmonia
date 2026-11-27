@@ -132,6 +132,21 @@ export interface ReleaseSummary {
   errorCount: number;
   hasCover: boolean;
   updatedAt: number;
+  /** The latest prepared changes (D61), counted as the Changes tab counts them; null when none are prepared. */
+  changes: ReleaseChangesDto | null;
+}
+
+/**
+ * - ready: changes to write;
+ * - choices: values to choose before writing (`choices` of them);
+ * - stale: the files changed since the changes were prepared;
+ * - none: prepared, and the files already have everything;
+ * - written: the latest changes were written.
+ */
+export interface ReleaseChangesDto {
+  state: "ready" | "choices" | "stale" | "none" | "written";
+  count: number;
+  choices: number;
 }
 
 export interface ReleaseList {

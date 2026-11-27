@@ -28,7 +28,14 @@ import { enqueuePropose, enqueueProviderPropose, proposeDedupeKey } from "../../
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
 import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
-import type { FolderListDto, ProposalDto, ProposalResponse, RenameProposalDto } from "../../../shared/types.ts";
+import type {
+  FolderListDto,
+  ProposalDto,
+  ProposalResponse,
+  ReleaseChangesDto,
+  RenameProposalDto,
+} from "../../../shared/types.ts";
+import { changesToWrite, openChoices } from "../../../shared/changes.ts";
 import { inInbox, renamePlanFor } from "../../write/apply.ts";
 import { destinationOf, recentDestinations, setDestination } from "../../files/rename.ts";
 import { validateDestination } from "../../../shared/naming.ts";
@@ -127,9 +134,10 @@ function renameDto(
   db: Db,
   naming: { template: string; renameLibrary: boolean } | undefined,
   p: NonNullable<ReturnType<typeof latestProposal>>,
+  taken?: string[],
 ): RenameProposalDto | null {
   if (!["draft", "needs_review", "approved"].includes(p.state)) return null;
-  const plan = renamePlanFor(db, naming, p);
+  const plan = renamePlanFor(db, naming, p, false, taken);
   if (!plan || plan.moves.length === 0) return null;
   const folders = [...new Set(plan.moves.map((m) => m.to.split("/").slice(0, -1).join("/")))];
   const inbox = inInbox(db, p.candidateId);
@@ -141,6 +149,50 @@ function renameDto(
     moves: plan.moves,
     conflicts: plan.conflicts,
   };
+}
+
+/**
+ * The latest prepared changes of each release (D61), for the library list: counted with the Changes tab's own
+ * rules (shared/changes.ts), the cover and the move included.
+ */
+export function releaseChanges(
+  db: Db,
+  naming: { template: string; renameLibrary: boolean } | undefined,
+  ids: number[],
+): Map<number, ReleaseChangesDto | null> {
+  const out = new Map<number, ReleaseChangesDto | null>();
+  let taken: string[] | undefined;
+  for (const id of ids) {
+    const p = latestProposal(db, id);
+    if (!p || p.state === "discarded") {
+      out.set(id, null);
+      continue;
+    }
+    if (p.state === "written") {
+      out.set(id, { state: "written", count: 0, choices: 0 });
+      continue;
+    }
+    const hash = (db.prepare("SELECT content_hash FROM candidate WHERE id = ?").get(id) as { content_hash: string })
+      .content_hash;
+    const w = coverWrites(getCover(db, p.id));
+    // One list of the library's paths for every album's rename preview, not one per album.
+    if (naming?.renameLibrary || inInbox(db, id) || destinationOf(db, id) !== null) {
+      taken ??= (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
+    }
+    const counted = {
+      fields: p.fields,
+      cover: { writes: w.embed || w.folder },
+      rename: renameDto(db, naming, p, taken),
+    };
+    const count = changesToWrite(counted);
+    const choices = openChoices(counted);
+    out.set(id, {
+      state: p.basedOnHash !== hash ? "stale" : choices > 0 ? "choices" : count > 0 ? "ready" : "none",
+      count,
+      choices,
+    });
+  }
+  return out;
 }
 
 function commonFolder(folders: string[]): string {
@@ -286,7 +338,12 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
     .get("/releases", (c) => {
       const q = listQuery.safeParse(c.req.query());
       if (!q.success) return c.json({ error: "invalid query" }, 400);
-      const body: ReleaseList = listReleases(db, q.data);
+      const list = listReleases(db, q.data);
+      const changes = releaseChanges(db, deps.naming?.(), list.items.map((r) => r.id));
+      const body: ReleaseList = {
+        total: list.total,
+        items: list.items.map((r) => ({ ...r, changes: changes.get(r.id) ?? null })),
+      };
       return c.json(body);
     })
     // The cover a release has now, as a small JPEG; the ETag changes when the source file does (D50).
@@ -313,7 +370,8 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
     .get("/releases/:id{[0-9]+}", (c) => {
       const r = getRelease(db, Number(c.req.param("id")));
       if (!r) return c.json({ error: "not found" }, 404);
-      const body: ReleaseDetail = { release: r.release, files: r.files.map(toFileDto) };
+      const changes = releaseChanges(db, deps.naming?.(), [r.release.id]).get(r.release.id) ?? null;
+      const body: ReleaseDetail = { release: { ...r.release, changes }, files: r.files.map(toFileDto) };
       return c.json(body);
     })
     .get("/releases/:id{[0-9]+}/identification", (c) => {
