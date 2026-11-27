@@ -132,6 +132,8 @@ export interface ReleaseSummary {
   errorCount: number;
   hasCover: boolean;
   updatedAt: number;
+  /** A one-file release without an album tag (D62): the track's title, or its file name. */
+  single: string | null;
   /** The latest prepared changes (D61), counted as the Changes tab counts them; null when none are prepared. */
   changes: ReleaseChangesDto | null;
 }

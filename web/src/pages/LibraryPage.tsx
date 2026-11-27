@@ -190,7 +190,7 @@ export function LibraryPage() {
                       <td>{r.artist ?? <span class="tm-muted">–</span>}</td>
                       <td>
                         <a href={`/releases/${r.id}`} onClick={onLinkClick}>
-                          {r.album ?? <span class="tm-muted">Loose files</span>}
+                          {r.album ?? r.single ?? <span class="tm-muted">Loose files</span>}
                         </a>
                         {r.errorCount > 0 && <span class="tm-badge tm-badge-error">{r.errorCount} unreadable</span>}
                         {r.mbid && <span class="tm-badge" title={r.mbid}>MBID</span>}
