@@ -338,7 +338,8 @@ export function changesLabel(
         } can be written`,
       };
     case "ready":
-      return { label: n(c.count, "change", "changes"), tone: "info", title: "Ready to write" };
+      // The number alone: the column is headed Changes, and the title says the rest.
+      return { label: String(c.count), tone: "info", title: `${n(c.count, "change", "changes")} ready to write` };
     case "none":
       return { label: "complete", tone: "ok", title: "The files already have everything the source offers" };
     case "written":

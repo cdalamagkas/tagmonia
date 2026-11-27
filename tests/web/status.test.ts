@@ -397,8 +397,8 @@ Deno.test("the source line: the release on MusicBrainz with its facts and the ma
 
 Deno.test("the library's Changes column in a few words (D61)", () => {
   assertEquals(changesLabel(null).label, "–");
-  assertEquals(changesLabel({ state: "ready", count: 26, choices: 0 }).label, "26 changes");
-  assertEquals(changesLabel({ state: "ready", count: 1, choices: 0 }).label, "1 change");
+  assertEquals(changesLabel({ state: "ready", count: 26, choices: 0 }).label, "26");
+  assertEquals(changesLabel({ state: "ready", count: 1, choices: 0 }).title, "1 change ready to write");
   assertEquals(changesLabel({ state: "choices", count: 5, choices: 2 }), {
     label: "2 to choose",
     tone: "warn",
