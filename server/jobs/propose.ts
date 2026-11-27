@@ -26,7 +26,9 @@ import { toReleaseView } from "../identify/release.ts";
 import { DEFAULT_SCORING, scoreRelease } from "../identify/score.ts";
 import type { Logger } from "../log.ts";
 import { buildFieldProposals } from "../proposal/build.ts";
-import { mergeProviders } from "../proposal/merge.ts";
+import { type FieldProvenance, mergeProviders } from "../proposal/merge.ts";
+import { getSearchTerms } from "../db/repo/search_terms.ts";
+import type { CanonicalTags } from "../tagio/mod.ts";
 import { chooseCover, type CoverFetcher } from "../covers/fetch.ts";
 import { folderCoverPath, readFolderCover } from "../covers/folder.ts";
 import type { CoverMode } from "../covers/sources.ts";
@@ -116,6 +118,12 @@ const payloadSchema = z.union([
     providerUrl: z.url({ protocol: /^https$/ }),
     chosenBy: z.literal("user"),
   }),
+  // The user's search terms as tags, when MusicBrainz has nothing that fits (D63).
+  z.object({
+    candidateId: z.number().int().positive(),
+    fromSearchTerms: z.literal(true),
+    chosenBy: z.literal("user"),
+  }),
 ]);
 
 export interface ProposeJobResult {
@@ -143,6 +151,7 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
     if ("providerUrl" in parsed.data) {
       return await proposeFromProvider(deps, new URL(parsed.data.providerUrl), found, contentHash, now, signal);
     }
+    if ("fromSearchTerms" in parsed.data) return proposeFromSearchTerms(deps, found, contentHash, now);
     const { releaseMbid, server } = parsed.data;
     if (server && !deps.mbFor) throw new PermanentJobError(`${server} is not set up`);
     const mb = server ? deps.mbFor!(server) : deps.mb;
@@ -369,6 +378,64 @@ async function proposeFromProvider(
   };
 }
 
+/**
+ * The search terms as tags (D63): the album and its artist for every file, the artist for files without one,
+ * and the title of a one-file release. Each field is marked as entered by the user ("user"), nothing else is
+ * looked up, and no cover is proposed.
+ */
+function proposeFromSearchTerms(
+  deps: ProposeJobDeps,
+  found: NonNullable<ReturnType<typeof getRelease>>,
+  contentHash: string,
+  now: () => number,
+): ProposeJobResult {
+  const terms = getSearchTerms(deps.db, found.release.id);
+  if (!terms) throw new PermanentJobError("this release has no search terms");
+  const files = found.files.filter((f) => !f.readError);
+  const release: CanonicalTags = {
+    ...(terms.album ? { album: terms.album } : {}),
+    ...(terms.artist ? { albumartist: terms.artist } : {}),
+  };
+  const tracks = new Map(files.map((f) => [
+    `f${f.id}`,
+    {
+      ...(terms.artist && !f.tags.artist ? { artist: terms.artist } : {}),
+      ...(terms.title && files.length === 1 ? { title: terms.title } : {}),
+    } as CanonicalTags,
+  ]));
+  const provenance = new Map<string, FieldProvenance>();
+  const mark = (key: string, value: unknown) =>
+    provenance.set(key, { origin: "user", sources: [{ provider: "user", value }], conflict: false });
+  for (const [k, v] of Object.entries(release)) mark(k, v);
+  for (const [id, t] of tracks) for (const [k, v] of Object.entries(t)) mark(`${id}:${k}`, v);
+  const build = buildFieldProposals({
+    candidateId: found.release.id,
+    files: files.map((f) => ({ id: f.id, tags: f.tags })),
+    mapping: files.map((f) => ({ fileId: f.id, trackId: `f${f.id}` })),
+    proposed: { release, tracks },
+    snapshotId: null,
+    locks: listLocks(deps.db),
+    provenance,
+  });
+  const proposalId = saveProposal(deps.db, {
+    candidateId: found.release.id,
+    releaseMbid: null,
+    sourceUrl: null,
+    chosenBy: "user",
+    basedOnHash: contentHash,
+    snapshotIds: [],
+    build: { ...build, unmappedFiles: found.files.filter((f) => f.readError).map((f) => f.id) },
+  }, now());
+  const count = (st: string) => build.fields.filter((f) => f.status === st).length;
+  return {
+    proposalId,
+    changed: count("changed"),
+    added: count("added"),
+    unchanged: count("unchanged"),
+    unmappedFiles: 0,
+  };
+}
+
 export function proposeDedupeKey(candidateId: number): string {
   return `${PROPOSE_JOB}:${candidateId}`;
 }
@@ -402,4 +469,12 @@ export function autoPropose(db: Db, queue: JobQueue, candidateId: number, releas
   const latest = latestProposal(db, candidateId);
   if (latest && latest.chosenBy === "user" && latest.state !== "written" && latest.state !== "discarded") return null;
   return enqueuePropose(queue, candidateId, releaseMbid, "auto");
+}
+
+/** The release's search terms as its tags (D63). */
+export function enqueueSearchTermsPropose(queue: JobQueue, candidateId: number): Job {
+  return queue.enqueue(PROPOSE_JOB, { candidateId, fromSearchTerms: true, chosenBy: "user" }, {
+    dedupeKey: proposeDedupeKey(candidateId),
+    maxAttempts: 1,
+  });
 }

@@ -53,6 +53,8 @@ export type Source =
     edition: EditionDto | null;
   }
   | { kind: "provider"; url: string }
+  /** The user's search terms as tags (D63). */
+  | { kind: "terms" }
   /** No proposal yet: the best match, if any, is a suggestion. */
   | { kind: "none" };
 
@@ -108,6 +110,8 @@ export function matchView(ident: IdentificationDto, p: ProposalDto | null): Matc
     };
   } else if (p?.sourceUrl) {
     source = { kind: "provider", url: p.sourceUrl };
+  } else if (p) {
+    source = { kind: "terms" };
   }
 
   // Without a proposal, the best match is a suggestion, unless identification concluded that nothing fits:

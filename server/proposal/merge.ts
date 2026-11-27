@@ -21,7 +21,8 @@ import type { CanonicalField, CanonicalTags } from "../tagio/types.ts";
 import { valuesAgree } from "./compare.ts";
 import type { ProposedTags } from "./musicbrainz_tags.ts";
 
-export type SourceId = "musicbrainz" | SourceProvider | "youtube";
+/** "user": typed by the user as search terms (D63). */
+export type SourceId = "musicbrainz" | SourceProvider | "youtube" | "user";
 
 export interface FieldProvenance {
   /** Whose value is proposed. */

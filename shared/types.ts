@@ -235,6 +235,18 @@ export interface IdentificationDto {
   thresholds: { auto: number; review: number };
   /** The latest identify job for this release, when one is queued or running. */
   job: JobDto | null;
+  /** What the user typed to search with (D63), or null. */
+  searchTerms: SearchTerms | null;
+}
+
+/**
+ * Search terms for a poorly tagged release (D63): they take the place of the files' album, album artist and
+ * (for a one-file release) title when searching MusicBrainz, and can become tags when nothing fits.
+ */
+export interface SearchTerms {
+  artist?: string;
+  album?: string;
+  title?: string;
 }
 
 /** POST /api/library/releases/:id/identify. Without a URL, identification runs automatically (§8). */
@@ -489,7 +501,9 @@ export interface EvidenceResponse {
  */
 export type ProposeRequest =
   | { releaseMbid: string; server?: "https://test.musicbrainz.org" }
-  | { providerUrl: string };
+  | { providerUrl: string }
+  // The release's search terms as its tags, when MusicBrainz has nothing that fits (D63).
+  | { fromSearchTerms: true };
 
 // ---- writing and undo (§11.3, Phase 3)
 

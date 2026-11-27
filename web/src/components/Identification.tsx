@@ -13,6 +13,7 @@ import type {
   LibraryFileDto,
   MatchDto,
   ProposalDto,
+  SearchTerms,
   SignalName,
 } from "../../../shared/types.ts";
 import { api } from "../api.ts";
@@ -220,6 +221,129 @@ function LinkBox(
       </button>
       {error && <p class="tm-error" role="alert">{error}</p>}
     </form>
+  );
+}
+
+/**
+ * Search terms (D63): for files whose tags are too thin to find them. They replace the files' album, artist
+ * and (for one file) title when MusicBrainz is searched; when nothing fits, they can become the tags.
+ */
+function SearchTermsForm(
+  { terms, files, busy, nothingFits, usedAsTags, onSearch, onClear, onUseAsTags }: {
+    terms: SearchTerms | null;
+    files: LibraryFileDto[];
+    busy: boolean;
+    /** Identification with the terms found nothing good enough. */
+    nothingFits: boolean;
+    /** The current proposal already comes from the terms. */
+    usedAsTags: boolean;
+    onSearch: (t: SearchTerms) => Promise<void>;
+    onClear: () => Promise<void>;
+    onUseAsTags: () => Promise<void>;
+  },
+) {
+  const single = files.length === 1;
+  const first = files[0]?.tags;
+  const [artist, setArtist] = useState(terms?.artist ?? first?.albumartist ?? first?.artist ?? "");
+  const [album, setAlbum] = useState(terms?.album ?? first?.album ?? "");
+  const [title, setTitle] = useState(terms?.title ?? (single ? first?.title ?? "" : ""));
+  const [error, setError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  const act = async (fn: () => Promise<void>) => {
+    setError(null);
+    setWorking(true);
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setWorking(false);
+    }
+  };
+  const off = busy || working;
+  const typed = !!(artist.trim() || album.trim() || (single && title.trim()));
+  return (
+    <details class="tm-fold tm-terms" open={!!terms || nothingFits}>
+      <summary>Search with your own terms</summary>
+      <p class="tm-muted tm-section-note">
+        For files with few or no tags: type what you know (found elsewhere, for example) and MusicBrainz is searched
+        again with it. Nothing is written.
+      </p>
+      <form
+        class="tm-manual"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!typed) return;
+          act(() =>
+            onSearch({
+              ...(artist.trim() ? { artist: artist.trim() } : {}),
+              ...(album.trim() ? { album: album.trim() } : {}),
+              ...(single && title.trim() ? { title: title.trim() } : {}),
+            })
+          );
+        }}
+      >
+        <label>
+          Artist
+          <input
+            type="text"
+            maxLength={200}
+            value={artist}
+            disabled={off}
+            onInput={(e) => setArtist(e.currentTarget.value)}
+          />
+        </label>
+        <label>
+          Album
+          <input
+            type="text"
+            maxLength={200}
+            value={album}
+            disabled={off}
+            onInput={(e) => setAlbum(e.currentTarget.value)}
+          />
+        </label>
+        {single && (
+          <label>
+            Track title
+            <input
+              type="text"
+              maxLength={200}
+              value={title}
+              disabled={off}
+              onInput={(e) => setTitle(e.currentTarget.value)}
+            />
+          </label>
+        )}
+        <button type="submit" class="tm-button tm-secondary" disabled={off || !typed}>Search MusicBrainz</button>
+        {error && <p class="tm-error" role="alert">{error}</p>}
+      </form>
+      {terms && (
+        <p class="tm-terms-after">
+          {!usedAsTags && (
+            nothingFits
+              ? (
+                <>
+                  <span>MusicBrainz has nothing that fits these terms.</span>{" "}
+                  <button type="button" class="tm-button tm-small" disabled={off} onClick={() => act(onUseAsTags)}>
+                    Use them as tags
+                  </button>
+                </>
+              )
+              : (
+                <button type="button" class="tm-linklike tm-small-link" disabled={off} onClick={() => act(onUseAsTags)}>
+                  None of these fit? Use your terms as tags
+                </button>
+              )
+          )}
+          {usedAsTags && <span class="tm-muted">The Changes tab holds your terms as tags.</span>}
+          {" · "}
+          <button type="button" class="tm-linklike tm-small-link" disabled={off} onClick={() => act(onClear)}>
+            Forget these terms
+          </button>
+        </p>
+      )}
+    </details>
   );
 }
 
@@ -453,6 +577,15 @@ export function Identification(
           </>
         )}
 
+        {v.source.kind === "terms" && (
+          <>
+            <h3>
+              Your search terms <span class="tm-badge tm-badge-warn tm-inline">not on MusicBrainz</span>
+            </h3>
+            <p class="tm-muted">The tags come from what you typed; see Changes.</p>
+          </>
+        )}
+
         {v.source.kind === "musicbrainz" && (
           <>
             <h3>
@@ -501,6 +634,26 @@ export function Identification(
             onRemove={() => run(() => api.removeEvidence(releaseId))}
           />
         )}
+        <SearchTermsForm
+          key={JSON.stringify(data.searchTerms)}
+          terms={data.searchTerms}
+          files={files}
+          busy={busy}
+          nothingFits={!busy && data.status === "no_match"}
+          usedAsTags={v.source.kind === "terms"}
+          onSearch={async (t) => {
+            await api.setSearchTerms(releaseId, t);
+            await onReload();
+          }}
+          onClear={async () => {
+            await api.clearSearchTerms(releaseId);
+            await onReload();
+          }}
+          onUseAsTags={async () => {
+            await api.propose(releaseId, { fromSearchTerms: true });
+            await onReload();
+          }}
+        />
         <LinkBox
           busy={busy}
           onMusicBrainz={chooseLink}

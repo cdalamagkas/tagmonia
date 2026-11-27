@@ -3,8 +3,8 @@
 **Tags in harmony.** Tagmonia is a self-hosted web app that identifies music files, merges metadata from several
 providers with per-field provenance, writes Picard-compatible tags, and helps submit missing releases to MusicBrainz.
 
-> **Status: Phases 0–5 and the release page restructure are done; from Phase 6, YouTube evidence, file naming and
-> renaming, and a watched inbox.** Tagmonia identifies releases against
+> **Status: In active development (alpha) - We are now working on UI and usability improvements.
+> Stay tuned for the first release!** Tagmonia identifies releases against
 > MusicBrainz, proposes tags field by field with values merged from Deezer, iTunes and Discogs, adds cover art, writes
 > everything with verification and undo, and tells Jellyfin. Releases missing from MusicBrainz can be tagged from
 > Deezer, iTunes, Discogs or Bandcamp and added to MusicBrainz through its release editor.
@@ -60,6 +60,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   kept, and undo puts back the previous pictures and folder image exactly.
 - **Shows each release's current cover**: a thumbnail in the library list, and on the release page the cover with its
   size, type and where it is (embedded in the files or an image in the album folder).
+- **Search with your own terms** (Match tab): for files with few or no tags, type an artist, album or track title to
+  search MusicBrainz again; if nothing fits, use them as the tags to write.
 - **Untagged files:** each is a release of its own, named by its title or file name, except a folder of untagged
   files numbered like an album (`01 …`, `02 …`), which stays one release. Search finds files by name too.
 - **Library list at a glance:** next to each release's MusicBrainz status, how many changes are ready to write, how

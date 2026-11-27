@@ -25,6 +25,7 @@ import {
   type ReleaseDetail,
   type ReleaseList,
   type ScanJobDto,
+  type SearchTerms,
   type SettingsDto,
   type SettingsUpdateResponse,
   type SubmissionDto,
@@ -140,6 +141,10 @@ export const api = {
   testProvider: (id: string) => request<JobDto>("POST", `/api/providers/${id}/test`),
   settings: () => request<SettingsDto>("GET", "/api/settings"),
   updateSettings: (patch: unknown) => request<SettingsUpdateResponse>("PATCH", "/api/settings", patch),
+  /** Search terms (D63): saved, then the release is identified again with them. */
+  setSearchTerms: (id: number, terms: SearchTerms) =>
+    request<JobDto>("PUT", `/api/library/releases/${id}/search-terms`, terms),
+  clearSearchTerms: (id: number) => request<JobDto | undefined>("DELETE", `/api/library/releases/${id}/search-terms`),
   identify: (id: number, body: IdentifyRequest = {}) =>
     request<JobDto>("POST", `/api/library/releases/${id}/identify`, body),
   cancelJob: (id: number) => request<ScanJobDto>("POST", `/api/jobs/${id}/cancel`),

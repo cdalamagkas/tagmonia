@@ -68,6 +68,7 @@ function ident(over: Partial<IdentificationDto> = {}): IdentificationDto {
     editions: [],
     thresholds: { auto: 0.92, review: 0.7 },
     job: null,
+    searchTerms: null,
     ...over,
   } as IdentificationDto;
 }
