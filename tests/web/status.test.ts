@@ -1,5 +1,5 @@
 /** The release page header's status sentence and next action, per state (D53). */
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import type {
   FieldProposalDto,
   HistoryResponse,
@@ -347,12 +347,11 @@ Deno.test("a submission under way takes the status line (D52, PR 4)", () => {
     "Follow-ups",
   ]);
   assertEquals(say(at(back, { ...fromNew, stale: true }))[2], "build", "a stale proposal comes first");
-  // Once MusicBrainz has the cover art (D65), nothing is left to follow up.
+  // Once MusicBrainz has the cover art (D65), the submission is over: the release reads like any other.
   const covered = { ...back, followUps: { ...back.followUps, coverArtAdded: true } };
-  assertEquals(say(at(covered, { ...fromNew, state: "written" })).slice(0, 2), [
-    "ok",
-    "On test.musicbrainz.org · follow-ups done",
-  ]);
+  const written = { ...fromNew, state: "written" as const };
+  assertEquals(say(at(covered, written)), say(state({ proposal: written })));
+  assert(!say(at(covered, written))[1]!.includes("follow-ups"));
 });
 
 Deno.test("renaming counts as one change, only when included and no name is taken (D57)", () => {
@@ -422,4 +421,5 @@ Deno.test("the library's Changes column in a few words (D61)", () => {
   });
   assertEquals(changesLabel({ state: "none", count: 0, choices: 0 }).label, "complete");
   assertEquals(changesLabel({ state: "stale", count: 3, choices: 0 }).tone, "warn");
+  assertEquals(changesLabel({ state: "written", count: 0, choices: 0 }).label, "–", "nothing new since the write");
 });

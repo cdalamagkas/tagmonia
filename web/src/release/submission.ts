@@ -173,14 +173,14 @@ export function submissionHeader(
           primary: { id: "write", label: `Write ${plural(changes, "change")}` },
         };
       }
+      // Nothing left to follow up: the submission is over, and the release reads like any other on MusicBrainz.
       const pending = pendingFollowUps(sub);
-      return pending.length
-        ? {
-          tone: "ok",
-          sentence: `On ${host} · follow-ups: ${pending.join(", ")}`,
-          primary: { id: "panel", label: "Follow-ups" },
-        }
-        : { tone: "ok", sentence: `On ${host} · follow-ups done`, primary: null };
+      if (pending.length === 0) return null;
+      return {
+        tone: "ok",
+        sentence: `On ${host} · follow-ups: ${pending.join(", ")}`,
+        primary: { id: "panel", label: "Follow-ups" },
+      };
     }
     default:
       return null;
