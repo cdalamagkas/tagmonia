@@ -348,6 +348,7 @@ export function changesLabel(
     case "none":
       return { label: "complete", tone: "ok", title: "The files already have everything the source offers" };
     case "written":
-      return { label: "written", tone: "ok", title: "The latest changes were written" };
+      // Nothing new is prepared since the last write: no badge, like a release with nothing prepared.
+      return { label: "–", tone: "", title: "The latest changes were written; nothing new is prepared" };
   }
 }
