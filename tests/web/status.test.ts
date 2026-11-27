@@ -10,7 +10,13 @@ import type {
   SubmissionDto,
 } from "../../shared/types.ts";
 import { isLive } from "../../web/src/release/useRelease.ts";
-import { changesToWrite, type ReleaseState, releaseStatus, sourceLine } from "../../web/src/release/status.ts";
+import {
+  changesLabel,
+  changesToWrite,
+  type ReleaseState,
+  releaseStatus,
+  sourceLine,
+} from "../../web/src/release/status.ts";
 
 const MBID = "f390ab14-095d-42aa-ade3-fbbafe093f9d";
 
@@ -387,4 +393,17 @@ Deno.test("the source line: the release on MusicBrainz with its facts and the ma
     sourceLine(state({ proposal: null, identification: { matches: [] } }), (m) => m).label,
     "No source chosen yet",
   );
+});
+
+Deno.test("the library's Changes column in a few words (D61)", () => {
+  assertEquals(changesLabel(null).label, "–");
+  assertEquals(changesLabel({ state: "ready", count: 26, choices: 0 }).label, "26");
+  assertEquals(changesLabel({ state: "ready", count: 1, choices: 0 }).title, "1 change ready to write");
+  assertEquals(changesLabel({ state: "choices", count: 5, choices: 2 }), {
+    label: "2 to choose",
+    tone: "warn",
+    title: "2 values need your choice, then 5 changes can be written",
+  });
+  assertEquals(changesLabel({ state: "none", count: 0, choices: 0 }).label, "complete");
+  assertEquals(changesLabel({ state: "stale", count: 3, choices: 0 }).tone, "warn");
 });

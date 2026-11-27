@@ -60,6 +60,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   kept, and undo puts back the previous pictures and folder image exactly.
 - **Shows each release's current cover**: a thumbnail in the library list, and on the release page the cover with its
   size, type and where it is (embedded in the files or an image in the album folder).
+- **Library list at a glance:** next to each release's MusicBrainz status, how many changes are ready to write, how
+  many values need your choice, or that its files are already complete.
 - **Naming templates** (Settings → Files): how written albums will be named. Choose a built-in template (Album
   (Year), Artist / Album (Year), Picard's default, Composer / Album (Year)) or create and save your own, each with a
   live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.

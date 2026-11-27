@@ -4,15 +4,17 @@
  * identification, proposal, write history and submission. Pure, so it is unit-tested without a browser.
  */
 import type {
-  FieldProposalDto,
   HistoryResponse,
   IdentificationDto,
   ProposalDto,
   ProposalResponse,
+  ReleaseChangesDto,
   SubmissionDto,
 } from "../../../shared/types.ts";
-import { RELEASE_FIELDS } from "../format.ts";
+import { changesToWrite, openChoices, renames, writes } from "../../../shared/changes.ts";
 import { activeSubmission, submissionHeader } from "./submission.ts";
+
+export { changesToWrite, openChoices, renames, writes };
 
 export const SOURCE_NAMES: Record<string, string> = {
   musicbrainz: "MusicBrainz",
@@ -31,41 +33,6 @@ export function sourceName(url: string | null): string {
   if (host.endsWith("discogs.com")) return "Discogs";
   if (host.endsWith("bandcamp.com")) return "Bandcamp";
   return "the provider";
-}
-
-/** A row that the write will change. */
-export function writes(r: FieldProposalDto): boolean {
-  if (r.locked || r.decision === "kept_current") return false;
-  return r.status !== "unchanged" || r.decision === "edited";
-}
-
-const RELEASE = new Set<string>(RELEASE_FIELDS);
-
-/**
- * Changes a write would make, counted as the Changes tab shows them: an album-level field once (it is
- * written to every file, but decided once), a track-level field per track, and the cover as one
- * (problem 4 of the proposal).
- */
-export function changesToWrite(p: ProposalDto): number {
-  const rows = p.fields.filter(writes);
-  const albumFields = new Set(rows.filter((r) => RELEASE.has(r.field)).map((r) => r.field));
-  return albumFields.size + rows.filter((r) => !RELEASE.has(r.field)).length + (p.cover?.writes ? 1 : 0) +
-    (renames(p) ? 1 : 0);
-}
-
-/**
- * Disagreements still waiting for a choice, counted as the Changes tab lists them: an album field once
- * (it is decided once for every file), a track field per track.
- */
-export function openChoices(p: ProposalDto): number {
-  const open = p.fields.filter((r) => r.conflict && r.decision === "auto" && !r.locked);
-  return new Set(open.filter((r) => RELEASE.has(r.field)).map((r) => r.field)).size +
-    open.filter((r) => !RELEASE.has(r.field)).length;
-}
-
-/** The write renames the files (D57): renaming is on, included, and no new name is taken. The move counts as one change. */
-export function renames(p: ProposalDto): boolean {
-  return !!p.rename && p.rename.include && p.rename.conflicts.length === 0;
 }
 
 export function isOpen(p: ProposalDto): boolean {
@@ -351,4 +318,31 @@ export function sourceLine(s: ReleaseState, methodLabel: (m: string) => string):
     };
   }
   return { label: "No source chosen yet", url: null, details: [] };
+}
+
+/** The library list's Changes column (D61): what the latest prepared changes would do, in a few words. */
+export function changesLabel(
+  c: ReleaseChangesDto | null,
+): { label: string; tone: "" | "ok" | "warn" | "info"; title: string } {
+  if (!c) return { label: "–", tone: "", title: "No changes prepared yet" };
+  const n = (k: number, one: string, many: string) => (k === 1 ? `1 ${one}` : `${k} ${many}`);
+  switch (c.state) {
+    case "stale":
+      return { label: "files changed", tone: "warn", title: "The files changed since the changes were prepared" };
+    case "choices":
+      return {
+        label: n(c.choices, "to choose", "to choose"),
+        tone: "warn",
+        title: `${n(c.choices, "value needs", "values need")} your choice, then ${
+          n(c.count, "change", "changes")
+        } can be written`,
+      };
+    case "ready":
+      // The number alone: the column is headed Changes, and the title says the rest.
+      return { label: String(c.count), tone: "info", title: `${n(c.count, "change", "changes")} ready to write` };
+    case "none":
+      return { label: "complete", tone: "ok", title: "The files already have everything the source offers" };
+    case "written":
+      return { label: "written", tone: "ok", title: "The latest changes were written" };
+  }
 }

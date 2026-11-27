@@ -47,6 +47,8 @@ export function renamePlanFor(
   naming: { template: string; renameLibrary: boolean } | undefined,
   proposal: { candidateId: number; fields: ReviewedRow[] },
   written = false,
+  /** Every path in the library, when the caller plans many albums at once (the library list). */
+  taken?: string[],
 ): RenamePlan | null {
   // An inbox album always moves into the library: that is what the inbox is for (D57).
   const inbox = inInbox(db, proposal.candidateId);
@@ -67,7 +69,7 @@ export function renamePlanFor(
     // After the write the files already hold the written tags.
     tags: written ? JSON.parse(r.current_tags) : tagsAfter(JSON.parse(r.current_tags), plans.get(r.id)?.change),
   }));
-  const taken = (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
+  taken ??= (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
   return planRenames(template, files, taken, destination);
 }
 

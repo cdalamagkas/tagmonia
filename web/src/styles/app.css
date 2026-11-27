@@ -1104,3 +1104,6 @@ table.tm-review {
   border: 1px solid var(--tm-rule);
   border-radius: var(--tm-radius);
 }
+.tm-table .tm-badge {
+  white-space: nowrap;
+}
