@@ -33,6 +33,7 @@ export function sourceName(url: string | null): string {
   if (host.endsWith("apple.com")) return "iTunes";
   if (host.endsWith("discogs.com")) return "Discogs";
   if (host.endsWith("bandcamp.com")) return "Bandcamp";
+  if (host === "youtu.be" || host.endsWith("youtube.com")) return "YouTube";
   return "the provider";
 }
 

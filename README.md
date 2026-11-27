@@ -49,10 +49,11 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   the ISRCs. **Settings →
   MusicBrainz submissions** can point this at test.musicbrainz.org for trying it out. Nothing is ever submitted
   automatically.
-- **YouTube as evidence**: paste a YouTube playlist (or a single video) on the release page's Match tab, and its
-  auto-generated descriptions ("Provided to YouTube by …", the ℗ line, "Released on: …") fill the release date and
-  label where no other source has them, marked "filled by YouTube". It never sets tracks or artists and never
-  overrides another source. Uses the official YouTube Data API with your own key.
+- **YouTube as a source**: paste a YouTube playlist (or a single video) on the release page's Match tab. For a
+  release MusicBrainz lacks, its auto-generated descriptions ("Provided to YouTube by …", "Title · Artist", the album,
+  the ℗ line, "Released on: …") give the titles, artists, track numbers, album, date and label, and the release can
+  then be added to MusicBrainz with the playlist as its streaming link. With a MusicBrainz release chosen, the link
+  only fills the date and label where no other source has them. Uses the official YouTube Data API with your own key.
 - **Cover art** from the Cover Art Archive, or else the largest image iTunes, Deezer or Discogs has for the same
   release. The review shows the cover with its source, size and what the files have now. **Settings → Cover art**
   chooses how it is written: embedded at full size (the default), embedded at about 1200 px, only as `cover.jpg` in
@@ -119,7 +120,7 @@ credentials and a **Test** button. Secrets are stored encrypted (AES-256-GCM) an
 - MusicBrainz, Deezer and iTunes need no credentials.
 - **Bandcamp** needs none either, but it is off unless you switch it on: Bandcamp has no official API, so Tagmonia
   reads its public album pages, and only when you give it a Bandcamp link.
-- **YouTube** (optional evidence): an API key from Google Cloud. Create a project, enable the **YouTube Data API
+- **YouTube** (optional): an API key from Google Cloud. Create a project, enable the **YouTube Data API
   v3**, then create an API key (Credentials → Create credentials → API key). The free daily quota is ample: a playlist
   costs a few units, and responses are cached for a week.
 

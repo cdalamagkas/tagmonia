@@ -9,7 +9,7 @@ function evidence(over: Partial<YouTubeEvidence> = {}): YouTubeEvidence {
     url: "https://www.youtube.com/playlist?list=OLAK5uy_test0001",
     title: "Album - Ambient Piano Vol.1",
     channel: null,
-    tracks: [1, 2, 3].map((i) => ({ videoId: `v${i}`, title: `t${i}`, durationMs: 1000 })),
+    tracks: [1, 2, 3].map((i) => ({ videoId: `v${i}`, title: `t${i}`, durationMs: 1000, name: null, artists: [] })),
     label: "LKult",
     date: "2021-07-23",
     album: null,

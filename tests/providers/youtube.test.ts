@@ -58,16 +58,24 @@ Deno.test("durations and the release facts of an auto-generated description", ()
   ]);
   assertEquals(parseDescription(description("Morning")), {
     providedBy: "DistroKid",
+    track: { title: "Morning", artists: ["Niklas Blumenthaler"] },
     album: "Ambient Piano Vol.1",
     label: "LKult",
     date: "2021-07-23",
   });
   assertEquals(
     parseDescription("Provided to YouTube by Sony\n\nSong · Artist\n\nAlbum\n\n℗ 2003 RCA Records, a division of Sony"),
-    { providedBy: "Sony", album: "Album", label: "RCA Records", date: null },
+    {
+      providedBy: "Sony",
+      track: { title: "Song", artists: ["Artist"] },
+      album: "Album",
+      label: "RCA Records",
+      date: null,
+    },
   );
   assertEquals(parseDescription("My holiday video\n℗ nothing"), {
     providedBy: null,
+    track: null,
     album: null,
     label: null,
     date: null,
@@ -121,10 +129,10 @@ Deno.test("a playlist: every page of videos, their lengths, and the facts most u
   try {
     const e = await client.evidence({ kind: "playlist", id: "OLAK5uy_test0001" });
     assertEquals(e.title, "Album - Ambient Piano Vol.1");
-    assertEquals(e.tracks.map((t) => [t.title, t.durationMs]), [
-      ["Morning", 181_000],
-      ["Noon", 120_000],
-      ["(unavailable video)", null],
+    assertEquals(e.tracks.map((t) => [t.title, t.durationMs, t.name, t.artists]), [
+      ["Morning", 181_000, "Morning", ["Niklas Blumenthaler"]],
+      ["Noon", 120_000, "Noon", ["Niklas Blumenthaler"]],
+      ["(unavailable video)", null, null, []],
     ]);
     assertEquals([e.label, e.album, e.providedBy], ["LKult", "Ambient Piano Vol.1", "DistroKid"]);
     assertEquals(e.date, "2021-07-23", "a tie goes to the first track's");

@@ -9,7 +9,7 @@ import { buildReleaseSeed, type MergedRelease, mergeProviderReleases } from "../
 import { PROJECT_URL, VERSION } from "../version.ts";
 
 /** The providers' release, merged as the proposal was: the linked provider first (D51). */
-export function mergedFromMatches(matches: ProviderMatch[], primary: SourceProvider): MergedRelease {
+export function mergedFromMatches(matches: ProviderMatch[], primary: SourceProvider | "youtube"): MergedRelease {
   const found = matches.filter((m) => m.status === "found" && m.release);
   const first = found.find((m) => m.provider === primary);
   if (!first) throw new Error(`the ${primary} release is no longer stored with the proposal; build it again`);
