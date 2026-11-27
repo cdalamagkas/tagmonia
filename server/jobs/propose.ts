@@ -538,7 +538,7 @@ export function enqueuePropose(
   });
 }
 
-/** A proposal from a Deezer, iTunes, Discogs or Bandcamp link, for a release not on MusicBrainz (§10.4). */
+/** A proposal from a Deezer, iTunes, Tidal, Spotify, Discogs or Bandcamp link, for a release not on MusicBrainz (§10.4). */
 export function enqueueProviderPropose(queue: JobQueue, candidateId: number, providerUrl: string): Job {
   return queue.enqueue(PROPOSE_JOB, { candidateId, providerUrl, chosenBy: "user" }, {
     dedupeKey: proposeDedupeKey(candidateId),

@@ -31,8 +31,9 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 - **Writes** reviewed tags safely: a backup first, an atomic write, a read-back check with automatic restore, and
   **undo** for every write. A read-only mode writes nothing.
 - **Tells Jellyfin** to re-read exactly the albums it changed.
-- **Finds the same release on Deezer, iTunes and Discogs**, by the release's own MusicBrainz link or by barcode, and
-  shows where it was found, where only another edition exists (a different track count), and where it is missing.
+- **Finds the same release on Deezer, iTunes, Discogs, and Tidal and Spotify if you set them up**, by the release's own
+  MusicBrainz link or by barcode, and shows where it was found, where only another edition exists (a different track
+  count), and where it is missing.
 - **Merges their values by precedence**: a full release date where MusicBrainz has only the year, a missing barcode,
   label or catalog number from Discogs, missing ISRCs from Deezer or iTunes, and each provider's own ID. Such fields
   are marked "filled by …". Where MusicBrainz and Discogs disagree, the review shows both values and asks you to
@@ -115,6 +116,10 @@ credentials and a **Test** button. Secrets are stored encrypted (AES-256-GCM) an
 - **AcoustID** (optional fingerprint identification): a free application key from
   <https://acoustid.org/new-application>.
 - **Discogs**: a consumer key and secret from discogs.com → Settings → Developers. Takes effect after a restart.
+- **Tidal** (optional): a client ID and secret from an app at developer.tidal.com → Dashboard. Takes effect after a
+  restart.
+- **Spotify** (optional): a client ID and secret from an app at developer.spotify.com → Dashboard (using it means
+  accepting Spotify's Developer Terms). Takes effect after a restart.
 - **Jellyfin** (optional): the server URL, an API key (Dashboard → API Keys) and optionally one library; Tagmonia then
   asks Jellyfin to re-read exactly the albums it changed.
 - MusicBrainz, Deezer and iTunes need no credentials.

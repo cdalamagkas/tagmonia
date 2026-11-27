@@ -43,6 +43,9 @@ export const settingsSchema = z.object({
     deezer: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     itunes: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     discogs: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+    // Official APIs that need the user's own developer credentials (D67); used only once those are set.
+    tidal: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+    spotify: z.object({ enabled: z.boolean().default(true) }).prefault({}),
     // Opt-in (D16): reads public pages, no official API. Only used from a Bandcamp link the user gives (D51).
     bandcamp: z.object({ enabled: z.boolean().default(false) }).prefault({}),
   }).prefault({}),

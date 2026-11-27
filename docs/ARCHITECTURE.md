@@ -485,8 +485,8 @@ export interface Provider {
 | Tier | Providers | Default | Credentials |
 |---|---|---|---|
 | Core | MusicBrainz, Cover Art Archive, AcoustID | On | AcoustID application API key (free, user-supplied) |
-| Enrichment | Discogs, Deezer, iTunes | On (Discogs only if credentials are set) | Discogs consumer key + secret (what Harmony's provider uses, D12) |
-| Optional | Bandcamp, Beatport, Tidal, Spotify | Off | Per provider; Spotify and Tidal need app credentials. Bandcamp and Beatport have no official API; Harmony reads their public pages, so they are opt-in only and never on by default (D16) |
+| Enrichment | Discogs, Deezer, iTunes, Tidal, Spotify | On (Discogs, Tidal and Spotify only if credentials are set; D67) | Discogs consumer key + secret; Tidal and Spotify client ID + secret (what Harmony's providers use, D12) |
+| Optional | Bandcamp, Beatport | Off | Per provider. Bandcamp and Beatport have no official API; Harmony reads their public pages, so they are opt-in only and never on by default (D16) |
 | Optional | YouTube | Off until a key is set; used only from a pasted link: the source of a release MusicBrainz lacks, else evidence (D55, D64) | YouTube Data API key |
 
 Commercial APIs change without notice (Spotify has removed endpoints that Harmony relied on). Every optional provider must degrade to "unavailable" without breaking a lookup.
@@ -581,12 +581,12 @@ Default policy, configurable per field in settings:
 | Field group | Precedence | Reason |
 |---|---|---|
 | Identity: MBIDs, tracklist, track artists, release artist | MusicBrainz only | Music servers key on MusicBrainz data |
-| Release date | MusicBrainz → Deezer → iTunes → Discogs | Streaming stores often have precise day-level dates when MB has only a year |
+| Release date | MusicBrainz → Deezer → iTunes → Tidal → Spotify → Discogs | Streaming stores often have precise day-level dates when MB has only a year |
 | Original date | MusicBrainz (release group first release) | |
 | Label, catalog number, barcode, country, media | MusicBrainz → Discogs | Discogs is strongest for physical pressings |
 | Genre | **MusicBrainz genres** by default (D27): release-group and release genres merged by vote count, up to 5, written to `genre`. Configurable: Discogs genres/styles, or none | Maintainer choice; MusicBrainz genres are a curated list, not free-form tags |
-| Cover art | Cover Art Archive → iTunes → Deezer → Discogs (front cover; store order = their usual image size) | Resolution, size and source shown in the review; written per the cover setting (D49) |
-| ISRC | MusicBrainz → Deezer → iTunes, per track; filled only, never a conflict | A recording legitimately has several ISRCs. Spotify joins in Phase 6 |
+| Cover art | Cover Art Archive → iTunes → Deezer → Tidal → Discogs → Bandcamp → Spotify (front cover; store order = their usual image size) | Resolution, size and source shown in the review; written per the cover setting (D49) |
+| ISRC | MusicBrainz → Deezer → iTunes → Tidal → Spotify, per track; filled only, never a conflict | A recording legitimately has several ISRCs |
 | Provider IDs | Each provider for its own ID | |
 
 **Rules**
@@ -955,7 +955,7 @@ The maintainer chose the test server for the "Done when"; submitting to musicbra
 
 - Bandcamp, Beatport, Tidal, Spotify toggles; YouTube evidence provider (§9.5).
 
-  Status: the YouTube provider is done, as evidence (D55) and as a source (D64). Beatport is deferred: Harmony can no longer read Beatport's pages (D54). Bandcamp was done in Phase 5 (D51).
+  Status: the YouTube provider is done, as evidence (D55) and as a source (D64). Tidal and Spotify are done (D67). Beatport is deferred: Harmony can no longer read Beatport's pages (D54). Bandcamp was done in Phase 5 (D51).
 - ~~Inbox/watch folder; rename/move templates~~ — done (design: [proposals/inbox-and-renaming.md](proposals/inbox-and-renaming.md), D57–D60). OIDC and trusted-header auth.
 - Docker image hardening, SBOM, multi-arch release.
 
@@ -1035,6 +1035,7 @@ Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs (the Changes ta
 | D64 | 2026-11-27 | **YouTube as a source** (revises D5 and D55's "evidence only"): for a release MusicBrainz lacks, a pasted YouTube playlist or video builds the proposal, like a Deezer or Bandcamp link: titles and artists from each auto-generated description's "<title> · <artist>" line, the album, date and label as in D55, track order and lengths from the playlist. The facts are shaped as a Harmony release, so mapping, the Changes tab and the MusicBrainz submission (the playlist as a free streaming link) work unchanged. Next to a MusicBrainz release the link stays evidence. Official Data API only, as before | Keeping YouTube evidence only: releases on YouTube alone could not be tagged or submitted. Scraping YouTube Music's album pages: declined (terms of service) |
 | D65 | 2026-11-27 | **Follow-ups are checked, not assumed:** after a submission returns, the verifying lookup also records whether the release has a front image in the Cover Art Archive (`cover-art-archive.front`) and whether every ISRC the providers gave is on its track's recording (`submission.follow_ups`). Opening the follow-ups (when something is pending and the last look is over a minute old) or "check again" looks the release up once more, fresh, through the rate-limited MusicBrainz client. Done items are ticked, and the header says "follow-ups done" when nothing is left | Asking the Cover Art Archive directly: a second host, and none for the test server. Checking on a timer: requests nobody is waiting for |
 | D66 | 2026-11-27 | **The release page's Changes tab is "Tags"** (revises D53's tab names): it shows every tag of the release (all fields with "Show all fields"), not only changes. When changes are prepared, the tab carries the library's Changes badge (D61): the count to write, or "N to choose". Its Files section moves to the Files tab as **Location** (renaming, the move into the library, the chosen folder); the Tags tab keeps a one-line pointer when the write also moves the files. Old `?tab=changes` links open Tags | Keeping "Changes (N)": the tab is where every tag is inspected, and the count reads better as the same badge as the library |
+| D67 | 2026-11-27 | **Tidal and Spotify** through Harmony's providers (official APIs, client credentials from the user's own developer app, stored encrypted; Harmony reads them at module load, so a restart applies them). Registered only when both values are set, and switched on by default once they are; without them they are left out of "Also found on" rather than listed as "not set up". Looked up like Deezer and iTunes (the release's MusicBrainz link, else its barcode), and usable as the source of a release MusicBrainz lacks (§10.4). Precedence: release date and ISRC after Deezer and iTunes, never a conflict; covers after Deezer (Tidal) and last (Spotify, 640 px). Their image CDNs join the cover host allowlist. The providers page tests them by asking for a client-credentials token. No new canonical ID tags (`spotify_album_id`, `tidal_album_id`): that would need TagIO mappings and conformance cases first | Off by default even with credentials: setting them is already the opt-in. Listing them as "not set up" everywhere: noise for the many who never will |
 
 ---
 

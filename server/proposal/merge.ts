@@ -4,13 +4,14 @@
  * count) contribute; another edition never does. Identity fields stay
  * MusicBrainz's alone.
  *
- * - date: MusicBrainz → Deezer → iTunes → Discogs. A year-only date is refined
- *   by a later provider's full date for that year ("filled by"); another year
- *   is a conflict only from Discogs (stores show a reissue's original date).
+ * - date: MusicBrainz → Deezer → iTunes → Tidal → Spotify → Discogs. A year-only
+ *   date is refined by a later provider's full date for that year ("filled by");
+ *   another year is a conflict only from Discogs (stores show a reissue's
+ *   original date).
  * - label, catalognumber, barcode: MusicBrainz → Discogs. Filled when
  *   MusicBrainz has none; a different value is a conflict.
- * - isrc, per track: MusicBrainz → Deezer → iTunes, filled only (a recording
- *   legitimately has several ISRCs).
+ * - isrc, per track: MusicBrainz → Deezer → iTunes → Tidal → Spotify, filled
+ *   only (a recording legitimately has several ISRCs).
  * - discogs_release_id, deezer_album_id: each provider's own ID.
  */
 import { normalizeCatno } from "../identify/release.ts";
@@ -160,6 +161,8 @@ export function mergeProviders(mb: ProposedTags, mbRelease: MbRelease, matches: 
       { provider: "musicbrainz", value: mb.release.date },
       { provider: "deezer", value: v("deezer")?.date },
       { provider: "itunes", value: v("itunes")?.date },
+      { provider: "tidal", value: v("tidal")?.date },
+      { provider: "spotify", value: v("spotify")?.date },
       { provider: "discogs", value: v("discogs")?.date },
     ]),
   );
@@ -197,6 +200,8 @@ export function mergeProviders(mb: ProposedTags, mbRelease: MbRelease, matches: 
         { provider: "musicbrainz", value: t.isrc },
         { provider: "deezer", value: v("deezer")?.isrc[i] ? [v("deezer")!.isrc[i]] : undefined },
         { provider: "itunes", value: v("itunes")?.isrc[i] ? [v("itunes")!.isrc[i]] : undefined },
+        { provider: "tidal", value: v("tidal")?.isrc[i] ? [v("tidal")!.isrc[i]] : undefined },
+        { provider: "spotify", value: v("spotify")?.isrc[i] ? [v("spotify")!.isrc[i]] : undefined },
       ], false),
     );
   });

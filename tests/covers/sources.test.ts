@@ -76,3 +76,15 @@ Deno.test("the four modes", () => {
   assertEquals(modeWrites("folder"), { embed: null, folder: true });
   assertEquals(modeWrites("both"), { embed: "sized", folder: true });
 });
+
+Deno.test("Tidal after Deezer; Spotify last, as its images are small (D67)", async () => {
+  const opts = coverOptions(null, [
+    match("spotify", [{ url: "https://i.scdn.co/image/ab67616d0000b273abc", types: ["front"] }]),
+    match("tidal", [{ url: "https://resources.tidal.com/images/a/b/c/d/1280x1280.jpg", types: ["front"] }]),
+    match("deezer", [{ url: DEEZER, types: ["front"] }]),
+  ]);
+  assertEquals(opts.map((o) => o.source), ["deezer", "tidal", "spotify"]);
+  const { isAllowedCoverUrl } = await import("../../server/covers/fetch.ts");
+  for (const o of opts) assertEquals(isAllowedCoverUrl(new URL(o.full)), true, o.full);
+  assertEquals(isAllowedCoverUrl(new URL("https://evil.tidal.com.example/x.jpg")), false);
+});

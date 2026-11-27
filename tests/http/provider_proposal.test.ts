@@ -44,6 +44,15 @@ Deno.test("provider links: known album pages only, Bandcamp only when switched o
       400,
       "Bandcamp is switched off on the providers page (Settings)",
     ]);
+    // Without their credentials, Tidal and Spotify are not registered; their links say what to do (D67).
+    assertEquals(await error("https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy"), [
+      400,
+      "Spotify needs a client ID and secret (Settings → Providers), then a restart",
+    ]);
+    assertEquals(
+      (await error("https://tidal.com/browse/album/1"))[1],
+      "Tidal needs a client ID and secret (Settings → Providers), then a restart",
+    );
     assertEquals(t.queue.latest(PROPOSE_JOB), undefined, "nothing was queued");
 
     const ok = await propose("https://www.deezer.com/album/302127");

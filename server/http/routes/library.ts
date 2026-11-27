@@ -93,9 +93,19 @@ const proposeBody = z.union([
 const SOURCE_NAMES: Record<string, string> = {
   deezer: "Deezer",
   itunes: "iTunes",
+  tidal: "Tidal",
+  spotify: "Spotify",
   discogs: "Discogs",
   bandcamp: "Bandcamp",
 };
+
+/** Providers registered only once their credentials are set (D67): their links are recognised regardless. */
+function needsCredentials(url: URL): string | null {
+  const host = url.hostname.toLowerCase();
+  if (host === "open.spotify.com") return "Spotify";
+  if (host === "tidal.com" || host.endsWith(".tidal.com")) return "Tidal";
+  return null;
+}
 
 /** A provider release link the user gave, checked before any request (§14.5): https, a known host, a release page. */
 function checkProviderUrl(sources: LibraryRouteDeps["sources"], raw: string): { url: URL } | { error: string } {
@@ -106,8 +116,12 @@ function checkProviderUrl(sources: LibraryRouteDeps["sources"], raw: string): { 
     return { error: "That is not a link" };
   }
   const provider = url.protocol === "https:" ? sources?.providerFor(url) : undefined;
+  if (!provider && needsCredentials(url)) {
+    const name = needsCredentials(url);
+    return { error: `${name} needs a client ID and secret (Settings → Providers), then a restart` };
+  }
   if (!provider || !(provider in SOURCE_NAMES)) {
-    return { error: "Paste a Deezer, iTunes, Discogs or Bandcamp album link (https://…)" };
+    return { error: "Paste a Deezer, iTunes, Tidal, Spotify, Discogs or Bandcamp album link (https://…)" };
   }
   if (!sources!.enabled(provider)) {
     return { error: `${SOURCE_NAMES[provider]} is switched off on the providers page (Settings)` };

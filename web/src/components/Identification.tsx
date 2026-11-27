@@ -168,7 +168,7 @@ function Mapping({ view, m, files }: { view: MappingView; m: MatchDto; files: Li
   );
 }
 
-/** One box for any release: a MusicBrainz release, or a Deezer, iTunes, Discogs or Bandcamp album. */
+/** One box for any release: a MusicBrainz release, a Deezer, iTunes, Tidal, Spotify, Discogs or Bandcamp album, YouTube. */
 function LinkBox(
   { busy, onMusicBrainz, onProvider, onYouTube }: {
     busy: boolean;
@@ -210,7 +210,7 @@ function LinkBox(
           id="tm-link-box"
           type="text"
           inputMode="url"
-          placeholder="A MusicBrainz release, a Deezer, iTunes, Discogs or Bandcamp album, or a YouTube playlist"
+          placeholder="A MusicBrainz release, an album on Deezer, iTunes, Tidal, Spotify, Discogs or Bandcamp, or a YouTube playlist"
           value={text}
           onInput={(e) => setText(e.currentTarget.value)}
           disabled={busy || working}

@@ -165,3 +165,22 @@ Deno.test("a refined date is written over a year-only one; a precise date in the
   assertEquals(build("1978-03-09", "1978"), "unchanged");
   assertEquals(build("1978-03-09", "1978-03-09"), "unchanged");
 });
+
+Deno.test("Tidal and Spotify fill a date and ISRCs after Deezer and iTunes, never as a conflict (D67)", () => {
+  const noIsrc = {
+    ...release,
+    media: release.media.map((m) => ({
+      ...m,
+      tracks: m.tracks!.map((t) => ({ ...t, recording: { ...t.recording, isrcs: [] } })),
+    })),
+  };
+  const base = tagsFromMusicBrainz({ release: noIsrc });
+  const m = mergeProviders(base, noIsrc, [
+    match("spotify", harmony({ date: { year: 1977 }, isrcs: ["SPOTIFY00001"] })),
+    match("tidal", harmony({ date: { year: 1978, month: 5 }, isrcs: [undefined, "TIDAL0000002"] })),
+  ]);
+  assertEquals(m.release.date, "1978-05", "Tidal refines the year; Spotify's other year makes no conflict");
+  assertEquals([m.provenance.get("date")!.origin, m.provenance.get("date")!.conflict], ["tidal", false]);
+  assertEquals(m.tracks.get(trackIds[0])!.isrc, ["SPOTIFY00001"]);
+  assertEquals(m.tracks.get(trackIds[1])!.isrc, ["TIDAL0000002"]);
+});

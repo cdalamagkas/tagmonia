@@ -26,7 +26,17 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 
 /** Hosts covers may come from; subdomains included. The Cover Art Archive redirects to archive.org's servers. */
-const ALLOWED_HOSTS = ["coverartarchive.org", "archive.org", "mzstatic.com", "dzcdn.net", "discogs.com", "bcbits.com"];
+const ALLOWED_HOSTS = [
+  "coverartarchive.org",
+  "archive.org",
+  "mzstatic.com",
+  "dzcdn.net",
+  "discogs.com",
+  "bcbits.com",
+  // Tidal's image CDN (resources.tidal.com) and Spotify's (i.scdn.co), D67.
+  "resources.tidal.com",
+  "scdn.co",
+];
 
 /**
  * The Cover Art Archive's listing still names older images with http:// links; for

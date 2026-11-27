@@ -62,3 +62,19 @@ Deno.test("Deezer and iTunes need no credentials", async () => {
   assertEquals((await testProvider("itunes", s.d)).ok, true);
   assertEquals(s.seen.map((x) => new URL(x.url).host), ["api.deezer.com", "itunes.apple.com"]);
 });
+
+Deno.test("Tidal and Spotify: a client-credentials token is the test; a refusal names no credential (D67)", async () => {
+  for (const [id, host] of [["tidal", "auth.tidal.com"], ["spotify", "accounts.spotify.com"]] as const) {
+    let s = await deps([Response.json({ access_token: "t" })], { [id]: { clientId: "CI", clientSecret: "CS" } });
+    assertEquals(await testProvider(id, s.d), { ok: true, message: "client ID and secret accepted" });
+    assertEquals(new URL(s.seen[0].url).host, host);
+    assertEquals([s.seen[0].auth, s.seen[0].body], [`Basic ${btoa("CI:CS")}`, "grant_type=client_credentials"]);
+    s = await deps([new Response(null, { status: 401 })], { [id]: { clientId: "CI", clientSecret: "CS" } });
+    const r = await testProvider(id, s.d);
+    assertEquals(r.ok, false);
+    assert(!r.message.includes("CI") && !r.message.includes("CS"), "no credential in the message");
+    s = await deps([]);
+    assertEquals(await testProvider(id, s.d), { ok: false, message: "no client ID and secret" });
+    assertEquals(s.seen.length, 0);
+  }
+});

@@ -316,7 +316,7 @@ export interface ProposalDto {
   rename: RenameProposalDto | null;
 }
 
-export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "discogs" | "bandcamp";
+export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "tidal" | "discogs" | "bandcamp" | "spotify";
 export type CoverStatusDto = "added" | "changed" | "unchanged";
 
 export interface CoverImageDto {
@@ -459,7 +459,7 @@ export interface CoverDecisionRequest {
 
 export interface ProviderMatchDto {
   /** YouTube is evidence from a pasted link (§9.5, D55). */
-  provider: "deezer" | "itunes" | "discogs" | "bandcamp" | "youtube";
+  provider: "deezer" | "itunes" | "tidal" | "spotify" | "discogs" | "bandcamp" | "youtube";
   status: "found" | "different_edition" | "not_found" | "skipped" | "error";
   via: "link" | "barcode" | null;
   url: string | null;
@@ -592,7 +592,7 @@ export interface DecisionRequest {
   /** Required with "edited": the user's own value, in the field's canonical type. */
   edited?: unknown;
   /** With "accepted": take this source's value instead of the proposed one (settles a conflict, D48). */
-  source?: "musicbrainz" | "deezer" | "itunes" | "discogs";
+  source?: "musicbrainz" | "deezer" | "itunes" | "tidal" | "spotify" | "discogs";
 }
 
 // ---- providers and settings (§9.2, §14.3, §15.2, Phase 4)

@@ -26,7 +26,7 @@ const decisionBody = z.object({
   decision: z.enum(["auto", "accepted", "edited", "kept_current"]),
   edited: z.unknown().optional(),
   /** Settle a field with one source's value (D48); goes with decision "accepted". */
-  source: z.enum(["musicbrainz", "deezer", "itunes", "discogs"]).optional(),
+  source: z.enum(["musicbrainz", "deezer", "itunes", "tidal", "spotify", "discogs"]).optional(),
 }).strict().refine((b) => b.source === undefined || b.decision === "accepted");
 
 const lockBody = z.object({

@@ -29,6 +29,8 @@ const PROVIDERS: Record<string, string> = {
   musicbrainz: "MusicBrainz",
   deezer: "Deezer",
   itunes: "iTunes",
+  tidal: "Tidal",
+  spotify: "Spotify",
   discogs: "Discogs",
   bandcamp: "Bandcamp",
   youtube: "YouTube",

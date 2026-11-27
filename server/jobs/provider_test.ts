@@ -92,6 +92,27 @@ export async function testProvider(id: ProviderId, deps: ProviderTestDeps): Prom
         ? { ok: true, message: "key and secret accepted" }
         : { ok: false, message: `Discogs answered HTTP ${res.status}` };
     }
+    case "tidal":
+    case "spotify": {
+      // A token with the client credentials is the test: it is what every lookup starts with (D67).
+      const { clientId, clientSecret } = await deps.creds.get(id);
+      if (!clientId || !clientSecret) return { ok: false, message: "no client ID and secret" };
+      const name = id === "tidal" ? "Tidal" : "Spotify";
+      const tokenUrl = id === "tidal"
+        ? "https://auth.tidal.com/v1/oauth2/token"
+        : "https://accounts.spotify.com/api/token";
+      const res = await get(deps, tokenUrl, {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      }, { method: "POST", body: "grant_type=client_credentials" });
+      await res.body?.cancel();
+      if (res.status === 400 || res.status === 401) {
+        return { ok: false, message: `${name} rejected the client ID or secret` };
+      }
+      return res.ok
+        ? { ok: true, message: "client ID and secret accepted" }
+        : { ok: false, message: `${name} answered HTTP ${res.status}` };
+    }
     case "bandcamp": {
       // One page request: Bandcamp is read from its public pages (D16).
       const res = await get(deps, "https://bandcamp.com/", { Accept: "text/html" });
@@ -154,7 +175,18 @@ export function registerProviderTestJob(queue: JobQueue, deps: ProviderTestDeps)
   const now = deps.now ?? Date.now;
   queue.register(PROVIDER_TEST_JOB, async ({ job }) => {
     const p = z.object({
-      provider: z.enum(["musicbrainz", "acoustid", "deezer", "itunes", "discogs", "bandcamp", "youtube", "jellyfin"]),
+      provider: z.enum([
+        "musicbrainz",
+        "acoustid",
+        "deezer",
+        "itunes",
+        "tidal",
+        "spotify",
+        "discogs",
+        "bandcamp",
+        "youtube",
+        "jellyfin",
+      ]),
     })
       .safeParse(job.payload);
     if (!p.success) throw new PermanentJobError("invalid provider test payload");

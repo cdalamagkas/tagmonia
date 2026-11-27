@@ -1,6 +1,6 @@
 /**
- * Finding the chosen MusicBrainz release on Deezer, iTunes and Discogs (§9.2,
- * §10.1, D47): by the release's own MusicBrainz link when it has one, else by
+ * Finding the chosen MusicBrainz release on Deezer, iTunes, Tidal, Spotify and Discogs (§9.2,
+ * §10.1, D47, D67): by the release's own MusicBrainz link when it has one, else by
  * barcode. A barcode can lead to another edition, so a result whose track count
  * differs is kept for display but marked, and never used for tags. Nothing here
  * fails the proposal: each provider ends in a status.
@@ -9,10 +9,12 @@ import type { MbRelease } from "./musicbrainz/schema.ts";
 import type { HarmonizedRelease, HarmonyRegistry, HarmonyReleaseOptions } from "./harmony_adapter.ts";
 import type { YouTubeEvidence } from "./youtube.ts";
 
-export type EnrichmentProvider = "deezer" | "itunes" | "discogs";
+export type EnrichmentProvider = "deezer" | "itunes" | "tidal" | "spotify" | "discogs";
 /** Providers a proposal can start from (§10.4): the enrichment ones, and Bandcamp when switched on (D16). */
 export type SourceProvider = EnrichmentProvider | "bandcamp";
-export const ENRICHMENT_PROVIDERS: readonly EnrichmentProvider[] = ["deezer", "itunes", "discogs"];
+export const ENRICHMENT_PROVIDERS: readonly EnrichmentProvider[] = ["deezer", "itunes", "tidal", "spotify", "discogs"];
+
+const OPTIONAL: ReadonlySet<EnrichmentProvider> = new Set(["tidal", "spotify"]);
 
 export type MatchStatus = "found" | "different_edition" | "not_found" | "skipped" | "error";
 
@@ -84,7 +86,7 @@ export function targetOfHarmony(r: HarmonizedRelease): EnrichmentTarget {
  */
 export const LOOKUP_OPTIONS = { withISRC: true, withAllTrackArtists: true, withSeparateMedia: true } as const;
 
-/** iTunes and Deezer have region-specific catalogues: the release's own country first. */
+/** iTunes, Deezer, Tidal and Spotify have region-specific catalogues: the release's own country first. */
 function regions(t: EnrichmentTarget): HarmonyReleaseOptions {
   const set = new Set<string>();
   if (t.country && /^[A-Z]{2}$/.test(t.country)) set.add(t.country);
@@ -107,6 +109,9 @@ export async function findOnProviders(
   });
   const out: ProviderMatch[] = [];
   for (const provider of ENRICHMENT_PROVIDERS) {
+    // Tidal and Spotify need the user's own developer credentials (D67): without them they are not
+    // mentioned at all, rather than listed as "not set up" on every proposal.
+    if (OPTIONAL.has(provider) && !deps.registry.providerIds.includes(provider)) continue;
     const base = { provider, via: null, url: null, release: null };
     if (!deps.enabled(provider)) {
       out.push({ ...base, status: "skipped", reason: "turned off" });
