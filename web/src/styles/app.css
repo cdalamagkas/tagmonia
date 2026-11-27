@@ -62,7 +62,7 @@ a {
   font-weight: var(--tm-weight-label);
 }
 a:hover {
-  color: var(--tm-orange);
+  color: var(--tm-orange-text);
 }
 .tm-card {
   background: var(--tm-paper);
@@ -354,6 +354,10 @@ a:focus-visible {
   color: #fff;
   text-decoration: none;
   margin-right: 8px;
+}
+/* On navy the bright orange reads well (5.2:1); the darker text orange would not. */
+.tm-nav-link:hover {
+  color: var(--tm-orange);
 }
 .tm-cred-form label span {
   display: flex;
@@ -785,7 +789,7 @@ td.tm-change-off .tm-change-new {
   padding: 4px 0;
 }
 .tm-fold > summary:hover {
-  color: var(--tm-orange);
+  color: var(--tm-orange-text);
 }
 .tm-fold[open] > summary {
   margin-bottom: 8px;
@@ -816,7 +820,7 @@ td.tm-change-off .tm-change-new {
   border-radius: var(--tm-radius);
 }
 .tm-icon-button:hover {
-  color: var(--tm-orange);
+  color: var(--tm-orange-text);
 }
 .tm-steps {
   display: flex;
