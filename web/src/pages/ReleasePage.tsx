@@ -1,15 +1,17 @@
 /**
  * One release (docs/proposals/release-page-restructure.md, D53): a header that says where the release
- * stands and what to do next, then four tabs: Changes, Match, Files, History. The page loads everything
+ * stands and what to do next, then four tabs: Tags (formerly Changes, D66), Match, Files, History. The page loads everything
  * once and keeps it live while jobs run (useRelease).
  */
+import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import type { CurrentCoverDto, LibraryFileDto } from "../../../shared/types.ts";
+import type { CurrentCoverDto, LibraryFileDto, ReleaseChangesDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { bytes, duration, folderLabel, METHOD_LABELS, RELEASE_FIELDS, tagValue } from "../format.ts";
 import { onLinkClick } from "../router.ts";
 import { Identification } from "../components/Identification.tsx";
-import { Review } from "../components/Review.tsx";
+import { Location, Review } from "../components/Review.tsx";
+import { ChangesBadge } from "../components/ChangesBadge.tsx";
 import { History } from "../components/History.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
 import { AddToMusicBrainz, openEditor } from "../components/Submission.tsx";
@@ -17,6 +19,7 @@ import {
   type Action,
   changesToWrite,
   isOpen,
+  openChoices,
   type ReleaseStatus,
   releaseStatus,
   sourceLine,
@@ -25,8 +28,8 @@ import {
 import { isLive, type LoadedRelease, useRelease } from "../release/useRelease.ts";
 import { activeSubmission } from "../release/submission.ts";
 
-type Tab = "changes" | "match" | "files" | "history";
-const TABS: Tab[] = ["changes", "match", "files", "history"];
+type Tab = "tags" | "match" | "files" | "history";
+const TABS: Tab[] = ["tags", "match", "files", "history"];
 
 function coverCaption(c: CurrentCoverDto): string {
   const kb = c.size >= 1024 * 1024 ? `${(c.size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(c.size / 1024)} KB`;
@@ -246,6 +249,8 @@ function Header(
 
 function initialTab(): Tab | null {
   const t = new URLSearchParams(location.search).get("tab");
+  // The Tags tab was called Changes (D66): old links still open it.
+  if (t === "changes") return "tags";
   return TABS.includes(t as Tab) ? (t as Tab) : null;
 }
 
@@ -289,8 +294,8 @@ export function ReleasePage({ id }: { id: number }) {
   }
 
   const p = data.proposal.proposal;
-  // Changes when there is something proposed; otherwise Match, where a release is chosen.
-  const tab: Tab = chosenTab ?? (p ? "changes" : "match");
+  // Tags when there is something proposed; otherwise Match, where a release is chosen.
+  const tab: Tab = chosenTab ?? (p ? "tags" : "match");
   const selectTab = (t: Tab) => {
     setChosenTab(t);
     setSearch("tab", t);
@@ -341,7 +346,7 @@ export function ReleasePage({ id }: { id: number }) {
         }
         return;
       case "resolve":
-        selectTab("changes");
+        selectTab("tags");
         return scrollTo("tm-conflicts");
       case "submission":
         openPanel(true);
@@ -360,8 +365,18 @@ export function ReleasePage({ id }: { id: number }) {
   const live = isLive(data);
   const { files } = data.detail;
   const changes = p && isOpen(p) ? changesToWrite(p) : 0;
-  const tabLabel: Record<Tab, string> = {
-    changes: changes > 0 ? `Changes (${changes})` : "Changes",
+  // The Tags tab carries the library's Changes badge (D61, D66): a count to write, or values to choose.
+  const choices = p && isOpen(p) ? openChoices(p) : 0;
+  const tagsBadge: ReleaseChangesDto | null = p && isOpen(p) && !p.stale && (changes > 0 || choices > 0)
+    ? { state: choices > 0 ? "choices" : "ready", count: changes, choices }
+    : null;
+  const tabLabel: Record<Tab, ComponentChildren> = {
+    tags: (
+      <>
+        Tags{tagsBadge && " "}
+        {tagsBadge && <ChangesBadge changes={tagsBadge} />}
+      </>
+    ),
     match: "Match",
     files: `Files (${files.length})`,
     history: data.history.batches.length ? `History (${data.history.batches.length})` : "History",
@@ -372,7 +387,7 @@ export function ReleasePage({ id }: { id: number }) {
   const propose = async (body: Parameters<typeof api.propose>[1]) => {
     await api.propose(id, body);
     await reload();
-    selectTab("changes");
+    selectTab("tags");
   };
 
   return (
@@ -395,7 +410,7 @@ export function ReleasePage({ id }: { id: number }) {
           building={!!data.proposal.job}
           onReload={reload}
           onClose={() => openPanel(false)}
-          onShowChanges={() => selectTab("changes")}
+          onShowChanges={() => selectTab("tags")}
         />
       )}
       <div class="tm-tabs" role="tablist" aria-label="Release" hidden={showPanel}>
@@ -415,7 +430,7 @@ export function ReleasePage({ id }: { id: number }) {
         ))}
       </div>
       <div role="tabpanel" id={`tm-panel-${tab}`} aria-labelledby={`tm-tab-${tab}`} hidden={showPanel}>
-        {tab === "changes" && (
+        {tab === "tags" && (
           <>
             <Review
               releaseId={id}
@@ -441,7 +456,18 @@ export function ReleasePage({ id }: { id: number }) {
             onChooseProvider={(providerUrl) => propose({ providerUrl })}
           />
         )}
-        {tab === "files" && <FilesTab files={files} />}
+        {tab === "files" && (
+          <>
+            <Location
+              releaseId={id}
+              proposal={p}
+              destination={data.proposal.destination}
+              live={live}
+              onReload={reload}
+            />
+            <FilesTab files={files} />
+          </>
+        )}
         {tab === "history" && (
           <History
             data={data.history}

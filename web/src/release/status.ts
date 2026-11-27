@@ -48,7 +48,7 @@ export type ActionId =
   | "identify" // identify again
   | "undo" // undo the latest write
   | "match" // open the Match tab
-  | "resolve" // open the Changes tab at the conflicts
+  | "resolve" // open the Tags tab at the conflicts
   | "submission" // open the Add to MusicBrainz panel
   | "editor" // open MusicBrainz's release editor (the submission is ready)
   | "retry"; // check MusicBrainz again after a failed submission check

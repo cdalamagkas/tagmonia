@@ -336,7 +336,7 @@ function SearchTermsForm(
                 </button>
               )
           )}
-          {usedAsTags && <span class="tm-muted">The Changes tab holds your terms as tags.</span>}
+          {usedAsTags && <span class="tm-muted">The Tags tab holds your terms as tags.</span>}
           {" · "}
           <button type="button" class="tm-linklike tm-small-link" disabled={off} onClick={() => act(onClear)}>
             Forget these terms
@@ -366,7 +366,7 @@ function EvidenceLine(
       <a href={evidence.url} target="_blank" rel="noopener noreferrer">{what}</a>{" "}
       <span class="tm-muted">
         {hasProposal
-          ? "fills the release date and label where nothing else has them; see Changes."
+          ? "fills the release date and label where nothing else has them; see Tags."
           : "used once the tags are proposed."}
       </span>{" "}
       <button type="button" class="tm-linklike tm-small-link" disabled={busy} onClick={onRemove}>remove</button>
@@ -580,8 +580,8 @@ export function Identification(
             </h3>
             <p class="tm-muted">
               {youtubeSource
-                ? "The tags come from this playlist's auto-generated descriptions (titles, artists, album, date, label); see Changes."
-                : "The tags come from this album, filled in from the same release on the other providers; see Changes."}
+                ? "The tags come from this playlist's auto-generated descriptions (titles, artists, album, date, label); see Tags."
+                : "The tags come from this album, filled in from the same release on the other providers; see Tags."}
             </p>
           </>
         )}
@@ -591,7 +591,7 @@ export function Identification(
             <h3>
               Your search terms <span class="tm-badge tm-badge-warn tm-inline">not on MusicBrainz</span>
             </h3>
-            <p class="tm-muted">The tags come from what you typed; see Changes.</p>
+            <p class="tm-muted">The tags come from what you typed; see Tags.</p>
           </>
         )}
 
