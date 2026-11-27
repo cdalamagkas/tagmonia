@@ -82,6 +82,8 @@ export function parseDuration(iso: string): number | null {
 
 export interface DescriptionFacts {
   providedBy: string | null;
+  /** From the "<title> · <artist> · <artist>" line (D64). */
+  track: { title: string; artists: string[] } | null;
   album: string | null;
   /** From the ℗ line: the rights holder, or whom the release is licensed to. */
   label: string | null;
@@ -91,13 +93,15 @@ export interface DescriptionFacts {
 /** The release facts of an auto-generated upload's description; nulls for any other description. */
 export function parseDescription(text: string): DescriptionFacts {
   const lines = text.split(/\r?\n/).map((l) => l.trim());
-  const none = { providedBy: null, album: null, label: null, date: null };
+  const none = { providedBy: null, track: null, album: null, label: null, date: null };
   const provided = lines.findIndex((l) => /^Provided to YouTube by /i.test(l));
   if (provided < 0) return none;
   const providedBy = lines[provided].replace(/^Provided to YouTube by /i, "").trim() || null;
   // The non-empty lines after it: "<title> · <artists>", then the album.
   const after = lines.slice(provided + 1).filter(Boolean);
   const album = after[0]?.includes(" · ") && after[1] && !/^(℗|©|Released on:)/.test(after[1]) ? after[1] : null;
+  const parts = after[0]?.includes(" · ") ? after[0].split(" · ").map((x) => x.trim()).filter(Boolean) : [];
+  const track = parts.length >= 2 ? { title: parts[0], artists: parts.slice(1) } : null;
   const p = lines.find((l) => l.startsWith("℗"));
   let label: string | null = null;
   if (p) {
@@ -108,7 +112,7 @@ export function parseDescription(text: string): DescriptionFacts {
     label = holder || null;
   }
   const released = lines.map((l) => /^Released on:\s*(\d{4}(?:-\d{2}(?:-\d{2})?)?)/i.exec(l)?.[1]).find(Boolean);
-  return { providedBy, album, label, date: released ?? null };
+  return { providedBy, track, album, label, date: released ?? null };
 }
 
 export interface YouTubeEvidence {
@@ -117,7 +121,11 @@ export interface YouTubeEvidence {
   /** The playlist's title (an album playlist is named "Album - <album>"), or the video's. */
   title: string | null;
   channel: string | null;
-  tracks: { videoId: string; title: string; durationMs: number | null }[];
+  /**
+   * `title` is the video's; `name` and `artists` come from an auto-generated description (D64), and are
+   * null and empty for any other upload.
+   */
+  tracks: { videoId: string; title: string; durationMs: number | null; name: string | null; artists: string[] }[];
   /** Agreed by most of the uploads that state one. */
   label: string | null;
   date: string | null;
@@ -262,10 +270,13 @@ export class YouTubeClient {
     // Deleted and private videos stay in a playlist but are not returned: they still hold a track's place.
     const tracks = ids.map((id) => {
       const v = videos.get(id);
+      const facts = v ? parseDescription(v.snippet.description).track : null;
       return {
         videoId: id,
         title: v?.snippet.title ?? "(unavailable video)",
         durationMs: v?.contentDetails.duration ? parseDuration(v.contentDetails.duration) : null,
+        name: facts?.title ?? null,
+        artists: facts?.artists ?? [],
       };
     });
     const facts = ids.map((id) => videos.get(id)).filter((v) => !!v).map((v) =>

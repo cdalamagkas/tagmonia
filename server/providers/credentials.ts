@@ -100,7 +100,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
     tier: "enrichment",
     fields: [{ key: "apiKey", label: "API key", secret: true, kind: "text" }],
     help:
-      "Evidence from a YouTube video or playlist link you paste on a release: its release date and label fill gaps, never more (official YouTube Data API). A free API key from Google Cloud: create a project, enable the YouTube Data API v3, then create an API key.",
+      "A YouTube playlist or video link you paste on a release (official YouTube Data API). Without a MusicBrainz release, its auto-generated descriptions give the tags (titles, artists, album, date, label) and can start a MusicBrainz submission; with one, it only fills the date and label where nothing else has them. A free API key from Google Cloud: create a project, enable the YouTube Data API v3, then create an API key.",
   },
   {
     id: "jellyfin",

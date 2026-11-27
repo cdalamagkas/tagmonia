@@ -28,12 +28,13 @@ import {
   enqueuePropose,
   enqueueProviderPropose,
   enqueueSearchTermsPropose,
+  enqueueYouTubePropose,
   proposeDedupeKey,
 } from "../../jobs/propose.ts";
 import { getSearchTerms, searchTermsSchema, setSearchTerms } from "../../db/repo/search_terms.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
-import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
+import { canonicalUrl, isYouTubeHost, parseYouTubeUrl } from "../../providers/youtube.ts";
 import type {
   FolderListDto,
   ProposalDto,
@@ -86,6 +87,7 @@ const proposeBody = z.union([
   z.object({ releaseMbid: mbidSchema, server: z.literal("https://test.musicbrainz.org").optional() }).strict(),
   z.object({ providerUrl: z.string().max(500) }).strict(),
   z.object({ fromSearchTerms: z.literal(true) }).strict(),
+  z.object({ youtubeUrl: z.string().max(500) }).strict(),
 ]);
 
 const SOURCE_NAMES: Record<string, string> = {
@@ -303,6 +305,13 @@ export function editionRows(
   return [...rows, ...rest];
 }
 
+/** A failed job's error, when it finished after `since` (the current proposal); a later success clears it. */
+function failedAfter(job: Job | undefined, since: number | null): string | null {
+  if (!job || job.state !== "failed") return null;
+  if (since !== null && (job.finishedAt ?? 0) < since) return null;
+  return job.error ?? "Could not prepare the changes";
+}
+
 export function libraryRoutes(deps: LibraryRouteDeps) {
   const { db, queue } = deps;
   const evidenceOf = (id: number) => {
@@ -459,7 +468,9 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         const primarySource = p.releaseMbid
           ? "musicbrainz"
           : p.sourceUrl
-          ? deps.sources?.providerFor(new URL(p.sourceUrl)) || null
+          ? isYouTubeHost(new URL(p.sourceUrl).hostname)
+            ? "youtube"
+            : deps.sources?.providerFor(new URL(p.sourceUrl)) || null
           : "user";
         proposal = {
           id: p.id,
@@ -498,6 +509,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         locks: locksFor(db, id),
         evidence: evidenceOf(id),
         destination: destinationOf(db, id),
+        proposeError: failedAfter(queue.lastWithKey(proposeDedupeKey(id)), p?.createdAt ?? null),
       };
       return c.json(body);
     })
@@ -519,6 +531,17 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       if (queue.live(proposeDedupeKey(id))) {
         return c.json({ error: "A proposal is already being built for this release; try again when it finishes" }, 409);
       }
+      if ("youtubeUrl" in body.data) {
+        let url: URL;
+        try {
+          url = new URL(body.data.youtubeUrl.trim());
+        } catch {
+          return c.json({ error: "That is not a link" }, 400);
+        }
+        const link = parseYouTubeUrl(url);
+        if ("error" in link) return c.json({ error: link.error }, 400);
+        return c.json(toJobDto(enqueueYouTubePropose(queue, id, canonicalUrl(link))), 202);
+      }
       if ("fromSearchTerms" in body.data) {
         if (!getSearchTerms(db, id)) return c.json({ error: "Search with your own terms first" }, 409);
         return c.json(toJobDto(enqueueSearchTermsPropose(queue, id)), 202);
@@ -533,6 +556,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       return c.json(toJobDto(job), 202);
     })
     // Evidence (§9.5, D55): a YouTube link adds its date and label to every proposal built for the release.
+    // As the source of the tags, a link goes through POST …/proposal {youtubeUrl} instead (D64).
     // Nothing is written to the files, so read-only mode allows it.
     .put("/releases/:id{[0-9]+}/evidence", async (c) => {
       const id = Number(c.req.param("id"));

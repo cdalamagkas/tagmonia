@@ -487,7 +487,7 @@ export interface Provider {
 | Core | MusicBrainz, Cover Art Archive, AcoustID | On | AcoustID application API key (free, user-supplied) |
 | Enrichment | Discogs, Deezer, iTunes | On (Discogs only if credentials are set) | Discogs consumer key + secret (what Harmony's provider uses, D12) |
 | Optional | Bandcamp, Beatport, Tidal, Spotify | Off | Per provider; Spotify and Tidal need app credentials. Bandcamp and Beatport have no official API; Harmony reads their public pages, so they are opt-in only and never on by default (D16) |
-| Optional, evidence only | YouTube | Off until a key is set; used only from a pasted link | YouTube Data API key (D55) |
+| Optional | YouTube | Off until a key is set; used only from a pasted link: the source of a release MusicBrainz lacks, else evidence (D55, D64) | YouTube Data API key |
 
 Commercial APIs change without notice (Spotify has removed endpoints that Harmony relied on). Every optional provider must degrade to "unavailable" without breaking a lookup.
 
@@ -531,7 +531,7 @@ Harmony has no merged YouTube Music provider, so Tagmonia implements a minimal o
 - **Official YouTube Data API only.** No unofficial or internal YouTube Music APIs in the default build, because of terms-of-service risk and breakage.
 - **Input:** a video or playlist URL pasted by the user. Avoid `search.list`, which has a small separate daily quota by default; `videos.list` and `playlistItems.list` are cheap.
 - **Extraction:** parse auto-generated "Provided to YouTube by ..." descriptions for label, ℗/© line and "Released on" date; playlist order for track sequence; durations from `contentDetails`.
-- **Trust level:** evidence only. YouTube values can fill gaps and corroborate, but cannot by themselves set the tracklist, artist credits or release type when another provider disagrees. YouTube exposes no barcode.
+- **Trust level:** evidence only. YouTube values can fill gaps and corroborate, but cannot by themselves set the tracklist, artist credits or release type when another provider disagrees. YouTube exposes no barcode. *Revised by D64:* for a release MusicBrainz lacks, a pasted link is the source of the tags, like a Deezer or Bandcamp link; next to a MusicBrainz release it stays evidence.
 
 As built (D55, `server/providers/youtube.ts`, `server/proposal/evidence.ts`):
 
@@ -540,6 +540,13 @@ As built (D55, `server/providers/youtube.ts`, `server/proposal/evidence.ts`):
 - Facts come from auto-generated descriptions: the release date from "Released on:", the label from the ℗ line (whom it is licensed to when it says so; "a division of …" dropped), the album line and the distributor. Each is the value most uploads agree on. The distributor ("Provided to YouTube by") is not used as the label: it is usually DistroKid, The Orchard or the like.
 - A playlist counts only when it has as many videos as the release has tracks; otherwise it is "another edition", shown and unused. When it counts, it fills `date` (empty, or year-only refined by a full date of the same year) and `label` (empty only), marked "filled by YouTube". Otherwise its values are listed as sources next to the others; they never make a conflict.
 - A missing key, a refused key, a used-up quota or a deleted playlist becomes the YouTube row's reason in "Also on"; the proposal is built regardless.
+
+As a source (D64, `server/proposal/youtube_release.ts`):
+
+- In the Match tab's link box, a YouTube link builds the proposal from YouTube unless a MusicBrainz release is the current source (then it is evidence, as above). The link is also stored as evidence, so a MusicBrainz release chosen later still gets its date and label.
+- The facts are shaped as a provider release: album (the description's album line, else the playlist title without "Album - ", else the video title); album artist (the "<artist> - Topic" channel, else the artists most tracks credit, else the channel); per track the title and artists from the "<title> · <artist> · …" line (else the video title), its length and position; the date and label as above; the link as a free streaming URL. Files are mapped to tracks by length and title as for any provider.
+- No other provider is asked (YouTube has no barcode to find them by) and no cover is proposed (video thumbnails are not cover art).
+- The release is stored with the proposal, so "Add to MusicBrainz" seeds the release editor from it, with the playlist as the release's streaming link and the edit note citing it.
 
 ---
 
@@ -948,7 +955,7 @@ The maintainer chose the test server for the "Done when"; submitting to musicbra
 
 - Bandcamp, Beatport, Tidal, Spotify toggles; YouTube evidence provider (§9.5).
 
-  Status: the YouTube evidence provider is done (D55). Beatport is deferred: Harmony can no longer read Beatport's pages (D54). Bandcamp was done in Phase 5 (D51).
+  Status: the YouTube provider is done, as evidence (D55) and as a source (D64). Beatport is deferred: Harmony can no longer read Beatport's pages (D54). Bandcamp was done in Phase 5 (D51).
 - ~~Inbox/watch folder; rename/move templates~~ — done (design: [proposals/inbox-and-renaming.md](proposals/inbox-and-renaming.md), D57–D60). OIDC and trusted-header auth.
 - Docker image hardening, SBOM, multi-arch release.
 
@@ -1025,6 +1032,7 @@ Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs (the Changes ta
 | D61 | 2026-11-27 | **The library list shows each release's prepared changes:** a Changes column ("25", "2 to choose", "files changed", "complete", "written", or – when none are prepared), next to the identification status, now headed MusicBrainz. Counted on the server with the Changes tab's own rules, moved to `shared/changes.ts` (an album field once, a track field per track, the cover and the move as one each) | Showing missing fields against a fixed list of "expected" tags: what is missing depends on the source; a prepared proposal already says what can be filled |
 | D62 | 2026-11-27 | **Untagged files are a release each, unless numbered** (revises D22's loose rule): in a folder, files without an album tag form one release only when every one has a track number in its tags or its file name (`01 …`, `1-01 …`, `01. …`); otherwise each is its own release, labelled by its title or file name. A scan regroups folders still holding an old per-folder loose release when the rule now splits them, once. Search also matches file names | One loose release per folder (D22): a folder of unrelated tracks became one "album". Always one per file: an untagged album rip became as many releases as tracks. Joining files by fingerprint after identification: a bigger change to how releases are kept |
 | D63 | 2026-11-27 | **Search terms for poorly tagged releases:** the Match tab's "Search with your own terms" takes an artist, an album and, for a one-file release, a track title. They are kept with the release (`candidate.search_terms`) and replace the files' album, album artist and title when identification searches and scores. When nothing fits, "Use them as tags" builds a proposal from them alone (no release, no link): album and album artist for every file, artist where a file has none, the title of a single; each field's source is `user` ("your search terms"), and nothing else is looked up. Such a proposal cannot be submitted to MusicBrainz (that needs a provider page). Also: a one-file release without an album tag is searched by its title, not its folder's name | Writing the terms to the files at once: they would bypass the review. Searching recordings instead of releases for singles: a second search path to score |
+| D64 | 2026-11-27 | **YouTube as a source** (revises D5 and D55's "evidence only"): for a release MusicBrainz lacks, a pasted YouTube playlist or video builds the proposal, like a Deezer or Bandcamp link: titles and artists from each auto-generated description's "<title> · <artist>" line, the album, date and label as in D55, track order and lengths from the playlist. The facts are shaped as a Harmony release, so mapping, the Changes tab and the MusicBrainz submission (the playlist as a free streaming link) work unchanged. Next to a MusicBrainz release the link stays evidence. Official Data API only, as before | Keeping YouTube evidence only: releases on YouTube alone could not be tagged or submitted. Scraping YouTube Music's album pages: declined (terms of service) |
 
 ---
 

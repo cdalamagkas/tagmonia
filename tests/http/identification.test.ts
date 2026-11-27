@@ -146,6 +146,7 @@ Deno.test("proposal API: none at first, a user pick queues a job, invalid ids an
       locks: [],
       evidence: null,
       destination: null,
+      proposeError: null,
     });
     const post = (body: unknown) =>
       t.request(`/api/library/releases/${id}/proposal`, { method: "POST", cookie, csrf, body: JSON.stringify(body) });

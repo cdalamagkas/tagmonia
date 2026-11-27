@@ -38,7 +38,8 @@ import { missingParentWorks, tagsFromMusicBrainz } from "../proposal/musicbrainz
 import type { Cited } from "../providers/musicbrainz/client.ts";
 import { mbidSchema, type MbRelease, type MbReleaseExtras, type MbWork } from "../providers/musicbrainz/schema.ts";
 import { buildEvidence } from "./identify.ts";
-import { getEvidenceLink } from "../db/repo/evidence.ts";
+import { getEvidenceLink, setEvidenceLink } from "../db/repo/evidence.ts";
+import { youtubeRelease } from "../proposal/youtube_release.ts";
 import { applyEvidence, youtubeMatch } from "../proposal/evidence.ts";
 import { parseYouTubeUrl, type YouTubeEvidence, type YouTubeLink } from "../providers/youtube.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
@@ -118,6 +119,12 @@ const payloadSchema = z.union([
     providerUrl: z.url({ protocol: /^https$/ }),
     chosenBy: z.literal("user"),
   }),
+  // A YouTube playlist or video as the source (D64).
+  z.object({
+    candidateId: z.number().int().positive(),
+    youtubeUrl: z.url({ protocol: /^https$/ }),
+    chosenBy: z.literal("user"),
+  }),
   // The user's search terms as tags, when MusicBrainz has nothing that fits (D63).
   z.object({
     candidateId: z.number().int().positive(),
@@ -152,6 +159,9 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       return await proposeFromProvider(deps, new URL(parsed.data.providerUrl), found, contentHash, now, signal);
     }
     if ("fromSearchTerms" in parsed.data) return proposeFromSearchTerms(deps, found, contentHash, now);
+    if ("youtubeUrl" in parsed.data) {
+      return await proposeFromYouTube(deps, new URL(parsed.data.youtubeUrl), found, contentHash, now, signal);
+    }
     const { releaseMbid, server } = parsed.data;
     if (server && !deps.mbFor) throw new PermanentJobError(`${server} is not set up`);
     const mb = server ? deps.mbFor!(server) : deps.mb;
@@ -379,6 +389,81 @@ async function proposeFromProvider(
 }
 
 /**
+ * A YouTube playlist or video as the source (D64): the official Data API's facts, shaped as a provider
+ * release. No other provider is asked (YouTube gives no barcode to find them by), and no cover is proposed
+ * (video thumbnails are not cover art). The link is also kept as the release's evidence (D55), so a
+ * MusicBrainz release chosen later still gets its date and label.
+ */
+async function proposeFromYouTube(
+  deps: ProposeJobDeps,
+  url: URL,
+  found: NonNullable<ReturnType<typeof getRelease>>,
+  contentHash: string,
+  now: () => number,
+  signal?: AbortSignal,
+): Promise<ProposeJobResult> {
+  const link = parseYouTubeUrl(url);
+  if ("error" in link) throw new PermanentJobError(link.error);
+  const client = await deps.youtube?.();
+  if (!client) throw new PermanentJobError("YouTube needs an API key: add one in Settings → Providers");
+  let evidence: YouTubeEvidence;
+  try {
+    evidence = await client.evidence(link, signal);
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw new PermanentJobError(`YouTube: ${(e as Error).message}`.slice(0, 300));
+  }
+  const release = youtubeRelease(evidence);
+  const merged = mergeProviderReleases({ YouTube: release }, "YouTube");
+  const proposed = tagsFromProviders(merged, "youtube");
+  const files = found.files.filter((f) => !f.readError);
+  const { mapping } = scoreRelease(
+    buildEvidence(null, files),
+    providerReleaseView(merged, evidence.url),
+    DEFAULT_SCORING,
+  );
+  const build = buildFieldProposals({
+    candidateId: found.release.id,
+    files: files.map((f) => ({ id: f.id, tags: f.tags })),
+    mapping: mapping.pairs,
+    proposed,
+    snapshotId: null,
+    locks: listLocks(deps.db),
+    provenance: proposed.provenance,
+  });
+  const proposalId = saveProposal(deps.db, {
+    candidateId: found.release.id,
+    releaseMbid: null,
+    sourceUrl: evidence.url,
+    chosenBy: "user",
+    basedOnHash: contentHash,
+    snapshotIds: [],
+    build: {
+      ...build,
+      unmappedFiles: [...build.unmappedFiles, ...found.files.filter((f) => f.readError).map((f) => f.id)],
+    },
+  }, now());
+  saveProviderMatches(deps.db, proposalId, [{
+    provider: "youtube",
+    status: "found",
+    via: "link",
+    url: evidence.url,
+    reason: null,
+    release,
+    evidence,
+  }], now());
+  setEvidenceLink(deps.db, found.release.id, { provider: "youtube", url: evidence.url }, now());
+  const count = (st: string) => build.fields.filter((f) => f.status === st).length;
+  return {
+    proposalId,
+    changed: count("changed"),
+    added: count("added"),
+    unchanged: count("unchanged"),
+    unmappedFiles: build.unmappedFiles.length,
+  };
+}
+
+/**
  * The search terms as tags (D63): the album and its artist for every file, the artist for files without one,
  * and the title of a one-file release. Each field is marked as entered by the user ("user"), nothing else is
  * looked up, and no cover is proposed.
@@ -474,6 +559,14 @@ export function autoPropose(db: Db, queue: JobQueue, candidateId: number, releas
 /** The release's search terms as its tags (D63). */
 export function enqueueSearchTermsPropose(queue: JobQueue, candidateId: number): Job {
   return queue.enqueue(PROPOSE_JOB, { candidateId, fromSearchTerms: true, chosenBy: "user" }, {
+    dedupeKey: proposeDedupeKey(candidateId),
+    maxAttempts: 1,
+  });
+}
+
+/** A proposal from a YouTube playlist or video (D64). */
+export function enqueueYouTubePropose(queue: JobQueue, candidateId: number, youtubeUrl: string): Job {
+  return queue.enqueue(PROPOSE_JOB, { candidateId, youtubeUrl, chosenBy: "user" }, {
     dedupeKey: proposeDedupeKey(candidateId),
     maxAttempts: 1,
   });

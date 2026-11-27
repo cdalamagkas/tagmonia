@@ -17,7 +17,7 @@ export const ENRICHMENT_PROVIDERS: readonly EnrichmentProvider[] = ["deezer", "i
 export type MatchStatus = "found" | "different_edition" | "not_found" | "skipped" | "error";
 
 export interface ProviderMatch {
-  /** YouTube is evidence from a pasted link (§9.5, D55), never a source of a proposal. */
+  /** YouTube: evidence from a pasted link (§9.5, D55), or the source itself when the proposal is built from it (D64). */
   provider: SourceProvider | "youtube";
   status: MatchStatus;
   via: "link" | "barcode" | null;

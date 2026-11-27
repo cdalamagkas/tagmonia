@@ -347,7 +347,10 @@ function SearchTermsForm(
   );
 }
 
-/** The release's YouTube link (§9.5, D55): evidence for the date and label, never the source of the tags. */
+/**
+ * The release's YouTube link next to a MusicBrainz release (§9.5, D55): evidence for the date and label. Without
+ * one, the link is the source of the tags instead (D64), and this line is not shown.
+ */
 function EvidenceLine(
   { evidence, hasProposal, busy, onRemove }: {
     evidence: EvidenceLinkDto;
@@ -474,13 +477,15 @@ function nothingYet(d: IdentificationDto, busy: boolean): string {
 }
 
 export function Identification(
-  { releaseId, data, proposal, evidence, files, onReload, onChoose, onChooseProvider }: {
+  { releaseId, data, proposal, evidence, proposeError, files, onReload, onChoose, onChooseProvider }: {
     releaseId: number;
     /** Loaded and kept live by the release page (D53). */
     data: IdentificationDto;
     proposal: ProposalDto | null;
     /** The release's YouTube link, if any (§9.5, D55). */
     evidence: EvidenceLinkDto | null;
+    /** Why the latest attempt to prepare changes failed, if it did. */
+    proposeError: string | null;
     files: LibraryFileDto[];
     onReload: () => Promise<void>;
     /** Builds a proposal from a MusicBrainz release; rejects with the server's message (e.g. busy). */
@@ -509,6 +514,7 @@ export function Identification(
     await onReload();
   };
 
+  const youtubeSource = v.source.kind === "provider" && sourceName(v.source.url) === "YouTube";
   const best = data.matches[0] ?? null;
   const subject = v.subject;
   const summary = v.source.kind === "musicbrainz"
@@ -539,6 +545,7 @@ export function Identification(
   return (
     <>
       {error && <p class="tm-error" role="alert">{error}</p>}
+      {proposeError && !busy && <p class="tm-error" role="alert">Could not prepare the changes: {proposeError}</p>}
       <section class="tm-card">
         <div class="tm-toolbar">
           <div>
@@ -572,7 +579,9 @@ export function Identification(
               <span class="tm-badge tm-badge-warn tm-inline">not on MusicBrainz</span>
             </h3>
             <p class="tm-muted">
-              The tags come from this album, filled in from the same release on the other providers; see Changes.
+              {youtubeSource
+                ? "The tags come from this playlist's auto-generated descriptions (titles, artists, album, date, label); see Changes."
+                : "The tags come from this album, filled in from the same release on the other providers; see Changes."}
             </p>
           </>
         )}
@@ -626,7 +635,7 @@ export function Identification(
             : <p class="tm-muted">{nothingYet(data, busy)}</p>
         )}
 
-        {evidence && (
+        {evidence && !youtubeSource && (
           <EvidenceLine
             evidence={evidence}
             hasProposal={!!proposal}
@@ -659,7 +668,10 @@ export function Identification(
           onMusicBrainz={chooseLink}
           onProvider={(url) => onChooseProvider(url)}
           onYouTube={async (url) => {
-            await api.setEvidence(releaseId, url);
+            // With a MusicBrainz release chosen, YouTube adds its date and label (D55); otherwise it is the
+            // source of the tags (D64).
+            if (v.source.kind === "musicbrainz") await api.setEvidence(releaseId, url);
+            else await api.propose(releaseId, { youtubeUrl: url });
             await onReload();
           }}
         />

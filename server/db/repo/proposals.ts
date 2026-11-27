@@ -393,7 +393,11 @@ export function providerMatches(db: Db, proposalId: number): ProviderMatch[] {
   }[];
   return rows.map((r) => {
     const data = r.data ? JSON.parse(r.data) : null;
-    return r.provider === "youtube" ? { ...r, release: null, evidence: data ?? undefined } : { ...r, release: data };
+    // A YouTube row holds its facts as evidence (D55), or the release built from them when it is the source (D64).
+    if (r.provider === "youtube" && !(data && "media" in data)) {
+      return { ...r, release: null, evidence: data ?? undefined };
+    }
+    return { ...r, release: data };
   });
 }
 
