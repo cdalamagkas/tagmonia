@@ -23,6 +23,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   discogs: "Discogs",
   bandcamp: "Bandcamp",
   youtube: "YouTube",
+  user: "your search terms",
 };
 
 /** The provider of a "not on MusicBrainz" proposal's page, by its host. */
@@ -300,6 +301,9 @@ export function sourceLine(s: ReleaseState, methodLabel: (m: string) => string):
       url: p.sourceUrl,
       details: filled.length ? [`filled from ${filled.join(", ")}`] : [],
     };
+  }
+  if (p && !p.releaseMbid && !p.sourceUrl) {
+    return { label: "Your search terms (not on MusicBrainz)", url: null, details: [] };
   }
   const mbid = p?.releaseMbid ?? null;
   if (mbid) {

@@ -32,6 +32,7 @@ const PROVIDERS: Record<string, string> = {
   discogs: "Discogs",
   bandcamp: "Bandcamp",
   youtube: "YouTube",
+  user: "you",
 };
 
 /** "Also found on": where the release is on other providers, and why not when it is not (D47). */

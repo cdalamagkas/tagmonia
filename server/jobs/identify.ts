@@ -12,6 +12,8 @@ import { markIdentifying, saveIdentifyError, saveIdentifyResult } from "../db/re
 import { identify, type IdentifyConfig, type MbSource } from "../identify/identify.ts";
 import type { FingerprintSource } from "../identify/acoustid_source.ts";
 import type { CandidateEvidence } from "../identify/types.ts";
+import type { SearchTerms } from "../../shared/types.ts";
+import { getSearchTerms } from "../db/repo/search_terms.ts";
 import type { Logger } from "../log.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
 import { autoPropose } from "./propose.ts";
@@ -81,6 +83,21 @@ export function buildEvidence(hintMbid: string | null, files: StoredFile[]): Can
   };
 }
 
+/**
+ * The user's search terms in place of what the files say (D63): the album and its artist, and for a one-file
+ * release the track's title. Used to search and to score, so a release that fits the terms ranks first.
+ */
+export function applySearchTerms(ev: CandidateEvidence, terms: SearchTerms | null): CandidateEvidence {
+  if (!terms) return ev;
+  const single = ev.files.length === 1;
+  return {
+    ...ev,
+    album: terms.album ?? ev.album,
+    albumArtist: terms.artist ?? ev.albumArtist,
+    files: single && terms.title ? [{ ...ev.files[0], title: terms.title }] : ev.files,
+  };
+}
+
 export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): void {
   const now = deps.now ?? Date.now;
   queue.register(IDENTIFY_JOB, async ({ job, signal }): Promise<IdentifyJobResult | null> => {
@@ -96,7 +113,7 @@ export function registerIdentifyJob(queue: JobQueue, deps: IdentifyJobDeps): voi
 
     markIdentifying(deps.db, candidateId);
     try {
-      const ev = buildEvidence(found.release.mbid, found.files);
+      const ev = applySearchTerms(buildEvidence(found.release.mbid, found.files), getSearchTerms(deps.db, candidateId));
       const fp = typeof deps.fingerprints === "function" ? await deps.fingerprints() : deps.fingerprints;
       const result = await identify(
         ev,

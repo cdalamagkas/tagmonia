@@ -24,7 +24,13 @@ import { isUnresolved, latestProposal, locksFor, providerMatches } from "../../d
 import { coverWrites, getCover } from "../../db/repo/covers.ts";
 import { type CurrentCovers, THUMB_SIZES, type ThumbSize } from "../../covers/current.ts";
 import type { CachedImage } from "../../covers/fetch.ts";
-import { enqueuePropose, enqueueProviderPropose, proposeDedupeKey } from "../../jobs/propose.ts";
+import {
+  enqueuePropose,
+  enqueueProviderPropose,
+  enqueueSearchTermsPropose,
+  proposeDedupeKey,
+} from "../../jobs/propose.ts";
+import { getSearchTerms, searchTermsSchema, setSearchTerms } from "../../db/repo/search_terms.ts";
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
 import { canonicalUrl, parseYouTubeUrl } from "../../providers/youtube.ts";
@@ -79,6 +85,7 @@ const identifyBody = z.object({ releaseUrl: z.string().max(500).optional() }).st
 const proposeBody = z.union([
   z.object({ releaseMbid: mbidSchema, server: z.literal("https://test.musicbrainz.org").optional() }).strict(),
   z.object({ providerUrl: z.string().max(500) }).strict(),
+  z.object({ fromSearchTerms: z.literal(true) }).strict(),
 ]);
 
 const SOURCE_NAMES: Record<string, string> = {
@@ -390,8 +397,29 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         editions: editionRows(matches, state.unexaminedEditions),
         thresholds: deps.thresholds(),
         job: job ? toJobDto(job) : null,
+        searchTerms: getSearchTerms(db, id),
       };
       return c.json(body);
+    })
+    // Search terms (D63): saved, then the release is identified again with them. Nothing is written.
+    .put("/releases/:id{[0-9]+}/search-terms", async (c) => {
+      const id = Number(c.req.param("id"));
+      if (!identificationState(db, id)) return c.json({ error: "not found" }, 404);
+      const body = searchTermsSchema.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) {
+        return c.json({ error: body.error.issues[0]?.message ?? "Give artist, album or title" }, 400);
+      }
+      if (queue.live(identifyDedupeKey(id))) {
+        return c.json({ error: "This release is being identified; try again when it finishes" }, 409);
+      }
+      setSearchTerms(db, id, body.data);
+      return c.json(toJobDto(enqueueIdentify(queue, [id])[0]), 202);
+    })
+    .delete("/releases/:id{[0-9]+}/search-terms", (c) => {
+      const id = Number(c.req.param("id"));
+      if (!setSearchTerms(db, id, null)) return c.json({ error: "not found" }, 404);
+      if (queue.live(identifyDedupeKey(id))) return c.body(null, 204);
+      return c.json(toJobDto(enqueueIdentify(queue, [id])[0]), 202);
     })
     // Identification only reads stored tags and calls MusicBrainz, so read-only mode allows it.
     .post("/releases/:id{[0-9]+}/identify", async (c) => {
@@ -427,9 +455,12 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       if (p) {
         const count = (s: string) => p.fields.filter((f) => f.status === s).length;
         // Whose values the proposal is built on; only values from another source are "filled by" (D48, D51).
+        // Neither a release nor a link: the user's search terms (D63).
         const primarySource = p.releaseMbid
           ? "musicbrainz"
-          : (p.sourceUrl && deps.sources?.providerFor(new URL(p.sourceUrl))) || null;
+          : p.sourceUrl
+          ? deps.sources?.providerFor(new URL(p.sourceUrl)) || null
+          : "user";
         proposal = {
           id: p.id,
           releaseMbid: p.releaseMbid,
@@ -487,6 +518,10 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       // Joining a queued automatic proposal would silently drop the user's choice.
       if (queue.live(proposeDedupeKey(id))) {
         return c.json({ error: "A proposal is already being built for this release; try again when it finishes" }, 409);
+      }
+      if ("fromSearchTerms" in body.data) {
+        if (!getSearchTerms(db, id)) return c.json({ error: "Search with your own terms first" }, 409);
+        return c.json(toJobDto(enqueueSearchTermsPropose(queue, id)), 202);
       }
       const job = providerUrl ? enqueueProviderPropose(queue, id, providerUrl.href) : enqueuePropose(
         queue,

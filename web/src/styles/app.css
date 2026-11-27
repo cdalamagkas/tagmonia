@@ -62,7 +62,7 @@ a {
   font-weight: var(--tm-weight-label);
 }
 a:hover {
-  color: var(--tm-orange);
+  color: var(--tm-orange-text);
 }
 .tm-card {
   background: var(--tm-paper);
@@ -125,6 +125,11 @@ a:hover {
   background: var(--tm-paper);
   color: var(--tm-navy);
   border-color: var(--tm-rule);
+}
+/* Hovered, a secondary button stays light: navy text on the primary's navy hover was unreadable. */
+.tm-button.tm-secondary:hover:not(:disabled) {
+  background: var(--tm-mist);
+  border-color: var(--tm-navy);
 }
 .tm-button.tm-on-navy {
   background: transparent;
@@ -349,6 +354,10 @@ a:focus-visible {
   color: #fff;
   text-decoration: none;
   margin-right: 8px;
+}
+/* On navy the bright orange reads well (5.2:1); the darker text orange would not. */
+.tm-nav-link:hover {
+  color: var(--tm-orange);
 }
 .tm-cred-form label span {
   display: flex;
@@ -780,7 +789,7 @@ td.tm-change-off .tm-change-new {
   padding: 4px 0;
 }
 .tm-fold > summary:hover {
-  color: var(--tm-orange);
+  color: var(--tm-orange-text);
 }
 .tm-fold[open] > summary {
   margin-bottom: 8px;
@@ -811,7 +820,7 @@ td.tm-change-off .tm-change-new {
   border-radius: var(--tm-radius);
 }
 .tm-icon-button:hover {
-  color: var(--tm-orange);
+  color: var(--tm-orange-text);
 }
 .tm-steps {
   display: flex;
@@ -1106,4 +1115,13 @@ table.tm-review {
 }
 .tm-table .tm-badge {
   white-space: nowrap;
+}
+.tm-terms {
+  margin-top: 16px;
+}
+.tm-terms .tm-manual label {
+  flex: 1 1 200px;
+}
+.tm-terms-after {
+  margin: 8px 0 0;
 }

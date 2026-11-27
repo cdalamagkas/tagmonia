@@ -232,8 +232,11 @@ export async function identify(
     }
 
     // 3. Text search from tags, else from the folder name.
-    const fromFolder = queryFromFolder(folder);
-    const album = ev.album ?? fromFolder.album;
+    // A single file without an album tag (D62) is not named by its folder ("Misc"); a single's release
+    // is usually named after its track.
+    const single = ev.files.length === 1 && !ev.album;
+    const fromFolder: { artist?: string; album?: string } = single ? {} : queryFromFolder(folder);
+    const album = ev.album ?? (single ? ev.files[0].title : fromFolder.album);
     const artist = ev.albumArtist ?? (ev.album ? undefined : fromFolder.artist);
     if (album) {
       await searchAndScore({ release: album, artist, tracks: n || undefined }, "text", { album, artist });
