@@ -173,14 +173,32 @@ export function submissionHeader(
           primary: { id: "write", label: `Write ${plural(changes, "change")}` },
         };
       }
-      const follow = ["cover art", ...(sub.followUps?.isrcs ? ["ISRCs"] : [])].join(", ");
-      return {
-        tone: "ok",
-        sentence: `On ${host} · follow-ups: ${follow}`,
-        primary: { id: "panel", label: "Follow-ups" },
-      };
+      const pending = pendingFollowUps(sub);
+      return pending.length
+        ? {
+          tone: "ok",
+          sentence: `On ${host} · follow-ups: ${pending.join(", ")}`,
+          primary: { id: "panel", label: "Follow-ups" },
+        }
+        : { tone: "ok", sentence: `On ${host} · follow-ups done`, primary: null };
     }
     default:
       return null;
   }
+}
+
+/** Follow-ups MusicBrainz does not have yet, as last looked up (D65); unknown ones count as pending. */
+export function pendingFollowUps(sub: SubmissionDto): string[] {
+  const f = sub.followUps;
+  return [
+    ...(f?.coverArtAdded === true ? [] : ["cover art"]),
+    ...(f?.isrcs && f.isrcsAdded !== true ? ["ISRCs"] : []),
+  ];
+}
+
+/** Open the follow-ups: look again when something is pending and the last look is over a minute old. */
+export function shouldCheckFollowUps(sub: SubmissionDto, now: number): boolean {
+  const f = sub.followUps;
+  if (sub.state !== "returned" || !f || f.checking || pendingFollowUps(sub).length === 0) return false;
+  return f.checkedAt === null || now - f.checkedAt > 60_000;
 }

@@ -16,7 +16,12 @@ import {
   type Submission,
   updateSubmission,
 } from "../../db/repo/submissions.ts";
-import { enqueueSubmissionCheck, enqueueSubmissionVerify } from "../../jobs/submission.ts";
+import {
+  enqueueFollowUpCheck,
+  enqueueSubmissionCheck,
+  enqueueSubmissionVerify,
+  followUpDedupeKey,
+} from "../../jobs/submission.ts";
 import { NO_MATCH } from "../../submission/artists.ts";
 import type { JobQueue } from "../../jobs/queue.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -42,7 +47,7 @@ const callbackBody = z.object({ release: z.string().max(300) }).strict();
 const artistBody = z.object({ name: z.string().min(1).max(500), artist: z.string().max(300).nullable() }).strict();
 
 /** Where to add cover art and ISRCs once the release exists (§12.2: follow-ups, never automated). */
-function followUps(s: Submission): SubmissionDto["followUps"] {
+function followUps(s: Submission, checking: boolean): SubmissionDto["followUps"] {
   if (!s.releaseMbid) return null;
   const release = `${s.server}/release/${s.releaseMbid}`;
   let isrcs: string | null = null;
@@ -53,10 +58,19 @@ function followUps(s: Submission): SubmissionDto["followUps"] {
     q.set("edit-note", `ISRCs from the providers Tagmonia used for ${release}`);
     isrcs = `https://magicisrc.kepstin.ca/?${q}`;
   }
-  return { release, addCoverArt: `${release}/add-cover-art`, isrcs };
+  const st = s.followUpStatus;
+  return {
+    release,
+    addCoverArt: `${release}/add-cover-art`,
+    isrcs,
+    coverArtAdded: st?.coverArt ?? null,
+    isrcsAdded: isrcs ? st?.isrcs ?? null : null,
+    checkedAt: st?.checkedAt ?? null,
+    checking,
+  };
 }
 
-export function toSubmissionDto(s: Submission): SubmissionDto {
+export function toSubmissionDto(s: Submission, checking = false): SubmissionDto {
   return {
     id: s.id,
     candidateId: s.candidateId,
@@ -69,7 +83,7 @@ export function toSubmissionDto(s: Submission): SubmissionDto {
     error: s.error,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
-    followUps: followUps(s),
+    followUps: followUps(s, checking),
   };
 }
 
@@ -85,7 +99,8 @@ export function submissionRoutes(deps: SubmissionRouteDeps) {
   return new Hono<AuthEnv>()
     .get("/library/releases/:id{[0-9]+}/submission", (c) => {
       const s = latestSubmission(db, Number(c.req.param("id")));
-      return c.json({ submission: s && s.userId === c.get("session").userId ? toSubmissionDto(s) : null });
+      const checking = !!s && !!queue.live(followUpDedupeKey(s.id));
+      return c.json({ submission: s && s.userId === c.get("session").userId ? toSubmissionDto(s, checking) : null });
     })
     // Prepare: check MusicBrainz for the release and build the editor form, in a job.
     .post("/proposals/:id{[0-9]+}/submission", (c) => {
@@ -141,6 +156,14 @@ export function submissionRoutes(deps: SubmissionRouteDeps) {
       updateSubmission(db, s.id, { state: "checking", error: null }, now());
       enqueueSubmissionCheck(queue, s.id);
       return c.json(toSubmissionDto(getSubmission(db, s.id)!), 202);
+    })
+    // Follow-ups (D65): look the added release up again, to see whether its cover art and ISRCs are there now.
+    .post("/submissions/:id{[0-9]+}/follow-ups/check", (c) => {
+      const s = mine(Number(c.req.param("id")), c.get("session").userId);
+      if (!s) return c.json({ error: "not found" }, 404);
+      if (s.state !== "returned") return c.json({ error: `This submission is ${s.state}` }, 409);
+      enqueueFollowUpCheck(queue, s.id);
+      return c.json(toSubmissionDto(s, true), 202);
     })
     // §12.3: an artist not found by its provider pages, matched to a MusicBrainz artist by the user.
     .post("/submissions/:id{[0-9]+}/artists", async (c) => {

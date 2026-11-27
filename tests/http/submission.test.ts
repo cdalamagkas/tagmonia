@@ -2,8 +2,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { reconcileUnit } from "../../server/db/repo/library.ts";
 import { saveProposal, saveProviderMatches } from "../../server/db/repo/proposals.ts";
-import { createSubmission } from "../../server/db/repo/submissions.ts";
-import { registerSubmissionJobs } from "../../server/jobs/submission.ts";
+import { createSubmission, getSubmission } from "../../server/db/repo/submissions.ts";
+import { registerFollowUpJob, registerSubmissionJobs } from "../../server/jobs/submission.ts";
 import { nullLogger } from "../../server/log.ts";
 import type { SubmissionDto, SubmissionOpenResponse } from "../../shared/types.ts";
 import { makeTestApp, signIn, type TestApp } from "../helpers/app.ts";
@@ -14,6 +14,26 @@ const NEW = "6f0e1c47-0000-4000-8000-00000000abcd";
 const ARTIST = "a1a1a1a1-0000-4000-8000-000000000001";
 const SUGGESTED = "b2b2b2b2-0000-4000-8000-000000000002";
 const known = await loadRelease(BEETHOVEN_5);
+/** Whether the fake MusicBrainz has cover art and the ISRCs (by track) for the new release (D65). */
+const onServer = { cover: false, isrcs: [] as string[] };
+
+/** The fake server's fresh lookup: the new release, with or without its cover art and ISRCs. */
+function fresh(mbid: string) {
+  if (mbid !== NEW) return Promise.resolve(null);
+  const media = known.media.map((m, i) =>
+    i > 0 ? m : {
+      ...m,
+      tracks: m.tracks!.map((tr, j) => ({
+        ...tr,
+        recording: { ...tr.recording, isrcs: onServer.isrcs[j] ? [onServer.isrcs[j]] : [] },
+      })),
+    }
+  );
+  return Promise.resolve({
+    value: { ...known, id: NEW, "cover-art-archive": { front: onServer.cover }, media },
+    snapshotId: 1,
+  });
+}
 
 function seed(t: TestApp, opts: { releaseMbid?: string; folder?: string } = {}) {
   const folder = opts.folder ?? "A";
@@ -50,8 +70,7 @@ async function withApp(
     client: () => ({
       searchReleases: () => Promise.resolve({ value: [], snapshotId: 0 }),
       releasesForUrl: () => Promise.resolve({ value: [], snapshotId: 0 }),
-      lookupReleaseFresh: (mbid: string) =>
-        Promise.resolve(mbid === NEW ? { value: { ...known, id: NEW }, snapshotId: 1 } : null),
+      lookupReleaseFresh: fresh,
       // The artist's Deezer page is linked on MusicBrainz only when the test says so.
       artistsForUrl: (url: string) =>
         Promise.resolve({
@@ -78,6 +97,12 @@ async function withApp(
     onReturned: (candidateId, mbid, server) => returned.push(`${candidateId} ${mbid} ${server}`),
     logger: nullLogger,
   });
+  registerFollowUpJob(t.queue, {
+    db: t.db,
+    client: () => ({ lookupReleaseFresh: fresh }) as never,
+    logger: nullLogger,
+  });
+
   try {
     await fn(t, await signIn(t), returned);
   } finally {
@@ -138,6 +163,19 @@ Deno.test("prepare, open the editor, come back: verified with MusicBrainz, then 
     ]);
     // The same answer again (a reload of the callback page) is accepted, not re-verified.
     assertEquals((await post(`/api/submissions/${id}/callback`, { release: NEW })).status, 200);
+
+    // Follow-ups (D65): looked up at the return, and again on request once they are added on MusicBrainz.
+    assertEquals([s.followUps!.coverArtAdded, s.followUps!.isrcsAdded], [false, false]);
+    onServer.cover = true;
+    onServer.isrcs = getSubmission(t.db, id)!.isrcs;
+    const checked = await post(`/api/submissions/${id}/follow-ups/check`);
+    assertEquals([checked.status, ((await checked.json()) as SubmissionDto).followUps!.checking], [202, true]);
+    assertEquals((await latest()).followUps!.checking, true, "the page polls meanwhile");
+    await t.queue.drain();
+    s = await latest();
+    assertEquals([s.followUps!.coverArtAdded, s.followUps!.isrcsAdded, s.followUps!.checking], [true, true, false]);
+    onServer.cover = false;
+    onServer.isrcs = [];
   }));
 
 Deno.test("an MBID MusicBrainz does not have is not trusted; the submission waits for another try", () =>

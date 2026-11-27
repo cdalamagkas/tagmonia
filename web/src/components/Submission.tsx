@@ -4,7 +4,7 @@
  * new tab, and follow up once MusicBrainz sends the new release back. The user reviews and submits on
  * MusicBrainz, from their own account; Tagmonia never submits anything.
  */
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { ProposalDto, SubmissionArtistDto, SubmissionDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import {
@@ -12,6 +12,7 @@ import {
   artistRow,
   artistsToLink,
   serverHost,
+  shouldCheckFollowUps,
   STEPS,
   type StepsView,
   stepsView,
@@ -331,16 +332,32 @@ function Editor(
 
 /** Step 5: the release is on MusicBrainz; a checklist of what finishes the job. */
 function Done(
-  { s, proposal, changes, building, onShowChanges }: {
+  { s, proposal, changes, building, onShowChanges, onCheck }: {
     s: SubmissionDto;
     proposal: ProposalDto | null;
     changes: number;
     building: boolean;
     onShowChanges: () => void;
+    /** Looks the release up again for its cover art and ISRCs (D65). */
+    onCheck: () => Promise<void>;
   },
 ) {
   const host = serverHost(s.server);
   const f = s.followUps;
+  const [error, setError] = useState<string | null>(null);
+  const check = () => {
+    setError(null);
+    onCheck().catch((e) => setError((e as Error).message));
+  };
+  // Opening the follow-ups looks again, so cover art added meanwhile shows as done without a click.
+  useEffect(() => {
+    if (shouldCheckFollowUps(s, Date.now())) check();
+  }, [s.id]);
+  const again = f && (
+    <button type="button" class="tm-linklike tm-small-link" disabled={f.checking} onClick={check}>
+      {f.checking ? "checking…" : "check again"}
+    </button>
+  );
   const ours = proposal?.releaseMbid === s.releaseMbid;
   const written = ours && changes === 0 && !building;
   return (
@@ -368,20 +385,42 @@ function Done(
             )}
         </li>
         {f && (
-          <li>
-            <a href={f.addCoverArt} target="_blank" rel="noopener noreferrer">Add cover art</a>{" "}
-            <span class="tm-muted">(Tagmonia cannot upload it; use the cover in the header)</span>
-          </li>
+          f.coverArtAdded
+            ? (
+              <li class="tm-check-done">
+                <strong>Cover art</strong> <span class="tm-muted">on {host}</span>
+              </li>
+            )
+            : (
+              <li>
+                <a href={f.addCoverArt} target="_blank" rel="noopener noreferrer">Add cover art</a>{" "}
+                <span class="tm-muted">(Tagmonia cannot upload it; use the cover in the header)</span> · {again}
+              </li>
+            )
         )}
         {f?.isrcs
           ? (
-            <li>
-              <a href={f.isrcs} target="_blank" rel="noopener noreferrer">Submit the ISRCs</a>{" "}
-              <span class="tm-muted">(with MagicISRC, from your MusicBrainz account)</span>
-            </li>
+            f.isrcsAdded
+              ? (
+                <li class="tm-check-done">
+                  <strong>ISRCs</strong> <span class="tm-muted">on {host}</span>
+                </li>
+              )
+              : (
+                <li>
+                  <a href={f.isrcs} target="_blank" rel="noopener noreferrer">Submit the ISRCs</a>{" "}
+                  <span class="tm-muted">(with MagicISRC, from your MusicBrainz account)</span> · {again}
+                </li>
+              )
           )
           : s.server === TEST_SERVER && <li class="tm-muted">ISRCs can be submitted only to musicbrainz.org.</li>}
       </ul>
+      {error && <p class="tm-error" role="alert">{error}</p>}
+      {f?.checkedAt && (
+        <p class="tm-muted tm-small-note">
+          Last looked at {host} {new Date(f.checkedAt).toLocaleString()}; edits can take a moment to show.
+        </p>
+      )}
     </div>
   );
 }
@@ -491,7 +530,14 @@ export function AddToMusicBrainz(
       )}
 
       {sub?.state === "returned" && (
-        <Done s={sub} proposal={proposal} changes={changes} building={building} onShowChanges={onShowChanges} />
+        <Done
+          s={sub}
+          proposal={proposal}
+          changes={changes}
+          building={building}
+          onShowChanges={onShowChanges}
+          onCheck={() => api.checkFollowUps(sub.id).then(onReload)}
+        />
       )}
 
       {working && (

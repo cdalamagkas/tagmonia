@@ -16,7 +16,7 @@ import { enqueueInboxScan, registerScanJob } from "./jobs/scan.ts";
 import { InboxWatcher } from "./inbox/watch.ts";
 import { createLogger } from "./log.ts";
 import { createMusicBrainzClient, createSubmissionClients } from "./providers/musicbrainz/mod.ts";
-import { registerSubmissionJobs } from "./jobs/submission.ts";
+import { registerFollowUpJob, registerSubmissionJobs } from "./jobs/submission.ts";
 import type { SourceProvider } from "./providers/enrichment.ts";
 import { createAcoustIdSource, type FingerprintSource } from "./identify/acoustid_source.ts";
 import { registerProviderTestJob } from "./jobs/provider_test.ts";
@@ -155,6 +155,7 @@ async function main() {
       ),
     logger,
   });
+  registerFollowUpJob(queue, { db, client: submissionClients, logger });
   registerProviderTestJob(queue, { db, creds, mb, userAgent: USER_AGENT, version: VERSION });
   registerWriteJobs(queue, {
     db,

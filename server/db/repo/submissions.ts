@@ -1,4 +1,5 @@
 /** Submissions of releases missing from MusicBrainz (§12, D52). */
+import type { FollowUpStatus } from "../../submission/follow_ups.ts";
 import type { Db } from "../db.ts";
 import type { PossibleDuplicate } from "../../submission/duplicates.ts";
 import type { ArtistResolution } from "../../submission/artists.ts";
@@ -32,6 +33,8 @@ export interface Submission {
   error: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Once returned: whether MusicBrainz has the cover art and ISRCs yet (D65); null until first looked up. */
+  followUpStatus: FollowUpStatus | null;
 }
 
 interface Row {
@@ -51,6 +54,7 @@ interface Row {
   error: string | null;
   created_at: number;
   updated_at: number;
+  follow_ups: string | null;
 }
 
 function toSubmission(r: Row): Submission {
@@ -71,6 +75,7 @@ function toSubmission(r: Row): Submission {
     error: r.error,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    followUpStatus: r.follow_ups ? JSON.parse(r.follow_ups) : null,
   };
 }
 
@@ -102,7 +107,18 @@ export function updateSubmission(
   db: Db,
   id: number,
   patch: Partial<
-    Pick<Submission, "state" | "duplicates" | "seed" | "isrcs" | "artists" | "artistChoices" | "releaseMbid" | "error">
+    Pick<
+      Submission,
+      | "state"
+      | "duplicates"
+      | "seed"
+      | "isrcs"
+      | "artists"
+      | "artistChoices"
+      | "releaseMbid"
+      | "error"
+      | "followUpStatus"
+    >
   >,
   now: number,
 ): void {
@@ -120,6 +136,9 @@ export function updateSubmission(
   if (patch.artistChoices !== undefined) set("artist_choices", JSON.stringify(patch.artistChoices));
   if (patch.releaseMbid !== undefined) set("release_mbid", patch.releaseMbid);
   if (patch.error !== undefined) set("error", patch.error);
+  if (patch.followUpStatus !== undefined) {
+    set("follow_ups", patch.followUpStatus === null ? null : JSON.stringify(patch.followUpStatus));
+  }
   set("updated_at", now);
   db.prepare(`UPDATE submission SET ${cols.join(", ")} WHERE id = ?`).run(...vals, id);
 }

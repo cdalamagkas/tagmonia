@@ -323,7 +323,15 @@ Deno.test("a submission under way takes the status line (D52, PR 4)", () => {
   const back = {
     state: "returned" as const,
     releaseMbid: NEW,
-    followUps: { release: "r", addCoverArt: "c", isrcs: null },
+    followUps: {
+      release: "r",
+      addCoverArt: "c",
+      isrcs: null,
+      coverArtAdded: false,
+      isrcsAdded: null,
+      checkedAt: 1,
+      checking: false,
+    },
   };
   assertEquals(say(at(back, fromNew)), [
     "attention",
@@ -338,6 +346,12 @@ Deno.test("a submission under way takes the status line (D52, PR 4)", () => {
     "Follow-ups",
   ]);
   assertEquals(say(at(back, { ...fromNew, stale: true }))[2], "build", "a stale proposal comes first");
+  // Once MusicBrainz has the cover art (D65), nothing is left to follow up.
+  const covered = { ...back, followUps: { ...back.followUps, coverArtAdded: true } };
+  assertEquals(say(at(covered, { ...fromNew, state: "written" })).slice(0, 2), [
+    "ok",
+    "On test.musicbrainz.org · follow-ups done",
+  ]);
 });
 
 Deno.test("renaming counts as one change, only when included and no name is taken (D57)", () => {
