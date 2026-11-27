@@ -146,6 +146,20 @@ export async function scanLibrary(deps: ScanDeps): Promise<ScanResult> {
     affectedUnits.add(unitRoot(entry.folder));
   }
 
+  // Folders grouped as one "Loose files" release before D62 are grouped again where the rule now splits them.
+  const looseUnits = db.prepare(`SELECT DISTINCT folder FROM candidate WHERE group_key LIKE '%"loose:%'`).all() as {
+    folder: string;
+  }[];
+  for (const { folder } of looseUnits) {
+    if (affectedUnits.has(folder) || isInboxPath(folder) !== !!deps.inbox) continue;
+    const now = new Set(
+      (db.prepare("SELECT group_key FROM candidate WHERE folder = ?").all(folder) as { group_key: string }[])
+        .map((r) => r.group_key),
+    );
+    const next = groupUnit(folder, filesInUnit(db, folder)).map((g) => g.key);
+    if (next.length !== now.size || next.some((k) => !now.has(k))) affectedUnits.add(folder);
+  }
+
   report("grouping");
   const touched: number[] = [];
   for (const root of [...affectedUnits].sort()) {

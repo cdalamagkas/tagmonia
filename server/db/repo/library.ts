@@ -219,6 +219,8 @@ export interface ReleaseRow {
   errorCount: number;
   hasCover: boolean;
   updatedAt: number;
+  /** A one-file release without an album tag (D62): the track's title, or its file name. */
+  single: string | null;
 }
 
 interface ReleaseSqlRow {
@@ -233,13 +235,18 @@ interface ReleaseSqlRow {
   formats: string | null;
   errors: number;
   covers: number;
+  single: string | null;
 }
 
 const RELEASE_SELECT = `
   SELECT c.id, c.folder, c.hint_artist, c.hint_album, c.hint_mbid, c.file_count, c.status, c.updated_at,
          (SELECT group_concat(DISTINCT f.format) FROM library_file f WHERE f.candidate_id = c.id) AS formats,
          (SELECT count(*) FROM library_file f WHERE f.candidate_id = c.id AND f.read_error IS NOT NULL) AS errors,
-         (SELECT count(*) FROM library_file f WHERE f.candidate_id = c.id AND f.pictures <> '[]') AS covers
+         (SELECT count(*) FROM library_file f WHERE f.candidate_id = c.id AND f.pictures <> '[]') AS covers,
+         CASE WHEN c.hint_album IS NULL AND c.file_count = 1 THEN
+           (SELECT coalesce(json_extract(f.current_tags, '$.title'), f.path) FROM library_file f
+            WHERE f.candidate_id = c.id LIMIT 1)
+         END AS single
   FROM candidate c`;
 
 function toRelease(r: ReleaseSqlRow): ReleaseRow {
@@ -256,6 +263,12 @@ function toRelease(r: ReleaseSqlRow): ReleaseRow {
     errorCount: r.errors,
     hasCover: r.covers > 0,
     updatedAt: r.updated_at,
+    // A path is shown by its file name.
+    single: r.single === null
+      ? null
+      : r.single.includes("/")
+      ? r.single.slice(r.single.lastIndexOf("/") + 1)
+      : r.single,
   };
 }
 
@@ -268,8 +281,12 @@ export function listReleases(db: Db, query: ReleaseListQuery): { total: number; 
   const conds: string[] = [];
   const args: string[] = [];
   if (q) {
-    conds.push("(c.hint_artist LIKE ? ESCAPE '\\' OR c.hint_album LIKE ? ESCAPE '\\' OR c.folder LIKE ? ESCAPE '\\')");
-    args.push(likePattern(q), likePattern(q), likePattern(q));
+    // File names too: a single file without tags is known only by its name (D62).
+    conds.push(
+      `(c.hint_artist LIKE ? ESCAPE '\\' OR c.hint_album LIKE ? ESCAPE '\\' OR c.folder LIKE ? ESCAPE '\\'
+        OR EXISTS (SELECT 1 FROM library_file f WHERE f.candidate_id = c.id AND f.path LIKE ? ESCAPE '\\'))`,
+    );
+    args.push(likePattern(q), likePattern(q), likePattern(q), likePattern(q));
   }
   // The inbox's albums have folders under "@inbox" (D58).
   if (query.in) {

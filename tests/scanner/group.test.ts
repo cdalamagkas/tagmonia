@@ -69,7 +69,7 @@ Deno.test("multi-disc folders with different albums stay separate", () => {
   assertEquals(shape("Box", files).map((g) => g.album), ["Vol. 1", "Vol. 2"]);
 });
 
-Deno.test("a mixed folder splits by album; untagged files form one loose group per folder", () => {
+Deno.test("a mixed folder splits by album; each untagged file is a release of its own (D62)", () => {
   const files = [
     f("Mixed/a.mp3", { album: "One", albumartist: "X" }),
     f("Mixed/b.mp3", { album: "Two", albumartist: "Y" }),
@@ -78,11 +78,29 @@ Deno.test("a mixed folder splits by album; untagged files form one loose group p
     f("Mixed/e.mp3", {}),
   ];
   const g = shape("Mixed", files);
-  assertEquals(g.map((x) => [x.album, x.loose, x.paths.length]), [[null, true, 2], ["One", false, 2], [
-    "Two",
-    false,
-    1,
-  ]]);
+  assertEquals(g.map((x) => [x.album, x.loose, x.paths]), [
+    [null, true, ["Mixed/d.mp3"]],
+    [null, true, ["Mixed/e.mp3"]],
+    ["One", false, ["Mixed/a.mp3", "Mixed/c.mp3"]],
+    ["Two", false, ["Mixed/b.mp3"]],
+  ]);
+});
+
+Deno.test("untagged files numbered like an album stay one release (D62)", () => {
+  const byName = shape("Rip", [f("Rip/01 Intro.flac", {}), f("Rip/02. Song.flac", {}), f("Rip/1-03_x.flac", {})]);
+  assertEquals(byName.map((x) => x.paths.length), [3]);
+  const byTag = shape("Rip", [f("Rip/a.flac", { tracknumber: 1 }), f("Rip/b.flac", { tracknumber: 2 })]);
+  assertEquals(byTag.map((x) => x.paths.length), [2]);
+  // One unnumbered file, or a year that only looks like a number: each file on its own.
+  assertEquals(shape("Rip", [f("Rip/01 a.flac", {}), f("Rip/b.flac", {})]).length, 2);
+  assertEquals(shape("Rip", [f("Rip/1999 Live.flac", {}), f("Rip/2Pac - x.flac", {})]).length, 2);
+  // A tagged album next to numbered untagged files: the untagged ones still form one release.
+  assertEquals(
+    shape("Rip", [f("Rip/01 a.flac", {}), f("Rip/02 b.flac", {}), f("Rip/03 c.flac", { album: "Z" })]).map((x) =>
+      x.paths.length
+    ),
+    [2, 1],
+  );
 });
 
 Deno.test("group keys are stable regardless of file order", () => {

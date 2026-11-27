@@ -212,7 +212,7 @@ function Header(
         </figcaption>
       </figure>
       <div class="tm-release-summary">
-        <h1>{release.album ?? "Loose files"}</h1>
+        <h1>{release.album ?? release.single ?? "Loose files"}</h1>
         <p class="tm-muted">
           {release.artist ?? "Unknown artist"} · {release.trackCount} {formats} files ·{" "}
           <span class="tm-path">{folderLabel(release.folder)}</span>
