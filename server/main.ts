@@ -23,7 +23,7 @@ import { registerProviderTestJob } from "./jobs/provider_test.ts";
 import { CredentialStore } from "./providers/credentials.ts";
 import { Vault } from "./secrets/vault.ts";
 import { AcoustIdClient } from "./providers/acoustid.ts";
-import { YouTubeClient } from "./providers/youtube.ts";
+import { isYouTubeHost, YouTubeClient } from "./providers/youtube.ts";
 import { RateLimiter } from "./providers/ratelimit.ts";
 import { SnapshotCache } from "./providers/snapshots.ts";
 import { identifyConfig, loadSettings, namingOf } from "./settings.ts";
@@ -143,7 +143,9 @@ async function main() {
   registerSubmissionJobs(queue, {
     db,
     client: submissionClients,
-    providerOf: (url) => harmony.providerForUrl(url) as SourceProvider | undefined,
+    // YouTube is a source too (D64), outside Harmony.
+    providerOf: (url) =>
+      isYouTubeHost(url.hostname) ? "youtube" : harmony.providerForUrl(url) as SourceProvider | undefined,
     artistLinks: (artist) => harmony.artistLinks(artist),
     onReturned: (candidateId, mbid, server) =>
       enqueuePropose(

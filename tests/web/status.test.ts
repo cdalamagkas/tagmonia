@@ -130,6 +130,7 @@ function state(
       readOnly: false,
       locks: [],
       evidence: null,
+      proposeError: null,
       destination: null,
       ...over.response,
     },

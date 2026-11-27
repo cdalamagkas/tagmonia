@@ -34,7 +34,8 @@ export interface SubmissionJobDeps {
   /** A MusicBrainz client for the submission's server (musicbrainz.org or the test server). */
   client: (server: string) => SubmissionClient;
   /** The provider of a proposal's source link (D51). */
-  providerOf: (url: URL) => SourceProvider | undefined;
+  /** The provider of a source link: a Harmony provider, or YouTube (D64). */
+  providerOf: (url: URL) => SourceProvider | "youtube" | undefined;
   /** An artist's provider pages with MusicBrainz link types (the Harmony adapter's `artistLinks`). */
   artistLinks: (artist: MergedRelease["artists"][number]) => ArtistLink[];
   /** After a verified return: build the proposal from the new release, on its server. */

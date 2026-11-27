@@ -463,6 +463,11 @@ export interface ProposalResponse {
   locks: LockDto[];
   /** The release's YouTube link, if the user gave one (§9.5, D55). */
   evidence: EvidenceLinkDto | null;
+  /**
+   * Why the latest attempt to prepare changes failed (a link the provider cannot read, no YouTube key), when it
+   * failed after the current changes were prepared; null otherwise.
+   */
+  proposeError: string | null;
   /** The library folder chosen for the release (D59); "" is the top; null: the naming template decides. */
   destination: string | null;
 }
@@ -503,7 +508,9 @@ export type ProposeRequest =
   | { releaseMbid: string; server?: "https://test.musicbrainz.org" }
   | { providerUrl: string }
   // The release's search terms as its tags, when MusicBrainz has nothing that fits (D63).
-  | { fromSearchTerms: true };
+  | { fromSearchTerms: true }
+  // A YouTube playlist or video as the source (D64).
+  | { youtubeUrl: string };
 
 // ---- writing and undo (§11.3, Phase 3)
 
