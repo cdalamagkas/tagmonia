@@ -6,6 +6,7 @@
  * MusicBrainz so its identifiers can be written. Tagmonia never submits anything:
  * the user does, in their own browser.
  */
+import { followUpStatus } from "../submission/follow_ups.ts";
 import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { getProposal, providerMatches } from "../db/repo/proposals.ts";
@@ -21,6 +22,7 @@ import { type ArtistLink, collectArtists, resolveArtists, withArtistMbids } from
 import type { MergedRelease } from "../providers/harmony_adapter.ts";
 import { type Job, type JobQueue, PermanentJobError } from "./queue.ts";
 
+export const SUBMISSION_FOLLOW_UP_JOB = "submission_follow_ups";
 export const SUBMISSION_CHECK_JOB = "submission_check";
 export const SUBMISSION_VERIFY_JOB = "submission_verify";
 
@@ -130,9 +132,47 @@ export function registerSubmissionJobs(queue: JobQueue, deps: SubmissionJobDeps)
       }, now());
       return null;
     }
-    updateSubmission(deps.db, s.id, { state: "returned", releaseMbid: rel.value.id, error: null }, now());
+    updateSubmission(deps.db, s.id, {
+      state: "returned",
+      releaseMbid: rel.value.id,
+      error: null,
+      followUpStatus: followUpStatus(rel.value, s.isrcs, now()),
+    }, now());
     deps.onReturned(s.candidateId, rel.value.id, s.server);
     return { releaseMbid: rel.value.id };
+  });
+}
+
+/**
+ * Follow-ups (D65): looks the added release up again, fresh, to see whether its cover art and ISRCs are on
+ * MusicBrainz now. Asked for by the user (or by opening the follow-ups), never on a timer.
+ */
+export function registerFollowUpJob(
+  queue: JobQueue,
+  deps: Pick<SubmissionJobDeps, "db" | "client" | "logger" | "now">,
+) {
+  const now = deps.now ?? Date.now;
+  queue.register(SUBMISSION_FOLLOW_UP_JOB, async ({ job, signal }) => {
+    const p = z.object({ submissionId: z.number().int().positive() }).safeParse(job.payload);
+    if (!p.success) throw new PermanentJobError("invalid submission payload");
+    const s = getSubmission(deps.db, p.data.submissionId);
+    if (!s || s.state !== "returned" || !s.releaseMbid) return null;
+    const rel = await deps.client(s.server).lookupReleaseFresh(s.releaseMbid, signal);
+    if (!rel) throw new PermanentJobError(`${new URL(s.server).host} has no release ${s.releaseMbid}`);
+    const status = followUpStatus(rel.value, s.isrcs, now());
+    updateSubmission(deps.db, s.id, { followUpStatus: status }, now());
+    return status;
+  });
+}
+
+export function followUpDedupeKey(submissionId: number): string {
+  return `${SUBMISSION_FOLLOW_UP_JOB}:${submissionId}`;
+}
+
+export function enqueueFollowUpCheck(queue: JobQueue, submissionId: number): Job {
+  return queue.enqueue(SUBMISSION_FOLLOW_UP_JOB, { submissionId }, {
+    dedupeKey: followUpDedupeKey(submissionId),
+    maxAttempts: 2,
   });
 }
 

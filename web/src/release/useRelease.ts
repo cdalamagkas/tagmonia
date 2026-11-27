@@ -22,7 +22,8 @@ const POLL_MS = 1500;
 /** A job for this release is queued or running: keep polling. */
 export function isLive(s: ReleaseState): boolean {
   return !!s.identification.job || s.identification.status === "identifying" || !!s.proposal.job ||
-    !!s.history.job || s.submission?.state === "checking" || s.submission?.state === "verifying";
+    !!s.history.job || s.submission?.state === "checking" || s.submission?.state === "verifying" ||
+    !!s.submission?.followUps?.checking;
 }
 
 export function useRelease(id: number) {

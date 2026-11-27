@@ -111,6 +111,8 @@ export const api = {
     request<SubmissionDto>("POST", `/api/submissions/${id}/callback`, { release }),
   abandonSubmission: (id: number) => request<void>("POST", `/api/submissions/${id}/abandon`),
   recheckSubmission: (id: number) => request<SubmissionDto>("POST", `/api/submissions/${id}/recheck`),
+  /** Whether MusicBrainz has the added release's cover art and ISRCs yet (D65). */
+  checkFollowUps: (id: number) => request<SubmissionDto>("POST", `/api/submissions/${id}/follow-ups/check`),
   chooseSubmissionArtist: (id: number, name: string, artist: string | null) =>
     request<SubmissionDto>("POST", `/api/submissions/${id}/artists`, { name, artist }),
   decide: (proposalId: number, body: DecisionRequest) =>

@@ -417,7 +417,20 @@ export interface SubmissionDto {
   createdAt: number;
   updatedAt: number;
   /** Once returned: the new release, where to add its cover art, and (musicbrainz.org only) its ISRCs. */
-  followUps: { release: string; addCoverArt: string; isrcs: string | null } | null;
+  followUps: SubmissionFollowUpsDto | null;
+}
+
+export interface SubmissionFollowUpsDto {
+  release: string;
+  addCoverArt: string;
+  /** MagicISRC, prefilled; null when there are none to submit or the server is not musicbrainz.org. */
+  isrcs: string | null;
+  /** Whether MusicBrainz has them yet (D65), as last looked up; null until first looked up. */
+  coverArtAdded: boolean | null;
+  isrcsAdded: boolean | null;
+  checkedAt: number | null;
+  /** A look-up is queued or running: the page polls. */
+  checking: boolean;
 }
 
 /** POST /api/submissions/:id/open: the browser posts `fields` to `action` in a new tab. */
