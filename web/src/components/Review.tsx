@@ -1,5 +1,5 @@
 /**
- * The Changes tab (§10; docs/proposals/release-page-restructure.md, D53, D56): Needs your choice, the
+ * The Tags tab, formerly Changes (D66; §10; docs/proposals/release-page-restructure.md, D53, D56): Needs your choice, the
  * cover, then a table for the album and one per track, each row a field with its current and proposed
  * value and a checkbox ("include in the write"). Only what would change is listed unless "Show all
  * fields" is on. Clicking a new value edits it; the ⋯ menu holds the rest. The write bar below says how
@@ -596,6 +596,59 @@ function FieldTable({ rows, a }: { rows: ChangeItem[]; a: Actions }) {
   );
 }
 
+/**
+ * Where the album's files are and will be (D66: the Files tab's Location, formerly the Changes tab's Files):
+ * the renaming or move the next write makes, and the folder chosen for the album (D57, D59).
+ */
+export function Location(
+  { releaseId, proposal: p, destination, live, onReload }: {
+    releaseId: number;
+    proposal: ProposalDto | null;
+    destination: string | null;
+    live: boolean;
+    onReload: () => Promise<void>;
+  },
+) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const open = !!p && isOpen(p);
+  if (!p || !(p.rename || open)) return null;
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await onReload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const off = busy || live || !open;
+  return (
+    <section class="tm-card">
+      <h2>Location</h2>
+      {error && <p class="tm-error" role="alert">{error}</p>}
+      {p.rename && (
+        <RenameLine
+          rename={p.rename}
+          busy={off}
+          onInclude={(include) => act(() => api.renameDecision(p.id, include))}
+        />
+      )}
+      {open && (
+        <Destination
+          destination={destination}
+          moving={!!p.rename?.include}
+          busy={off}
+          onSet={(folder) => act(() => api.setDestination(releaseId, folder))}
+        />
+      )}
+    </section>
+  );
+}
+
 export function Review(
   { releaseId, data, files, live, currentCover, filesVersion, onReload }: {
     releaseId: number;
@@ -664,7 +717,7 @@ export function Review(
     : unresolved > 0
     ? "Choose a value for each field that needs your choice first"
     : p.rename?.include && p.rename.conflicts.length > 0
-    ? "Some new file names are taken: leave the names as they are (Files, above), or change the template"
+    ? "Some new file names are taken: leave the names as they are (Files → Location), or change the template"
     : m.selected === 0
     ? "Nothing selected"
     : undefined;
@@ -731,25 +784,11 @@ export function Review(
           </div>
         )}
 
-        {(p.rename || open) && (
-          <div class="tm-change-section">
-            <h3>Files</h3>
-            {p.rename && (
-              <RenameLine
-                rename={p.rename}
-                busy={a.busy}
-                onInclude={(include) => act(() => api.renameDecision(p.id, include))}
-              />
-            )}
-            {open && (
-              <Destination
-                destination={data.destination}
-                moving={!!p.rename?.include}
-                busy={a.busy}
-                onSet={(folder) => act(() => api.setDestination(releaseId, folder))}
-              />
-            )}
-          </div>
+        {p.rename?.include && (
+          <p class="tm-muted tm-section-note">
+            This write also{" "}
+            {p.rename.inbox ? "moves the album into the library" : "renames and moves the files"}: see Files → Location.
+          </p>
         )}
 
         <div class="tm-change-section">

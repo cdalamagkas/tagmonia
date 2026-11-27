@@ -6,14 +6,7 @@ import { inboxScanActive, MusicServerStatus, scanActive, ScanStatus } from "../c
 import { onLinkClick } from "../router.ts";
 import { StatusBadge } from "../components/Identification.tsx";
 import { CoverImage } from "../components/CoverImage.tsx";
-import { changesLabel } from "../release/status.ts";
-import type { ReleaseChangesDto } from "../../../shared/types.ts";
-
-function ChangesBadge({ changes }: { changes: ReleaseChangesDto | null }) {
-  const c = changesLabel(changes);
-  if (!c.tone) return <span class="tm-muted" title={c.title}>{c.label}</span>;
-  return <span class={`tm-badge tm-inline tm-badge-${c.tone}`} title={c.title}>{c.label}</span>;
-}
+import { ChangesBadge } from "../components/ChangesBadge.tsx";
 
 const PAGE = 50;
 

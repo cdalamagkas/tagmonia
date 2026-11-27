@@ -385,8 +385,8 @@ function FileSettings() {
     <section class="tm-card">
       <h2>Files</h2>
       <p class="tm-muted tm-section-note">
-        How written albums are named, relative to the library. The Changes tab shows the new names before you write, and
-        Undo puts the old ones back.
+        How written albums are named, relative to the library. The release page shows the new names (Files → Location)
+        before you write, and Undo puts the old ones back.
       </p>
       {inbox !== undefined && (
         <p class="tm-section-note">

@@ -70,14 +70,14 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
 - **Naming templates** (Settings → Files): how written albums will be named. Choose a built-in template (Album
   (Year), Artist / Album (Year), Picard's default, Composer / Album (Year)) or create and save your own, each with a
   live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.
-- **Renames albums when writing them** (off by default, Settings → Files): the Changes tab shows every file's new name
+- **Renames albums when writing them** (off by default, Settings → Files): the release's Files → Location shows every file's new name
   first, the album's cover and booklet files move with it, nothing is ever overwritten, and Undo puts the old names
   back.
 - **An inbox for new music** (`TAGMONIA_INBOX_DIR`): albums dropped there are scanned with the library, identified
   and prepared; when you write one, it moves into the library under the template's name. The inbox is watched:
   albums copied there appear by themselves once the copy has finished (also checked every 5 minutes, for network
   shares). The library page has an Inbox filter.
-- **Choose where an album goes** (Changes tab → Files): pick any library folder, or name a new one (made when you
+- **Choose where an album goes** (Files → Location on the release page): pick any library folder, or name a new one (made when you
   write), for example a film's folder for its soundtrack. The album folder and file names still follow the template.
 - **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
   provider.
