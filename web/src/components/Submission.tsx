@@ -475,8 +475,8 @@ export function AddToMusicBrainz(
       {testServer && (
         <p class="tm-small-note">
           <span class="tm-badge tm-badge-warn tm-inline">test server</span>{" "}
-          Releases added here exist only on test.musicbrainz.org (Settings → MusicBrainz submissions); their identifiers
-          mean nothing on musicbrainz.org.
+          Releases added here exist only on test.musicbrainz.org (Settings → MusicBrainz); their identifiers mean
+          nothing on musicbrainz.org.
         </p>
       )}
       {error && <p class="tm-error" role="alert">{error}</p>}

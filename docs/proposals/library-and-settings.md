@@ -1,6 +1,6 @@
 # Library and settings
 
-**Status:** accepted 2026-11-28 (D75), before the first release. Done: PR 1 (the library's server side), PR 2 (the library page), PR 3 (bulk actions).
+**Status:** accepted 2026-11-28 (D75), before the first release. Done: PR 1 (the library's server side), PR 2 (the library page), PR 3 (bulk actions), PR 4 (the settings shell).
 **Decided by the maintainer:** the library becomes a folder tree beside the release list (like Picard), with a status
 filter, sorting, bulk actions and the view in the URL; Settings becomes sections with a side menu, each with its own
 URL, and the settings that had no UI get one.
@@ -125,3 +125,21 @@ Sections at `/settings/<section>`, with a side menu (a select on a phone):
   390 px the bar wraps and nothing scrolls sideways.
 - **Found:** the queue ran jobs oldest first, so after a first scan a bulk write waited behind every identification
   still queued. Writes and undos now go first (D76, its own PR).
+
+## PR 4 as built
+
+- **Routes:** `/settings/<section>` (`web/src/settings/sections.ts`, tested with the router); `/settings` opens
+  Account; an unknown section is "not found". The header's Settings link shows when you are there.
+- **Layout** (`web/src/pages/settings/SettingsLayout.tsx`): a side menu, or on a phone a select at the top; the
+  section's name as the page heading. `SettingsPage.tsx` became one file per section in `web/src/pages/settings/`.
+- **Sections so far:** Account, Library & inbox (the inbox and its check interval, moved out of Files), Files &
+  naming, Tags & covers (the cover mode), Providers, MusicBrainz (the submission server). Identification and Sign-in
+  come with their settings in PR 5.
+- **Providers:** a list per tier (Core, Enrichment, Music server). Each row: the name, one word for its state (not set
+  up, off, checking…, not checked, working, problem; `providerStatus` in `web/src/providers.ts`, tested) with the last
+  check's time, and its switch. A row opens to its help, credentials and Test. `#<id>` in the address opens that row.
+- **Links** to Settings from the release page and the submission panel go to their sections.
+- **Also fixed:** the submission step panel's CSS, where a `@media` block had been pasted between two selectors, so
+  every step's number was drawn as the current one.
+- **Checked** in headless Chromium: every section from the menu, Back between sections, the inbox interval saved,
+  `#youtube` opening its row, an unknown section, and at 390 px the select and no sideways scroll.

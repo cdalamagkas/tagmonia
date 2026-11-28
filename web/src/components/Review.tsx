@@ -5,6 +5,7 @@
  * fields" is on. Clicking a new value edits it; the ⋯ menu holds the rest. The write bar below says how
  * many changes are selected. Grouping and counting: release/changes.ts.
  */
+import { onLinkClick } from "../router.ts";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type {
@@ -393,7 +394,7 @@ function CoverLine(
       </span>
       <span class="tm-change-marks tm-muted tm-small-note">
         {COVER_SOURCES[cover.source] ?? cover.source}, {where || MODES[cover.mode]}{" "}
-        <a href="/settings" title="Settings → Cover art">(how covers are written)</a>
+        <a href="/settings/tags" onClick={onLinkClick} title="Settings → Tags & covers">(how covers are written)</a>
       </span>
     </div>
   );
@@ -422,7 +423,9 @@ function RenameLine(
           {rename.inbox ? "Move" : "Rename"} {n === 1 ? "1 file" : `${n} files`}{" "}
           {rename.inbox ? "from the inbox into the library, to" : "and move them to"}{" "}
           <span class="tm-path">{rename.folder || "/"}</span>{" "}
-          <a class="tm-small-link" href="/settings" title="Settings → Files">(how files are named)</a>
+          <a class="tm-small-link" href="/settings/files" onClick={onLinkClick} title="Settings → Files & naming">
+            (how files are named)
+          </a>
         </span>
       </label>
       {rename.conflicts.length > 0 && (

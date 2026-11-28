@@ -50,7 +50,7 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   Editor, Done), and the header says where it stands. Artists MusicBrainz does not have yet are listed first, each with
   a filled-in "Add artist" link. The last step is a checklist: write the MusicBrainz IDs, add the cover art, submit
   the ISRCs. **Settings →
-  MusicBrainz submissions** can point this at test.musicbrainz.org for trying it out. Nothing is ever submitted
+  MusicBrainz** can point this at test.musicbrainz.org for trying it out. Nothing is ever submitted
   automatically.
 - **YouTube as a source**: paste a YouTube playlist (or a single video) on the release page's Match tab. For a
   release MusicBrainz lacks, its auto-generated descriptions ("Provided to YouTube by …", "Title · Artist", the album,
@@ -58,7 +58,7 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   then be added to MusicBrainz with the playlist as its streaming link. With a MusicBrainz release chosen, the link
   only fills the date and label where no other source has them. Uses the official YouTube Data API with your own key.
 - **Cover art** from the Cover Art Archive, or else the largest image iTunes, Deezer or Discogs has for the same
-  release. The review shows the cover with its source, size and what the files have now. **Settings → Cover art**
+  release. The review shows the cover with its source, size and what the files have now. **Settings → Tags & covers**
   chooses how it is written: embedded at full size (the default), embedded at about 1200 px, only as `cover.jpg` in
   the album folder, or both (about 1200 px embedded plus the full-size `cover.jpg`). Other pictures in the files are
   kept, and undo puts back the previous pictures and folder image exactly.
@@ -74,20 +74,21 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   changes). The view stays in the address, so Back from an album returns to it. Next to each release: its
   MusicBrainz status and how many changes are ready to write. Tick albums, or select everything in the view, to
   identify them again or write the ready ones in one go; the others are listed with the reason.
-- **Naming templates** (Settings → Files): how written albums will be named. Choose a built-in template (Album
+- **Naming templates** (Settings → Files & naming): how written albums will be named. Choose a built-in template (Album
   (Year), Artist / Album (Year), Picard's default, Composer / Album (Year)) or create and save your own, each with a
   live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.
-- **Renames albums when writing them** (off by default, Settings → Files): the release's Files → Location shows every file's new name
+- **Renames albums when writing them** (off by default, Settings → Files & naming): the release's Files → Location shows every file's new name
   first, the album's cover and booklet files move with it, nothing is ever overwritten, and Undo puts the old names
   back.
 - **An inbox for new music** (`TAGMONIA_INBOX_DIR`): albums dropped there are scanned with the library, identified
   and prepared; when you write one, it moves into the library under the template's name. The inbox is watched:
   albums copied there appear by themselves once the copy has finished (also checked every 5 minutes, for network
-  shares). The library page has an Inbox filter.
+  shares; Settings → Library & inbox). The library's folder tree shows it as a second root.
 - **Choose where an album goes** (Files → Location on the release page): pick any library folder, or name a new one (made when you
   write), for example a film's folder for its soundtrack. The album folder and file names still follow the template.
-- **Providers page** (Settings → Providers): credentials stored encrypted, on/off switches, and a health check per
-  provider.
+- **Settings in sections** with a side menu, each at its own address (`/settings/providers`, …): Account, Library &
+  inbox, Files & naming, Tags & covers, Providers, MusicBrainz. Providers is a compact list by tier showing whether
+  each one works; a row opens to its credentials (stored encrypted), on/off switch and health check.
 
 - Design and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (source of truth)
 - Agent/contributor conventions: [CLAUDE.md](CLAUDE.md)
@@ -116,8 +117,8 @@ On first start the UI asks you to create the admin account (or set `TAGMONIA_ADM
 
 ### Providers and credentials
 
-**Settings → Providers** in the app lists every provider with its purpose, an on/off switch where it applies, its
-credentials and a **Test** button. Secrets are stored encrypted (AES-256-GCM) and never shown again once saved.
+**Settings → Providers** in the app lists every provider with whether it works, and an on/off switch where it
+applies; open a row for its purpose, credentials and a **Test** button. Secrets are stored encrypted (AES-256-GCM) and never shown again once saved.
 
 - **AcoustID** (optional fingerprint identification): a free application key from
   <https://acoustid.org/new-application>.
