@@ -100,4 +100,9 @@ Deno.test("docker-compose.example.yml lists every variable a user would set", as
   const listed = new Set(example.match(/TAGMONIA_[A-Z_]+(?==)/g) ?? []);
   assertEquals(read.filter((v) => !listed.has(v)), [], "missing from the example");
   assertEquals([...listed].filter((v) => !read.includes(v)), [], "in the example but not read");
+  // The README's Configuration table explains each of them ("TAGMONIA_X / _FILE" covers the _FILE variant).
+  const readme = await Deno.readTextFile(new URL("../README.md", import.meta.url));
+  const explained = (v: string) =>
+    readme.includes(`| \`${v}\``) || readme.includes(`| \`${v.replace(/_FILE$/, "")}\` / \`_FILE\``);
+  assertEquals(read.filter((v) => !explained(v)), [], "missing from the README's Configuration table");
 });
