@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { JobQueue, PermanentJobError } from "../../server/jobs/queue.ts";
+import { registerWriteJobs, type WriteJobDeps } from "../../server/jobs/write.ts";
 import { nullLogger } from "../../server/log.ts";
 import { memoryDb } from "../helpers/app.ts";
 
@@ -111,5 +112,45 @@ Deno.test("an unknown job kind fails instead of blocking the queue", async () =>
   const j = queue.enqueue("mystery", {});
   await queue.drain();
   assertEquals(queue.get(j.id)!.state, "failed");
+  db.close();
+});
+
+Deno.test("kinds registered first run before older queued jobs, oldest first among them (D76)", async () => {
+  const { db, queue, advance } = await setup();
+  const ran: string[] = [];
+  const record = ({ job }: { job: { kind: string; payload: unknown } }) => {
+    ran.push(`${job.kind}${(job.payload as { n: number }).n}`);
+    return Promise.resolve(null);
+  };
+  queue.register("identify", record);
+  queue.register("write", record, { first: true });
+  queue.register("undo", record, { first: true });
+  for (let n = 1; n <= 3; n++) queue.enqueue("identify", { n });
+  queue.enqueue("write", { n: 1 });
+  queue.enqueue("undo", { n: 1 });
+  queue.enqueue("write", { n: 2 }, { runAfter: 1_000_000 + 60_000 });
+  await queue.drain();
+  assertEquals(ran, ["write1", "undo1", "identify1", "identify2", "identify3"], "a later write waits for its time");
+  advance(60_000);
+  await queue.drain();
+  assertEquals(ran.at(-1), "write2");
+  db.close();
+});
+
+Deno.test("writes and undos the user started do not wait behind identification (D76)", async () => {
+  const { db, queue } = await setup();
+  const seen: (string | undefined)[] = [];
+  let w = 0, u = 0;
+  queue.register("identify", () => {
+    seen.push(queue.get(w)?.state, queue.get(u)?.state);
+    return Promise.resolve(null);
+  });
+  // The payloads are invalid, so the handlers fail before touching their dependencies: only the order matters here.
+  registerWriteJobs(queue, { logger: nullLogger } as unknown as WriteJobDeps);
+  queue.enqueue("identify", {});
+  w = queue.enqueue("write", {}).id;
+  u = queue.enqueue("undo", {}).id;
+  await queue.drain();
+  assertEquals(seen, ["failed", "failed"], "both had run when the older identification started");
   db.close();
 });

@@ -39,7 +39,7 @@ export function registerWriteJobs(queue: JobQueue, deps: WriteJobDeps): void {
     } catch (e) {
       permanent(e);
     }
-  });
+  }, { first: true });
   queue.register(UNDO_JOB, async ({ job, signal }) => {
     const p = z.object({ batchId: z.number().int().positive() }).safeParse(job.payload);
     if (!p.success) throw new PermanentJobError("invalid undo payload");
@@ -50,7 +50,7 @@ export function registerWriteJobs(queue: JobQueue, deps: WriteJobDeps): void {
     } catch (e) {
       permanent(e);
     }
-  });
+  }, { first: true });
 }
 
 export function enqueueWrite(queue: JobQueue, candidateId: number, proposalId: number): Job {
