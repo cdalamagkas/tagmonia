@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type {
+  BulkResponse,
   CoverProposalDto,
   CurrentCoverDto,
   EditionDto,
@@ -15,7 +16,14 @@ import type {
   ScanJobDto,
 } from "../../../shared/types.ts";
 import type { Db } from "../../db/db.ts";
-import { folderTree, getRelease, librarySummary, listReleases, type StoredFile } from "../../db/repo/library.ts";
+import {
+  folderTree,
+  getRelease,
+  librarySummary,
+  listReleases,
+  releaseIds,
+  type StoredFile,
+} from "../../db/repo/library.ts";
 import { enqueueScan, INBOX_SCAN_JOB, SCAN_JOB } from "../../jobs/scan.ts";
 import { REFRESH_JOB } from "../../jobs/refresh.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
@@ -27,6 +35,7 @@ import {
   locksFor,
   musicBrainzCandidates,
   providerMatches,
+  setProposalState,
 } from "../../db/repo/proposals.ts";
 import { coverWrites, getCover } from "../../db/repo/covers.ts";
 import { type CurrentCovers, THUMB_SIZES, type ThumbSize } from "../../covers/current.ts";
@@ -44,6 +53,8 @@ import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/r
 import { canonicalUrl, isYouTubeHost, parseYouTubeUrl } from "../../providers/youtube.ts";
 import type { FolderListDto, ProposalDto, ProposalResponse } from "../../../shared/types.ts";
 import { refreshSummaries, releaseChanges, renameDto } from "../../library/summary.ts";
+import { writeBlocker } from "../../write/checks.ts";
+import { enqueueWrite } from "../../jobs/write.ts";
 import { destinationOf, recentDestinations, setDestination } from "../../files/rename.ts";
 import { validateDestination } from "../../../shared/naming.ts";
 import { INBOX, PathEscapeError, Roots } from "../../fs/safe_path.ts";
@@ -164,6 +175,46 @@ const listQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+/** One request queues at most this many: a whole large library at once is better done folder by folder. */
+export const MAX_BULK = 500;
+
+const bulkBody = z.object({
+  action: z.enum(["identify", "write"]),
+  ids: z.array(z.number().int().positive()).min(1).max(MAX_BULK).optional(),
+  view: z.object({
+    root: z.enum(["inbox", "library"]),
+    folder: z.string().max(4000),
+    status: z.enum(["ready", "choices", "stale", "complete", "unidentified", "nomatch"]).nullable(),
+    sort: z.enum(["artist", "album", "folder", "added", "changes"]),
+    q: z.string().max(200),
+  }).strict().optional(),
+}).strict().refine((b) => !!b.ids !== !!b.view, { message: "give either ids or a view" });
+
+const BULK_STATE_REASON: Record<string, string> = {
+  choices: "needs a choice first",
+  stale: "the files changed since the changes were prepared",
+  none: "nothing to change",
+  written: "already written",
+};
+
+/** Queued or running identifications and writes, for the library's progress line (D75). */
+function liveJobs(db: Db): { identify: number; write: number } {
+  const rows = db.prepare(
+    `SELECT kind, count(*) AS n FROM job WHERE state IN ('queued', 'running') AND kind IN ('identify', 'write')
+     GROUP BY kind`,
+  ).all() as { kind: string; n: number }[];
+  const n = (k: string) => rows.find((r) => r.kind === k)?.n ?? 0;
+  return { identify: n("identify"), write: n("write") };
+}
+
+/** A release's name for a message: its album, a single's title, or its folder. */
+function releaseName(db: Db, id: number): string {
+  const r = db.prepare("SELECT hint_album, folder FROM candidate WHERE id = ?").get(id) as
+    | { hint_album: string | null; folder: string }
+    | undefined;
+  return r?.hint_album ?? r?.folder.split("/").pop() ?? `release ${id}`;
+}
+
 const treeQuery = z.object({
   root: z.enum(["inbox", "library"]).default("library"),
   path: z.string().max(4000).default(""),
@@ -261,6 +312,24 @@ function failedAfter(job: Job | undefined, since: number | null): string | null 
 
 export function libraryRoutes(deps: LibraryRouteDeps) {
   const { db, queue } = deps;
+  const identifyBlocker = (id: number): string | null =>
+    db.prepare("SELECT 1 FROM candidate WHERE id = ?").get(id) ? null : "not found";
+  /** Why a release's changes cannot be written in bulk now; null when they can. */
+  const writeReady = (id: number): string | null => {
+    const p = latestProposal(db, id);
+    const s = db.prepare("SELECT state FROM release_summary WHERE candidate_id = ?").get(id) as
+      | { state: string | null }
+      | undefined;
+    if (!s) return "not found";
+    if (!p || s.state === null) return "no changes prepared";
+    if (s.state !== "ready") return BULK_STATE_REASON[s.state] ?? "not ready";
+    const blocked = writeBlocker(db, queue, p);
+    if (blocked) return blocked;
+    // Tags written but the album not moved would be a half-done write: leave it to its page.
+    const rename = renameDto(db, deps.naming?.(), p);
+    if (rename?.include && rename.conflicts.length) return "new file names are taken";
+    return null;
+  };
   const evidenceOf = (id: number) => {
     const e = getEvidenceLink(db, id);
     return e ? { provider: e.provider, url: e.url } : null;
@@ -295,6 +364,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
         readOnly: deps.readOnly,
         scan: scan ? (toJobDto(scan) as ScanJobDto) : null,
         musicServer: server ? { ...server, lastRefresh: refresh ? toJobDto(refresh) : null } : null,
+        jobs: liveJobs(db),
       };
       return c.json(body);
     })
@@ -307,6 +377,43 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
       const { root, in: legacy, ...rest } = q.data;
       const body: ReleaseList = listReleases(db, { ...rest, in: root ?? legacy });
       return c.json(body);
+    })
+    // Bulk actions (D75): identify again, or write the ready changes, for releases by id or everything a view
+    // shows. Each release is checked as its own button would; the ones that cannot go are listed with why.
+    .post("/bulk", async (c) => {
+      const body = bulkBody.safeParse(await c.req.json().catch(() => null));
+      if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "invalid request" }, 400);
+      const { action, ids: given, view } = body.data;
+      if (action === "write" && deps.readOnly) {
+        return c.json({ error: "Tagmonia is in read-only mode: nothing is written" }, 403);
+      }
+      refreshSummaries(db, deps.naming?.());
+      const ids = given ?? releaseIds(
+        db,
+        { in: view!.root, folder: view!.folder, status: view!.status ?? undefined, sort: view!.sort, q: view!.q },
+        MAX_BULK + 1,
+      );
+      if (ids.length > MAX_BULK) {
+        return c.json({ error: `More than ${MAX_BULK} releases: choose a folder or a status to narrow it` }, 400);
+      }
+      const skipped: BulkResponse["skipped"] = [];
+      let queued = 0;
+      for (const id of ids) {
+        const reason = action === "identify" ? identifyBlocker(id) : writeReady(id);
+        if (reason) {
+          skipped.push({ id, name: releaseName(db, id), reason });
+          continue;
+        }
+        if (action === "identify") enqueueIdentify(queue, [id]);
+        else {
+          const p = latestProposal(db, id)!;
+          setProposalState(db, p.id, "approved", Date.now());
+          enqueueWrite(queue, id, p.id);
+        }
+        queued++;
+      }
+      const res: BulkResponse = { queued, skipped: skipped.slice(0, 100), skippedTotal: skipped.length };
+      return c.json(res, queued ? 202 : 200);
     })
     // One level of the folder tree (D75): built from the releases, not the disk.
     .get("/tree", (c) => {

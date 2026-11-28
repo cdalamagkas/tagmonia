@@ -343,10 +343,8 @@ function likeEscape(s: string): string {
 
 export type StatusCounts = Record<"all" | ReleaseStatusFilter, number>;
 
-export function listReleases(
-  db: Db,
-  query: ReleaseListQuery,
-): { total: number; items: ReleaseRow[]; counts: StatusCounts } {
+/** The search and the folder scope of a list query, as SQL (the status filter is added by the caller). */
+function scopeAndSearch(query: Pick<ReleaseListQuery, "q" | "in" | "folder">): { conds: string[]; args: string[] } {
   const q = query.q?.trim();
   const conds: string[] = [];
   const args: string[] = [];
@@ -363,6 +361,32 @@ export function listReleases(
     conds.push(scope.sql);
     args.push(...scope.args);
   }
+  return { conds, args };
+}
+
+/**
+ * Every release a view shows (D75): the same folder, search and status as the list, all of them, in the list's
+ * order, up to `limit`. What bulk actions apply to when "everything in this view" is chosen.
+ */
+export function releaseIds(
+  db: Db,
+  query: Pick<ReleaseListQuery, "q" | "in" | "folder" | "status" | "sort">,
+  limit: number,
+): number[] {
+  const { conds, args } = scopeAndSearch(query);
+  if (query.status) conds.push(STATUS_FILTER[query.status]);
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  return (db.prepare(
+    `SELECT c.id FROM candidate c LEFT JOIN release_summary s ON s.candidate_id = c.id ${where}
+     ORDER BY ${SORT[query.sort ?? "artist"]} LIMIT ?`,
+  ).all(...args, limit) as { id: number }[]).map((r) => r.id);
+}
+
+export function listReleases(
+  db: Db,
+  query: ReleaseListQuery,
+): { total: number; items: ReleaseRow[]; counts: StatusCounts } {
+  const { conds, args } = scopeAndSearch(query);
   const from = "FROM candidate c LEFT JOIN release_summary s ON s.candidate_id = c.id";
   // Counts per status for the folder and search, before the status filter: they label the filter's options.
   const buckets = Object.entries(STATUS_FILTER).map(([k, sql]) => `sum(CASE WHEN ${sql} THEN 1 ELSE 0 END) AS ${k}`);

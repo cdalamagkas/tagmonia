@@ -2,7 +2,8 @@
 import { Hono } from "hono";
 import type { HistoryResponse, WriteBatchDto } from "../../../shared/types.ts";
 import type { Db } from "../../db/db.ts";
-import { getProposal, isUnresolved, setProposalState } from "../../db/repo/proposals.ts";
+import { getProposal, setProposalState } from "../../db/repo/proposals.ts";
+import { writeBlocker } from "../../write/checks.ts";
 import type { JobQueue } from "../../jobs/queue.ts";
 import { enqueueUndo, enqueueWrite, writeDedupeKey } from "../../jobs/write.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -64,25 +65,8 @@ export function writeRoutes(deps: WriteRouteDeps) {
       if (deps.readOnly) return c.json(READ_ONLY, 403);
       const p = getProposal(db, Number(c.req.param("id")));
       if (!p) return c.json({ error: "not found" }, 404);
-      if (p.state === "written" || p.state === "discarded") {
-        return c.json({ error: `This proposal is already ${p.state}` }, 409);
-      }
-      const cand = db.prepare("SELECT content_hash FROM candidate WHERE id = ?").get(p.candidateId) as
-        | { content_hash: string }
-        | undefined;
-      if (!cand) return c.json({ error: "not found" }, 404);
-      // §11.3 step 1 at release level: files changed since the proposal was built.
-      if (cand.content_hash !== p.basedOnHash) {
-        return c.json({ error: "The files changed since this proposal was built; build it again first" }, 409);
-      }
-      // §10.3 rule 4: a field whose sources disagree waits for the user's choice (D48).
-      const open = p.fields.filter(isUnresolved).length;
-      if (open > 0) {
-        return c.json({ error: `${open} field${open === 1 ? "" : "s"} with conflicting sources need a decision` }, 409);
-      }
-      if (queue.live(writeDedupeKey(p.candidateId))) {
-        return c.json({ error: "A write or undo is already running for this release" }, 409);
-      }
+      const blocked = writeBlocker(db, queue, p);
+      if (blocked) return c.json({ error: blocked }, blocked === "not found" ? 404 : 409);
       // Asking to write is the approval (the review UI is where it is decided).
       setProposalState(db, p.id, "approved", now());
       return c.json(toJobDto(enqueueWrite(queue, p.candidateId, p.id)), 202);

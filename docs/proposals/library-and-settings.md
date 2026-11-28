@@ -1,6 +1,6 @@
 # Library and settings
 
-**Status:** accepted 2026-11-28 (D75), before the first release. Done: PR 1 (the library's server side), PR 2 (the library page).
+**Status:** accepted 2026-11-28 (D75), before the first release. Done: PR 1 (the library's server side), PR 2 (the library page), PR 3 (bulk actions).
 **Decided by the maintainer:** the library becomes a folder tree beside the release list (like Picard), with a status
 filter, sorting, bulk actions and the view in the URL; Settings becomes sections with a side menu, each with its own
 URL, and the settings that had no UI get one.
@@ -105,3 +105,23 @@ Sections at `/settings/<section>`, with a side menu (a select on a phone):
   - a deep link opens its ancestors;
   - the inbox root;
   - at 390 px, the drawer works and nothing scrolls sideways.
+
+## PR 3 as built
+
+- **`POST /api/library/bulk`** `{action: "identify" | "write", ids? | view?}`: either the ticked releases or everything
+  a view shows (the same root, folder, status, search and sort as the list), at most 500 per call.
+  - **Write:** each release is checked as its own button would (`server/write/checks.ts`, now shared with the write
+    route): changes prepared, none needing a choice, the files unchanged since, no write already running, the new
+    names free. Asking is the approval. Refused in read-only mode.
+  - **Identify:** queued unless that release is already being identified.
+  - The answer: how many were queued, and the others with the reason (up to 100 listed, with the total).
+- **The library summary** gains `jobs: {identify, write}`, the queued and running counts; the page polls while
+  there are any, and reloads the list and the tree when they finish.
+- **The page:** a checkbox per row and one for all shown; when the view holds more, "Select all N in this view".
+  A bar with Identify again, Write ready changes (with a confirmation) and Clear. A selection belongs to its view:
+  changing the folder, status, sort or search clears it.
+- **Checked** in headless Chromium on the same 195 generated albums: select all shown, then all 190 in the view; a
+  folder where nothing is ready lists why for each; the 10 ready soundtracks written and then shown as complete; at
+  390 px the bar wraps and nothing scrolls sideways.
+- **Found:** the queue ran jobs oldest first, so after a first scan a bulk write waited behind every identification
+  still queued. Writes and undos now go first (D76, its own PR).

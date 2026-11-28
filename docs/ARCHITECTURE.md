@@ -1072,6 +1072,7 @@ Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs (the Changes ta
 7. ~~**Bandcamp and Beatport**~~ — resolved: opt-in (D16).
 8. ~~**Public repository URL**~~ — resolved (D18).
 9. **Pruning** the cover cache (`/config/covers`) and picture backups (`/config/backups/pictures`): keep backups as long as their write can be undone? (D49)
+10. ~~**Job order**~~ — resolved: writes and undos go first (D76).
 
 ---
 

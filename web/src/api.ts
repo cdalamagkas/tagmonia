@@ -2,6 +2,8 @@
 import {
   type ApiError,
   type AuthState,
+  type BulkRequest,
+  type BulkResponse,
   type CoverDecisionRequest,
   type Credentials,
   type CredentialsRequest,
@@ -103,6 +105,8 @@ export const api = {
         ...(v.status ? { status: v.status } : {}),
       })}`,
     ),
+  /** Identify again, or write the ready changes, for releases or everything a view shows (D75). */
+  bulk: (body: BulkRequest) => request<BulkResponse>("POST", "/api/library/bulk", body),
   /** One level of the folder tree (D75). */
   tree: (root: "library" | "inbox", path: string) =>
     request<FolderTreeDto>("GET", `/api/library/tree?${new URLSearchParams({ root, path })}`),

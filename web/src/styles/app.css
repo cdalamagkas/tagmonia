@@ -1280,3 +1280,36 @@ main.tm-wide {
     display: inline-block;
   }
 }
+/* Bulk actions (D75) */
+.tm-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius);
+  background: var(--tm-mist);
+}
+.tm-bulk-confirm {
+  flex-basis: 100%;
+}
+.tm-bulk-confirm p {
+  margin: 4px 0 8px;
+}
+.tm-bulk-result {
+  border-left: 3px solid var(--tm-navy);
+  padding: 4px 12px;
+  margin-bottom: 12px;
+}
+.tm-bulk-result p {
+  margin: 0;
+}
+.tm-row-selected td {
+  background: var(--tm-mist);
+}
+.tm-library-list .tm-col-check {
+  width: 28px;
+  padding-right: 0;
+}
