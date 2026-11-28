@@ -37,6 +37,9 @@ COPY --from=build /app/shared ./shared
 COPY --from=build /app/server ./server
 COPY --from=build /app/web/dist ./web/dist
 COPY THIRD_PARTY_NOTICES.md ./
+# The release version, from the tag (D74); empty for other builds, which then report the development version.
+ARG VERSION=""
+RUN if [ -n "$VERSION" ]; then echo "$VERSION" > VERSION; fi
 # `docker exec -it tagmonia reset-password [username]` (D71).
 COPY --chmod=755 docker/reset-password /usr/local/bin/reset-password
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/entrypoint
