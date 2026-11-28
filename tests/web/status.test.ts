@@ -109,6 +109,7 @@ function proposal(over: Partial<ProposalDto> = {}): ProposalDto {
     providers: [],
     cover: null,
     rename: null,
+    musicbrainzCandidates: [],
     ...over,
   };
 }
@@ -248,6 +249,26 @@ Deno.test("a release from a provider link: Add to MusicBrainz follows, until Mus
     proposal: { ...fromDeezer, fields: [field({ status: "unchanged", origin: "deezer" })] },
   }));
   assertEquals(allRight.primary?.id, "submission", "nothing to write: adding to MusicBrainz is the next step");
+  // MusicBrainz may have it (D68): compare first, then add it if none is yours.
+  const maybe = releaseStatus(state({
+    proposal: {
+      ...fromDeezer,
+      musicbrainzCandidates: [{
+        mbid: MBID,
+        title: "T",
+        artist: null,
+        date: null,
+        country: null,
+        barcode: null,
+        trackCount: 1,
+        reasons: ["same title, artist and tracks"],
+      }],
+    },
+  }));
+  assertEquals(maybe.secondary.map((a) => [a.id, a.label]), [
+    ["match", "MusicBrainz may have it"],
+    ["submission", "Add to MusicBrainz →"],
+  ]);
   const returned = releaseStatus(state({ proposal: fromDeezer, submission: sub({ state: "returned" }) }));
   assertEquals(returned.secondary, []);
   const src = sourceLine(state({ proposal: fromDeezer }), (m) => m);

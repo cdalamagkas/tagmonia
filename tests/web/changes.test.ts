@@ -41,6 +41,7 @@ function proposal(fields: FieldProposalDto[], over: Partial<ProposalDto> = {}): 
     providers: [],
     cover: null,
     rename: null,
+    musicbrainzCandidates: [],
     ...over,
   };
 }

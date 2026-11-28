@@ -1125,3 +1125,15 @@ table.tm-review {
 .tm-terms-after {
   margin: 8px 0 0;
 }
+.tm-maybe-mb {
+  border-left: 3px solid var(--tm-orange);
+  padding: 4px 12px;
+  margin: 12px 0;
+}
+.tm-plain-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}

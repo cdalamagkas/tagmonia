@@ -35,6 +35,8 @@ export async function findDuplicates(
   mb: Pick<MusicBrainzClient, "searchReleases" | "releasesForUrl">,
   q: DuplicateQuery,
   signal?: AbortSignal,
+  /** Before a submission the answers must be fresh; looking for a pasted link's release may use the cache (D68). */
+  opts: { fresh?: boolean } = {},
 ): Promise<PossibleDuplicate[]> {
   const out = new Map<string, PossibleDuplicate>();
   const add = (r: Partial<MbSearchRelease> & { id: string; title: string }, reason: string) => {
@@ -51,7 +53,7 @@ export async function findDuplicates(
     if (!d.reasons.includes(reason)) d.reasons.push(reason);
     out.set(r.id, d);
   };
-  const fresh = { signal, maxAgeMs: 0 };
+  const fresh = opts.fresh === false ? { signal } : { signal, maxAgeMs: 0 };
   if (q.barcode) {
     // MusicBrainz stores barcodes as printed; a UPC-A is often entered as a 13-digit EAN too.
     const digits = q.barcode.replace(/\D/g, "");
@@ -70,4 +72,16 @@ export async function findDuplicates(
     if ((r.score ?? 0) >= MIN_TEXT_SCORE && r["track-count"] === q.trackCount) add(r, "same title, artist and tracks");
   }
   return [...out.values()];
+}
+
+/**
+ * The one release a pasted link certainly is (D68): MusicBrainz links it to that very page, or it has the same
+ * barcode and as many tracks. Null when there is none, or more than one (then they are offered instead).
+ */
+export function certainDuplicate(dups: PossibleDuplicate[], trackCount: number): string | null {
+  const sure = dups.filter((d) =>
+    d.reasons.some((r) => r.startsWith("linked to the ")) ||
+    (d.reasons.includes("same barcode") && d.trackCount === trackCount)
+  );
+  return sure.length === 1 ? sure[0].mbid : null;
 }
