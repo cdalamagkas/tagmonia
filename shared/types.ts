@@ -314,6 +314,11 @@ export interface ProposalDto {
   cover: CoverProposalDto | null;
   /** The new file names a write would give (D57), when renaming is on and any name changes. */
   rename: RenameProposalDto | null;
+  /**
+   * Built from a link: releases MusicBrainz may have for it, not certain enough to switch to (D68). Built from
+   * MusicBrainz: empty.
+   */
+  musicbrainzCandidates: PossibleDuplicateDto[];
 }
 
 export type CoverSourceId = "coverartarchive" | "itunes" | "deezer" | "tidal" | "discogs" | "bandcamp" | "spotify";

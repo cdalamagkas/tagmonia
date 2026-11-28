@@ -12,6 +12,7 @@ import type {
   IdentificationDto,
   LibraryFileDto,
   MatchDto,
+  PossibleDuplicateDto,
   ProposalDto,
   SearchTerms,
   SignalName,
@@ -348,6 +349,52 @@ function SearchTermsForm(
 }
 
 /**
+ * Releases MusicBrainz may have for a pasted link (D68), not certain enough to switch to by themselves: the
+ * same title, artist and track count, or several sharing the barcode.
+ */
+function MaybeOnMusicBrainz(
+  { candidates, onChoose }: { candidates: PossibleDuplicateDto[]; onChoose: (mbid: string) => void },
+) {
+  // Linked to the page or sharing the barcode first; releases that only share the title folded below them.
+  const strong = candidates.filter((c) =>
+    c.reasons.some((r) => r.startsWith("linked to the ") || r === "same barcode")
+  );
+  const weak = candidates.filter((c) => !strong.includes(c));
+  const shown = strong.length ? strong : weak.slice(0, 3);
+  const folded = strong.length ? weak : weak.slice(3);
+  const row = (c: PossibleDuplicateDto) => (
+    <li key={c.mbid}>
+      <MbLink mbid={c.mbid}>{c.title}</MbLink>
+      {c.artist && <span class="tm-muted">{` — ${c.artist}`}</span>}{" "}
+      <span class="tm-muted tm-small-note">
+        {[c.date, c.country, c.trackCount !== null ? `${c.trackCount} tracks` : null, c.reasons.join(", ")]
+          .filter(Boolean).join(" · ")}
+      </span>{" "}
+      <button type="button" class="tm-button tm-secondary tm-small" onClick={() => onChoose(c.mbid)}>
+        Use this release
+      </button>
+    </li>
+  );
+  return (
+    <div class="tm-maybe-mb">
+      <p>
+        <strong>MusicBrainz may already have this release.</strong>{" "}
+        <span class="tm-muted">If one of these is yours, use it instead of adding the release again.</span>
+      </p>
+      <ul class="tm-plain-list">{shown.map(row)}</ul>
+      {folded.length > 0 && (
+        <details class="tm-fold">
+          <summary>
+            {folded.length === 1 ? "1 more" : `${folded.length} more`} with the same title, artist and track count
+          </summary>
+          <ul class="tm-plain-list">{folded.map(row)}</ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/**
  * The release's YouTube link next to a MusicBrainz release (§9.5, D55): evidence for the date and label. Without
  * one, the link is the source of the tags instead (D64), and this line is not shown.
  */
@@ -578,6 +625,9 @@ export function Identification(
               <a href={v.source.url} target="_blank" rel="noopener noreferrer">{sourceName(v.source.url)} album</a>{" "}
               <span class="tm-badge tm-badge-warn tm-inline">not on MusicBrainz</span>
             </h3>
+            {(proposal?.musicbrainzCandidates ?? []).length > 0 && (
+              <MaybeOnMusicBrainz candidates={proposal!.musicbrainzCandidates} onChoose={choose} />
+            )}
             <p class="tm-muted">
               {youtubeSource
                 ? "The tags come from this playlist's auto-generated descriptions (titles, artists, album, date, label); see Tags."
@@ -607,7 +657,21 @@ export function Identification(
               )}
             </h3>
             {summary && <p class="tm-muted tm-section-note">{facts(summary)}</p>}
-            <p class="tm-muted">{v.source.chosenBy === "user" ? "Chosen by you." : "Matched automatically."}</p>
+            <p class="tm-muted">
+              {proposal?.sourceUrl
+                ? (
+                  <>
+                    Found from your{" "}
+                    <a href={proposal.sourceUrl} target="_blank" rel="noopener noreferrer">
+                      {sourceName(proposal.sourceUrl)} link
+                    </a>
+                    : MusicBrainz links that page or has the same barcode. Its other providers fill the gaps.
+                  </>
+                )
+                : v.source.chosenBy === "user"
+                ? "Chosen by you."
+                : "Matched automatically."}
+            </p>
             {subject && <ScoreLine m={subject} thresholds={data.thresholds} />}
             {subject && <Evidence m={subject} open={v.uncertain} />}
           </>

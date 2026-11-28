@@ -148,6 +148,7 @@ async function main() {
   registerProposeJob(queue, {
     db,
     mb,
+    search: mb,
     mbFor: submissionClients,
     covers: { fetcher: covers, mode: () => settings.covers.mode, musicDir: config.musicDir, inboxDir: config.inboxDir },
     settings: () => settings.proposal,

@@ -20,7 +20,13 @@ import { REFRESH_JOB } from "../../jobs/refresh.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
 import { enqueueIdentify, identifyDedupeKey } from "../../jobs/identify.ts";
 import { releaseMbidFromInput } from "../../identify/manual.ts";
-import { isUnresolved, latestProposal, locksFor, providerMatches } from "../../db/repo/proposals.ts";
+import {
+  isUnresolved,
+  latestProposal,
+  locksFor,
+  musicBrainzCandidates,
+  providerMatches,
+} from "../../db/repo/proposals.ts";
 import { coverWrites, getCover } from "../../db/repo/covers.ts";
 import { type CurrentCovers, THUMB_SIZES, type ThumbSize } from "../../covers/current.ts";
 import type { CachedImage } from "../../covers/fetch.ts";
@@ -509,6 +515,7 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
           providers: providerMatches(db, p.id).map(({ release: _data, evidence: _e, ...m }) => m),
           cover: coverDto(db, p.id, p.fields.map((f) => f.fileId)),
           rename: renameDto(db, deps.naming?.(), p),
+          musicbrainzCandidates: p.releaseMbid ? [] : musicBrainzCandidates(db, p.id),
           // Snapshot ids are internal provenance, not part of the API.
           fields: p.fields.map((f) => ({
             ...f,

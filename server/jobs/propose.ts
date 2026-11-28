@@ -8,7 +8,14 @@ import { Roots } from "../fs/safe_path.ts";
 import { z } from "zod";
 import type { Db } from "../db/db.ts";
 import { getRelease } from "../db/repo/library.ts";
-import { type ChosenBy, latestProposal, listLocks, saveProposal, saveProviderMatches } from "../db/repo/proposals.ts";
+import {
+  type ChosenBy,
+  latestProposal,
+  listLocks,
+  saveProposal,
+  saveProviderMatches,
+  setMusicBrainzCandidates,
+} from "../db/repo/proposals.ts";
 import {
   type EnrichmentDeps,
   findOnProviders,
@@ -20,13 +27,16 @@ import {
   targetOfHarmony,
   targetOfMb,
 } from "../providers/enrichment.ts";
-import { type HarmonizedRelease, mergeProviderReleases } from "../providers/harmony_adapter.ts";
+import { type HarmonizedRelease, type MergedRelease, mergeProviderReleases } from "../providers/harmony_adapter.ts";
 import { providerReleaseView, tagsFromProviders } from "../proposal/harmony_tags.ts";
 import { toReleaseView } from "../identify/release.ts";
 import { DEFAULT_SCORING, scoreRelease } from "../identify/score.ts";
 import type { Logger } from "../log.ts";
 import { buildFieldProposals } from "../proposal/build.ts";
 import { type FieldProvenance, mergeProviders } from "../proposal/merge.ts";
+import { certainDuplicate, findDuplicates, type PossibleDuplicate } from "../submission/duplicates.ts";
+import type { MusicBrainzClient } from "../providers/musicbrainz/client.ts";
+import { creditText } from "../proposal/harmony_tags.ts";
 import { getSearchTerms } from "../db/repo/search_terms.ts";
 import type { CanonicalTags } from "../tagio/mod.ts";
 import { chooseCover, type CoverFetcher } from "../covers/fetch.ts";
@@ -70,6 +80,8 @@ export interface CoverDeps {
 export interface ProposeJobDeps {
   db: Db;
   mb: ProposalSource;
+  /** Searching MusicBrainz for a pasted link's release (D68); absent = a link is taken as not on MusicBrainz. */
+  search?: Pick<MusicBrainzClient, "searchReleases" | "releasesForUrl">;
   /** MusicBrainz on another server (D52); absent = only `mb`. */
   mbFor?: (server: string) => ProposalSource;
   covers?: CoverDeps | null;
@@ -163,97 +175,119 @@ export function registerProposeJob(queue: JobQueue, deps: ProposeJobDeps): void 
       return await proposeFromYouTube(deps, new URL(parsed.data.youtubeUrl), found, contentHash, now, signal);
     }
     const { releaseMbid, server } = parsed.data;
-    if (server && !deps.mbFor) throw new PermanentJobError(`${server} is not set up`);
-    const mb = server ? deps.mbFor!(server) : deps.mb;
+    return await proposeFromMusicBrainz(deps, { releaseMbid, server, chosenBy }, found, contentHash, now, signal);
+  });
+}
 
-    const rel = await mb.lookupRelease(releaseMbid, signal);
-    if (!rel) throw new PermanentJobError(`MusicBrainz has no release ${releaseMbid}`);
-    const snapshotIds = [rel.snapshotId];
+/**
+ * A proposal from a MusicBrainz release (§10): its tags, parent works and genres, then the same release on the
+ * other providers merged in by precedence (D47, D48), YouTube evidence (D55) and the cover (D49).
+ * `foundFrom`: the pasted provider link that led to the release (D68), also asked as one of its providers.
+ */
+async function proposeFromMusicBrainz(
+  deps: ProposeJobDeps,
+  from: { releaseMbid: string; server?: string; chosenBy: ChosenBy; foundFrom?: string },
+  found: NonNullable<ReturnType<typeof getRelease>>,
+  contentHash: string,
+  now: () => number,
+  signal?: AbortSignal,
+): Promise<ProposeJobResult> {
+  const { releaseMbid, server, chosenBy } = from;
+  if (server && !deps.mbFor) throw new PermanentJobError(`${server} is not set up`);
+  const mb = server ? deps.mbFor!(server) : deps.mb;
 
-    const settings = deps.settings();
-    // Genres and links to other providers in one request; links are needed even with genres off.
-    const extras = await mb.lookupReleaseExtras(rel.value.id, signal);
-    if (extras) snapshotIds.push(extras.snapshotId);
-    const genres: MbReleaseExtras | null = settings.genres === "musicbrainz" ? extras?.value ?? null : null;
+  const rel = await mb.lookupRelease(releaseMbid, signal);
+  if (!rel) throw new PermanentJobError(`MusicBrainz has no release ${releaseMbid}`);
+  const snapshotIds = [rel.snapshotId];
 
-    const parents = new Map<string, MbWork>();
-    for (let round = 0; round < MAX_WORK_ROUNDS; round++) {
-      const missing = missingParentWorks(rel.value, parents);
-      if (missing.length === 0) break;
-      for (const id of missing) {
-        const w = await mb.lookupWork(id, signal);
-        if (w) {
-          parents.set(id, w.value);
-          snapshotIds.push(w.snapshotId);
-        }
+  const settings = deps.settings();
+  // Genres and links to other providers in one request; links are needed even with genres off.
+  const extras = await mb.lookupReleaseExtras(rel.value.id, signal);
+  if (extras) snapshotIds.push(extras.snapshotId);
+  const genres: MbReleaseExtras | null = settings.genres === "musicbrainz" ? extras?.value ?? null : null;
+
+  const parents = new Map<string, MbWork>();
+  for (let round = 0; round < MAX_WORK_ROUNDS; round++) {
+    const missing = missingParentWorks(rel.value, parents);
+    if (missing.length === 0) break;
+    for (const id of missing) {
+      const w = await mb.lookupWork(id, signal);
+      if (w) {
+        parents.set(id, w.value);
+        snapshotIds.push(w.snapshotId);
       }
     }
+  }
 
-    // Map the files as they are now, not as identification saw them: a rescan may have changed them.
-    const files = found.files.filter((f) => !f.readError);
-    const { mapping } = scoreRelease(
-      buildEvidence(found.release.mbid, files),
-      toReleaseView(rel.value),
-      DEFAULT_SCORING,
-    );
-    const proposed = tagsFromMusicBrainz({
-      release: rel.value,
-      genres,
-      parentWorks: parents,
-      maxGenres: settings.maxGenres,
-    });
-    // The same release on other providers (D47), merged into the fields by precedence (D48).
-    const matches = deps.enrichment
-      ? await findOnProviders(deps.enrichment, targetOfMb(rel.value), linksOf(extras?.value ?? null))
-      : null;
-    const merged = mergeProviders(proposed, rel.value, matches ?? []);
-    const youtube = await evidenceMatch(deps, candidateId, targetOfMb(rel.value).trackCount, signal);
-    applyEvidence(merged, youtube);
-    const rows = youtube ? [...(matches ?? []), youtube] : matches;
-    const build = buildFieldProposals({
-      candidateId,
-      files: files.map((f) => ({ id: f.id, tags: f.tags })),
-      mapping: mapping.pairs,
-      proposed: merged,
-      snapshotId: rel.snapshotId,
-      locks: listLocks(deps.db),
-      provenance: merged.provenance,
-    });
-    const proposalId = saveProposal(deps.db, {
-      candidateId,
-      releaseMbid: rel.value.id,
-      mbServer: server ?? null,
-      chosenBy,
-      basedOnHash: contentHash,
-      snapshotIds: [...new Set(snapshotIds)],
-      build: {
-        ...build,
-        unmappedFiles: [...build.unmappedFiles, ...found.files.filter((f) => f.readError).map((f) => f.id)],
-      },
-    }, now());
-    if (rows) saveProviderMatches(deps.db, proposalId, rows, now());
-    if (deps.covers) {
-      const mappedIds = new Set(mapping.pairs.map((p) => p.fileId));
-      await proposeCover(
-        deps.db,
-        deps.covers,
-        proposalId,
-        rel.value,
-        matches ?? [],
-        found.release.folder,
-        files.filter((f) => mappedIds.has(f.id)),
-        signal,
-      );
-    }
-    const count = (s: string) => build.fields.filter((f) => f.status === s).length;
-    return {
-      proposalId,
-      changed: count("changed"),
-      added: count("added"),
-      unchanged: count("unchanged"),
-      unmappedFiles: build.unmappedFiles.length,
-    };
+  // Map the files as they are now, not as identification saw them: a rescan may have changed them.
+  const files = found.files.filter((f) => !f.readError);
+  const { mapping } = scoreRelease(
+    buildEvidence(found.release.mbid, files),
+    toReleaseView(rel.value),
+    DEFAULT_SCORING,
+  );
+  const proposed = tagsFromMusicBrainz({
+    release: rel.value,
+    genres,
+    parentWorks: parents,
+    maxGenres: settings.maxGenres,
   });
+  // The same release on other providers (D47), merged into the fields by precedence (D48).
+  const matches = deps.enrichment
+    ? await findOnProviders(deps.enrichment, targetOfMb(rel.value), [
+      ...linksOf(extras?.value ?? null),
+      ...(from.foundFrom ? [from.foundFrom] : []),
+    ])
+    : null;
+  const merged = mergeProviders(proposed, rel.value, matches ?? []);
+  const youtube = await evidenceMatch(deps, found.release.id, targetOfMb(rel.value).trackCount, signal);
+  applyEvidence(merged, youtube);
+  const rows = youtube ? [...(matches ?? []), youtube] : matches;
+  const build = buildFieldProposals({
+    candidateId: found.release.id,
+    files: files.map((f) => ({ id: f.id, tags: f.tags })),
+    mapping: mapping.pairs,
+    proposed: merged,
+    snapshotId: rel.snapshotId,
+    locks: listLocks(deps.db),
+    provenance: merged.provenance,
+  });
+  const proposalId = saveProposal(deps.db, {
+    candidateId: found.release.id,
+    releaseMbid: rel.value.id,
+    mbServer: server ?? null,
+    // The link that led to the release (D68): shown as how it was found; the tags are MusicBrainz's.
+    sourceUrl: from.foundFrom ?? null,
+    chosenBy,
+    basedOnHash: contentHash,
+    snapshotIds: [...new Set(snapshotIds)],
+    build: {
+      ...build,
+      unmappedFiles: [...build.unmappedFiles, ...found.files.filter((f) => f.readError).map((f) => f.id)],
+    },
+  }, now());
+  if (rows) saveProviderMatches(deps.db, proposalId, rows, now());
+  if (deps.covers) {
+    const mappedIds = new Set(mapping.pairs.map((p) => p.fileId));
+    await proposeCover(
+      deps.db,
+      deps.covers,
+      proposalId,
+      rel.value,
+      matches ?? [],
+      found.release.folder,
+      files.filter((f) => mappedIds.has(f.id)),
+      signal,
+    );
+  }
+  const count = (s: string) => build.fields.filter((f) => f.status === s).length;
+  return {
+    proposalId,
+    changed: count("changed"),
+    added: count("added"),
+    unchanged: count("unchanged"),
+    unmappedFiles: build.unmappedFiles.length,
+  };
 }
 
 /** Chooses and downloads the release's cover, compares it with what the files and folder have, and stores it. */
@@ -332,6 +366,18 @@ async function proposeFromProvider(
     releaseMap[m.release.info.providers[0]?.name ?? m.provider] = m.release;
   }
   const merged = mergeProviderReleases(releaseMap, primaryName);
+  // On MusicBrainz after all (D68)? Certain: build from it, the link still asked as its provider.
+  const mbFound = await onMusicBrainz(deps, merged, signal);
+  if (mbFound.certain) {
+    return await proposeFromMusicBrainz(
+      deps,
+      { releaseMbid: mbFound.certain, chosenBy: "user", foundFrom: href },
+      found,
+      contentHash,
+      now,
+      signal,
+    );
+  }
   const proposed = tagsFromProviders(merged, primary);
   const youtube = await evidenceMatch(deps, found.release.id, targetOfHarmony(release).trackCount, signal);
   applyEvidence(proposed, youtube);
@@ -365,6 +411,7 @@ async function proposeFromProvider(
     },
   }, now());
   saveProviderMatches(deps.db, proposalId, matches, now());
+  setMusicBrainzCandidates(deps.db, proposalId, mbFound.candidates);
   if (deps.covers) {
     const mappedIds = new Set(mapping.pairs.map((p) => p.fileId));
     await proposeCover(
@@ -386,6 +433,39 @@ async function proposeFromProvider(
     unchanged: count("unchanged"),
     unmappedFiles: build.unmappedFiles.length,
   };
+}
+
+/**
+ * Is a pasted link's release on MusicBrainz after all (D68)? The submission's duplicate check, on the link's
+ * own data: releases linked to that page, the same barcode, the same title, artist and track count. Answers
+ * may come from the cache. A failure is logged and means "not found": the link still gives the tags.
+ */
+async function onMusicBrainz(
+  deps: ProposeJobDeps,
+  release: MergedRelease,
+  signal?: AbortSignal,
+): Promise<{ certain: string | null; candidates: PossibleDuplicate[] }> {
+  if (!deps.search) return { certain: null, candidates: [] };
+  const trackCount = release.media.reduce((n, m) => n + m.tracklist.length, 0);
+  try {
+    const candidates = await findDuplicates(
+      deps.search,
+      {
+        title: release.title,
+        artist: creditText(release.artists),
+        barcode: release.gtin ? String(release.gtin) : null,
+        trackCount,
+        urls: release.info.providers.map((p) => ({ name: p.name, url: p.url })),
+      },
+      signal,
+      { fresh: false },
+    );
+    return { certain: certainDuplicate(candidates, trackCount), candidates };
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    deps.logger.warn("could not search MusicBrainz for a pasted link's release", { error: (e as Error).message });
+    return { certain: null, candidates: [] };
+  }
 }
 
 /**
@@ -415,6 +495,18 @@ async function proposeFromYouTube(
   }
   const release = youtubeRelease(evidence);
   const merged = mergeProviderReleases({ YouTube: release }, "YouTube");
+  const mbFound = await onMusicBrainz(deps, merged, signal);
+  if (mbFound.certain) {
+    setEvidenceLink(deps.db, found.release.id, { provider: "youtube", url: evidence.url }, now());
+    return await proposeFromMusicBrainz(
+      deps,
+      { releaseMbid: mbFound.certain, chosenBy: "user", foundFrom: evidence.url },
+      found,
+      contentHash,
+      now,
+      signal,
+    );
+  }
   const proposed = tagsFromProviders(merged, "youtube");
   const files = found.files.filter((f) => !f.readError);
   const { mapping } = scoreRelease(
@@ -452,6 +544,7 @@ async function proposeFromYouTube(
     release,
     evidence,
   }], now());
+  setMusicBrainzCandidates(deps.db, proposalId, mbFound.candidates);
   setEvidenceLink(deps.db, found.release.id, { provider: "youtube", url: evidence.url }, now());
   const count = (st: string) => build.fields.filter((f) => f.status === st).length;
   return {

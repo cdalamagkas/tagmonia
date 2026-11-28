@@ -174,7 +174,11 @@ function statusOf(s: ReleaseState): ReleaseStatus {
   if (submitting) return submitting;
 
   if (p && isOpen(p)) {
-    const extra = [addToMusicBrainz(p, s.submission)].filter((a): a is Action => !!a);
+    // Built from a link whose release MusicBrainz may have (D68): compare before adding it.
+    const maybeOnMb: Action | null = fromProvider(p) && (p.musicbrainzCandidates ?? []).length > 0
+      ? { id: "match", label: "MusicBrainz may have it" }
+      : null;
+    const extra = [maybeOnMb, addToMusicBrainz(p, s.submission)].filter((a): a is Action => !!a);
     if (p.stale) {
       return {
         tone: "attention",

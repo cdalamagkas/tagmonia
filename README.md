@@ -38,9 +38,11 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   label or catalog number from Discogs, missing ISRCs from Deezer or iTunes, and each provider's own ID. Such fields
   are marked "filled by …". Where MusicBrainz and Discogs disagree, the review shows both values and asks you to
   choose before anything is written.
-- **Releases missing from MusicBrainz**: paste a Deezer, iTunes, Discogs or Bandcamp album link on the release page and
-  Tagmonia builds the tags from that album, filled in from the same release on the other providers (by barcode),
-  ready to review and write.
+- **Poorly tagged or missing releases, from an album link**: paste a Deezer, iTunes, Tidal, Spotify, Discogs, Bandcamp
+  or YouTube link on the release page. Tagmonia first looks for that album on MusicBrainz (releases linked to the page,
+  the same barcode, the same title and artist): when one is certain it tags from MusicBrainz, and offers the likely
+  ones otherwise. If MusicBrainz lacks it, the tags come from the album itself, filled in from the same release on the
+  other providers (by barcode), ready to review, write and add to MusicBrainz.
 - **Adds them to MusicBrainz, with you in charge**: Tagmonia checks MusicBrainz for the release first (barcode, linked
   pages, title), then opens MusicBrainz's release editor filled in, with an edit note naming its sources. You review
   and submit from your own account; MusicBrainz sends you back, Tagmonia checks the new release exists, and its

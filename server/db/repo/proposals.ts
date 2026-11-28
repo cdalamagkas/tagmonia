@@ -1,4 +1,5 @@
 /** Data access for proposals, field proposals, sources and locks (ARCHITECTURE.md §6.1, §10). */
+import type { PossibleDuplicate } from "../../submission/duplicates.ts";
 import type { Db } from "../db.ts";
 import { transaction } from "../db.ts";
 import type { BuildResult, FieldLock, FieldStatus, LockScope } from "../../proposal/build.ts";
@@ -404,4 +405,16 @@ export function providerMatches(db: Db, proposalId: number): ProviderMatch[] {
 /** Include the renaming in this proposal's write, or leave the names alone (D57). */
 export function setRenameSkip(db: Db, proposalId: number, skip: boolean): void {
   db.prepare("UPDATE proposal SET rename_skip = ? WHERE id = ?").run(skip ? 1 : 0, proposalId);
+}
+
+/** Releases MusicBrainz may have for a proposal built from a link (D68); offered in the Match tab. */
+export function setMusicBrainzCandidates(db: Db, proposalId: number, candidates: PossibleDuplicate[]): void {
+  db.prepare("UPDATE proposal SET mb_candidates = ? WHERE id = ?").run(JSON.stringify(candidates), proposalId);
+}
+
+export function musicBrainzCandidates(db: Db, proposalId: number): PossibleDuplicate[] {
+  const r = db.prepare("SELECT mb_candidates FROM proposal WHERE id = ?").get(proposalId) as
+    | { mb_candidates: string }
+    | undefined;
+  return r ? JSON.parse(r.mb_candidates) : [];
 }
