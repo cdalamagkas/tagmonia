@@ -1,17 +1,22 @@
 /** Minimal history-API router: the SPA has only a handful of pages. */
 import { useEffect, useState } from "preact/hooks";
+import { type SettingsSection, settingsSection } from "./settings/sections.ts";
 
 export type Route =
   | { page: "library" }
   | { page: "release"; id: number }
-  | { page: "settings" }
+  | { page: "settings"; section: SettingsSection }
   /** Where MusicBrainz's release editor sends the browser after a submission (§12.2). */
   | { page: "mbCallback"; submission: number }
   | { page: "notFound" };
 
 export function parseRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { page: "library" };
-  if (/^\/settings\/?$/.test(pathname)) return { page: "settings" };
+  const st = /^\/settings(?:\/([a-z-]+))?\/?$/.exec(pathname);
+  if (st) {
+    const section = settingsSection(st[1]);
+    return section ? { page: "settings", section } : { page: "notFound" };
+  }
   const cb = /^\/mb\/callback\/(\d+)\/?$/.exec(pathname);
   if (cb) return { page: "mbCallback", submission: Number(cb[1]) };
   const m = /^\/releases\/(\d+)\/?$/.exec(pathname);

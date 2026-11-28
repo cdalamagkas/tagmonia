@@ -1,4 +1,3 @@
-import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { useEffect, useState } from "preact/hooks";
 import type { AuthState } from "../../shared/types.ts";
 import { api, setUnauthorizedHandler } from "./api.ts";
@@ -7,6 +6,7 @@ import { LibraryPage } from "./pages/LibraryPage.tsx";
 import { ReleasePage } from "./pages/ReleasePage.tsx";
 import { navigate, onLinkClick, useRoute } from "./router.ts";
 import { MbCallbackPage } from "./pages/MbCallbackPage.tsx";
+import { SettingsPage } from "./pages/settings/SettingsLayout.tsx";
 
 export function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
@@ -44,7 +44,7 @@ export function App() {
     body = <AuthPage mode="login" sso={auth.sso} proxyRefused={auth.proxyRefused} onDone={setAuth} />;
   } else if (route.page === "library") body = <LibraryPage />;
   else if (route.page === "release") body = <ReleasePage id={route.id} />;
-  else if (route.page === "settings") body = <SettingsPage />;
+  else if (route.page === "settings") body = <SettingsPage section={route.section} />;
   else if (route.page === "mbCallback") body = <MbCallbackPage submission={route.submission} />;
   else {body = (
       <main>
@@ -62,7 +62,14 @@ export function App() {
         </a>
         {auth?.user && (
           <nav class="tm-nav">
-            <a href="/settings" onClick={onLinkClick} class="tm-nav-link">Settings</a>
+            <a
+              href="/settings"
+              onClick={onLinkClick}
+              class="tm-nav-link"
+              aria-current={route.page === "settings" ? "page" : undefined}
+            >
+              Settings
+            </a>
             <span>{auth.user.username}</span>
             {/* Signed in by the proxy (D70): signing out happens there; here it would sign straight back in. */}
             {auth.user.signedInBy !== "proxy" && (

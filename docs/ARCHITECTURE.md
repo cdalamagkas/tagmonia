@@ -755,7 +755,7 @@ sequenceDiagram
 - **Never** submit automatically or in bulk. One release, one human review.
 
 **As implemented (D52).**
-- **Server:** Settings → MusicBrainz submissions chooses `https://musicbrainz.org` (default) or `https://test.musicbrainz.org`. Each has its own client at 1 request per second; musicbrainz.org reuses the main client so the two never add up.
+- **Server:** Settings → MusicBrainz chooses `https://musicbrainz.org` (default) or `https://test.musicbrainz.org`. Each has its own client at 1 request per second; musicbrainz.org reuses the main client so the two never add up.
 - **Prepare (a job):** from a "not in MusicBrainz" proposal, the providers' release is re-merged from the stored provider data (D51). The chosen server is asked, never from the cache, for releases with the same barcode (as given and as 13 digits), linked to the same provider pages (`/ws/2/url?resource=…&inc=release-rels`), or with the same title, artist and track count (search score ≥ 90). The seed is Harmony's form fields with Tagmonia's edit note: each provider page and its API URL, the Tagmonia version and project URL, and when the data was fetched.
 - **redirect_uri:** `<public URL or the browser's origin>/mb/callback/<submission id>`. The id is in the path because Harmony's seeding replaces the query with its own lookup details. MusicBrainz appends `release_mbid`.
 - **Open:** the browser posts the form to `<server>/release/add` in a new tab, opened before the request so pop-up blockers allow it and with `opener` cleared. The CSP's `form-action` allows both servers.

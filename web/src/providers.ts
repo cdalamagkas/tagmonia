@@ -23,3 +23,20 @@ export function switchState(
   }
   return { checked: p.enabled, disabled: false, hint: null };
 }
+
+export type ProviderStatus = { label: string; tone: "ok" | "error" | "muted" | "info" };
+
+/**
+ * One word for the providers list (D75), most telling first: not set up (it cannot be used yet), off (by choice), a
+ * check in progress, then the last check's result.
+ */
+export function providerStatus(
+  p: Pick<ProviderDto, "enabled" | "configured" | "health"> & { fields: { optional: boolean }[]; test: unknown },
+): ProviderStatus {
+  const needsCredentials = p.fields.some((f) => !f.optional);
+  if (needsCredentials && !p.configured) return { label: "not set up", tone: "muted" };
+  if (p.enabled === false) return { label: "off", tone: "muted" };
+  if (p.test) return { label: "checking…", tone: "info" };
+  if (!p.health) return { label: "not checked", tone: "muted" };
+  return p.health.ok ? { label: "working", tone: "ok" } : { label: "problem", tone: "error" };
+}
