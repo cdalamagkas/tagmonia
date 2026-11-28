@@ -14,8 +14,9 @@ services:
       # --- Basics ---------------------------------------------------------------------------------------------
       - PUID=1000 # run-as user; the image currently always runs as 1000:1000
       - PGID=1000
-      # Tagmonia's address as your browser reaches it: secure cookies, and where MusicBrainz and your identity
-      # provider send you back to. Needed for single sign-on.
+      # Tagmonia's address as your browser reaches it. Recommended behind a reverse proxy or over https: it marks the
+      # sign-in cookie https-only, and lets changes through even when the proxy rewrites the Host header (otherwise
+      # they are refused as cross-origin). Also where your identity provider sends you back to.
       - TAGMONIA_PUBLIC_URL=https://tagmonia.home.example # REQUIRED for single sign-on
       #- TAGMONIA_MUSIC_DIR=/music # default /music: the library inside the container (see volumes)
       #- TAGMONIA_CONFIG_DIR=/config # default /config: database, settings, caches and keys

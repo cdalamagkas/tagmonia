@@ -849,7 +849,7 @@ Tagmonia has **read-write access to the user's entire music library** and stores
 | `TAGMONIA_INBOX_DIR` | unset | Inbox for new music (D57): scanned with the library, its albums move into the library when written. Must not overlap the library |
 | `TAGMONIA_CONFIG_DIR` | `/config` | Database, settings, snapshots, keys |
 | `TAGMONIA_PORT` | `8080` | HTTP port |
-| `TAGMONIA_PUBLIC_URL` | unset | Used for the MusicBrainz `redirect_uri` and secure cookies |
+| `TAGMONIA_PUBLIC_URL` | unset | Tagmonia's address as browsers reach it: the `Secure` cookie flag (when https), the origin that state-changing requests must come from (without it, the request's `Host` header, which some proxies rewrite), the MusicBrainz return address (else the browser's `Origin`), and the single sign-on callback (required for it). Recommended behind a reverse proxy or over https |
 | `TAGMONIA_ADMIN_PASSWORD_FILE` | unset | Bootstrap admin password from a Docker secret |
 | `TAGMONIA_SECRET_KEY` | generated | Encryption key for stored credentials |
 | `TAGMONIA_ACOUSTID_KEY` | unset | AcoustID application key; without it, fingerprint identification is off (D37) |
