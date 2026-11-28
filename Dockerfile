@@ -2,17 +2,22 @@
 # Production image (ARCHITECTURE.md §15.1). It starts as root only to hand /config to PUID:PGID and then runs
 # Tagmonia as that user, without capabilities (D72); or as the user Docker's `user:` sets.
 # The Deno image is written out (no build arg) so Dependabot can update it, together with docker/dev.Dockerfile.
-FROM denoland/deno:debian-2.9.8 AS build
+# The build stage runs on the builder's own platform: the web build and the server's dependencies (JavaScript and
+# WebAssembly only) are the same for every target, so an arm64 image needs no emulated Vite build (D73).
+FROM --platform=$BUILDPLATFORM denoland/deno:debian-2.9.8 AS build
 WORKDIR /app
-ENV DENO_DIR=/deno-dir
 COPY . .
-RUN deno task web:install \
- && deno run -A npm:vite@7.3.7 build web \
- && deno cache --frozen --node-modules-dir=none server/main.ts
+# The web build's tools (Vite, Babel, esbuild's native binary) get their own cache, which stays here: only the
+# server's dependencies, in /deno-dir, go into the image.
+RUN DENO_DIR=/web-deno-dir deno task web:install \
+ && DENO_DIR=/web-deno-dir deno run -A npm:vite@7.3.7 build web \
+ && DENO_DIR=/deno-dir deno cache --frozen --node-modules-dir=none server/main.ts
 
 FROM denoland/deno:debian-2.9.8
 # python3-mutagen: TagIO sidecar (D7). libchromaprint-tools: fpcalc (§8). python3-pil: cover thumbnails (D50).
+# `upgrade` brings Debian's security fixes released since the base image (D73).
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends python3 python3-mutagen python3-pil libchromaprint-tools \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

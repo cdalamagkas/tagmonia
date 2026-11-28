@@ -171,6 +171,9 @@ scripts/dk sh -c 'TAGMONIA_TAGIO_IMPL=taglib-wasm deno task test:tagio'
 
 ## Running the image
 
+Released versions are published for amd64 and arm64 as `ghcr.io/cdalamagkas/tagmonia` (`:latest`, or a version such
+as `:1.2.0`), each with an SBOM and build provenance. Or build it yourself:
+
 ```sh
 docker build -t tagmonia .
 docker run -p 8080:8080 -v /path/to/music:/music -v tagmonia-config:/config tagmonia
