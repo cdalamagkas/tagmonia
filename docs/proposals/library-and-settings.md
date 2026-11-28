@@ -123,5 +123,5 @@ Sections at `/settings/<section>`, with a side menu (a select on a phone):
 - **Checked** in headless Chromium on the same 195 generated albums: select all shown, then all 190 in the view; a
   folder where nothing is ready lists why for each; the 10 ready soundtracks written and then shown as complete; at
   390 px the bar wraps and nothing scrolls sideways.
-- **Found:** the queue runs jobs oldest first, so after a first scan a bulk write waits behind every identification
-  still queued. Left as it is here; whether user-started writes should go first is an open question.
+- **Found:** the queue ran jobs oldest first, so after a first scan a bulk write waited behind every identification
+  still queued. Writes and undos now go first (D76, its own PR).
