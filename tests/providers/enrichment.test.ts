@@ -192,3 +192,24 @@ Deno.test("every lookup asks for ISRCs, all track artists and separate media (D5
     });
   }
 });
+
+Deno.test("Tidal and Spotify are asked by barcode once set up, and not mentioned before (D67)", async () => {
+  const off = fake({});
+  const before = await findOnProviders(off.deps, targetOfMb(mb("0602547071538")), []);
+  assertEquals(before.map((m) => m.provider), ["deezer", "itunes", "discogs"]);
+  const on = fake({ ids: ["deezer", "itunes", "tidal", "spotify", "discogs"] });
+  const after = await findOnProviders(on.deps, targetOfMb(mb("0602547071538")), []);
+  assertEquals(after.map((m) => [m.provider, m.status, m.via]), [
+    ["deezer", "found", "barcode"],
+    ["itunes", "found", "barcode"],
+    ["tidal", "found", "barcode"],
+    ["spotify", "found", "barcode"],
+    ["discogs", "found", "barcode"],
+  ]);
+  const switchedOff = fake({
+    ids: ["deezer", "itunes", "tidal", "spotify", "discogs"],
+    enabled: (id) => id !== "spotify",
+  });
+  const r = await findOnProviders(switchedOff.deps, targetOfMb(mb("0602547071538")), []);
+  assertEquals(r.find((m) => m.provider === "spotify")?.reason, "turned off");
+});

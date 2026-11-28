@@ -19,8 +19,8 @@ export type LinkKind =
 
 /**
  * One link box for every source: a MusicBrainz release link (or a bare MBID) chooses that release; any
- * YouTube link adds evidence; any other https link is handed to the server, which accepts Deezer, iTunes,
- * Discogs and Bandcamp album pages and says why it refuses anything else (§14.5).
+ * YouTube link is handled apart (D55, D64); any other https link is handed to the server, which accepts
+ * Deezer, iTunes, Tidal, Spotify, Discogs and Bandcamp album pages and says why it refuses anything else (§14.5).
  */
 export function classifyLink(text: string): LinkKind {
   const s = text.trim();

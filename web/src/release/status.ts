@@ -20,6 +20,8 @@ export const SOURCE_NAMES: Record<string, string> = {
   musicbrainz: "MusicBrainz",
   deezer: "Deezer",
   itunes: "iTunes",
+  tidal: "Tidal",
+  spotify: "Spotify",
   discogs: "Discogs",
   bandcamp: "Bandcamp",
   youtube: "YouTube",
@@ -32,6 +34,8 @@ export function sourceName(url: string | null): string {
   if (host.endsWith("deezer.com")) return "Deezer";
   if (host.endsWith("apple.com")) return "iTunes";
   if (host.endsWith("discogs.com")) return "Discogs";
+  if (host === "tidal.com" || host.endsWith(".tidal.com")) return "Tidal";
+  if (host === "open.spotify.com") return "Spotify";
   if (host.endsWith("bandcamp.com")) return "Bandcamp";
   if (host === "youtu.be" || host.endsWith("youtube.com")) return "YouTube";
   return "the provider";

@@ -1,5 +1,5 @@
 /**
- * A release found on Deezer, iTunes, Discogs or Bandcamp but not on MusicBrainz
+ * A release found on Deezer, iTunes, Tidal, Spotify, Discogs or Bandcamp but not on MusicBrainz
  * (§10.4, D51), as canonical tags. Pure. The input is Harmony's merge of the
  * providers that have the release, with the one the user pointed at first: it
  * supplies everything it has, the others only fill gaps, and Harmony's

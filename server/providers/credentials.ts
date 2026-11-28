@@ -14,6 +14,8 @@ export type ProviderId =
   | "deezer"
   | "itunes"
   | "discogs"
+  | "tidal"
+  | "spotify"
   | "bandcamp"
   | "youtube"
   | "jellyfin";
@@ -84,6 +86,32 @@ export const PROVIDERS: readonly ProviderDef[] = [
     toggle: true,
     restartRequired: true,
     help: "Labels, catalog numbers and pressings. Create an application at discogs.com → Settings → Developers.",
+  },
+  {
+    id: "tidal",
+    name: "Tidal",
+    tier: "enrichment",
+    fields: [
+      { key: "clientId", label: "Client ID", secret: true, kind: "text" },
+      { key: "clientSecret", label: "Client secret", secret: true, kind: "text" },
+    ],
+    toggle: true,
+    restartRequired: true,
+    help:
+      "Release dates, ISRCs, barcodes and covers, and releases missing from MusicBrainz from a Tidal album link (official Tidal API). Register an app at developer.tidal.com → Dashboard; no subscription needed.",
+  },
+  {
+    id: "spotify",
+    name: "Spotify",
+    tier: "enrichment",
+    fields: [
+      { key: "clientId", label: "Client ID", secret: true, kind: "text" },
+      { key: "clientSecret", label: "Client secret", secret: true, kind: "text" },
+    ],
+    toggle: true,
+    restartRequired: true,
+    help:
+      "Release dates, ISRCs, barcodes and (small) covers, and releases missing from MusicBrainz from a Spotify album link (official Spotify Web API). Create an app at developer.spotify.com → Dashboard; using it means accepting Spotify's Developer Terms.",
   },
   {
     id: "bandcamp",

@@ -109,18 +109,34 @@ async function main() {
 
   // One client for every job: a second one would bring a second limiter and double the MusicBrainz rate.
   const mb = createMusicBrainzClient(db, config.configDir, settings);
-  // Deezer, iTunes and Discogs through Harmony (D47). Harmony reads Discogs credentials once, when its
-  // modules load (D12): saving new ones takes effect after a restart, as the providers page says.
+  // Deezer, iTunes, Tidal, Spotify and Discogs through Harmony (D47, D67). Harmony reads credentials once,
+  // when its modules load (D12): saving new ones takes effect after a restart, as the providers page says.
+  // A provider that needs credentials is registered only when they are set.
   const discogs = await creds.get("discogs");
+  const tidal = await creds.get("tidal");
+  const spotify = await creds.get("spotify");
   const discogsReady = !!(discogs.consumerKey && discogs.consumerSecret);
+  const tidalReady = !!(tidal.clientId && tidal.clientSecret);
+  const spotifyReady = !!(spotify.clientId && spotify.clientSecret);
   const harmony = await createHarmonyRegistry({
     app: { name: "Tagmonia", version: VERSION, contact: PROJECT_URL },
     snapsDir: join(config.configDir, "snaps", "harmony"),
     // Bandcamp is registered but used only from a link, and only while its switch is on (D16, D51).
-    providers: ["deezer", "itunes", ...(discogsReady ? ["discogs" as const] : []), "bandcamp"],
-    credentials: discogsReady
-      ? { discogsConsumerKey: discogs.consumerKey, discogsConsumerSecret: discogs.consumerSecret }
-      : undefined,
+    providers: [
+      "deezer",
+      "itunes",
+      ...(tidalReady ? ["tidal" as const] : []),
+      ...(spotifyReady ? ["spotify" as const] : []),
+      ...(discogsReady ? ["discogs" as const] : []),
+      "bandcamp",
+    ],
+    credentials: {
+      ...(discogsReady
+        ? { discogsConsumerKey: discogs.consumerKey, discogsConsumerSecret: discogs.consumerSecret }
+        : {}),
+      ...(tidalReady ? { tidalClientId: tidal.clientId, tidalClientSecret: tidal.clientSecret } : {}),
+      ...(spotifyReady ? { spotifyClientId: spotify.clientId, spotifyClientSecret: spotify.clientSecret } : {}),
+    },
   });
   // Cover art (D49): one request per second for every cover host, images cached under /config.
   const covers = new CoverFetcher({

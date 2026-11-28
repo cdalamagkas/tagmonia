@@ -1,7 +1,7 @@
 /**
  * Where a release's front cover can come from, best first (§10.3, D49). Pure.
- * Cover Art Archive first; then the stores, iTunes before Deezer before Discogs,
- * since that is how large their images usually are. Only providers whose
+ * Cover Art Archive first; then the stores, iTunes, Deezer, Tidal, Discogs,
+ * Bandcamp, Spotify, since that is how large their images usually are. Only providers whose
  * release matched ("found") are asked: another edition may have another cover.
  *
  * Sizes come from each source's own resized variants, so Tagmonia needs no image
@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { ProviderMatch } from "../providers/enrichment.ts";
 
-export type CoverSource = "coverartarchive" | "itunes" | "deezer" | "discogs" | "bandcamp";
+export type CoverSource = "coverartarchive" | "itunes" | "deezer" | "tidal" | "discogs" | "bandcamp" | "spotify";
 
 export type CoverMode = "embed_1200" | "embed_full" | "folder" | "both";
 
@@ -53,7 +53,8 @@ export function caaOption(listing: CaaListing | null): CoverOption | null {
   return { source: "coverartarchive", full: front.image, sized: front.thumbnails["1200"] ?? front.image };
 }
 
-const STORE_ORDER = ["itunes", "deezer", "discogs", "bandcamp"] as const;
+// Spotify last: its largest image is 640 px (D67).
+const STORE_ORDER = ["itunes", "deezer", "tidal", "discogs", "bandcamp", "spotify"] as const;
 
 function storeOption(provider: (typeof STORE_ORDER)[number], art: { url: string; thumbUrl?: string }) {
   switch (provider) {
@@ -71,9 +72,12 @@ function storeOption(provider: (typeof STORE_ORDER)[number], art: { url: string;
       // Deezer refuses 3000 px but serves up to the original for 1900 (D49).
       return { source: provider, full: at(1900), sized: at(1200) } satisfies CoverOption;
     }
+    case "tidal":
+    case "spotify":
     case "discogs":
     case "bandcamp":
-      // Only the original: Discogs serves no sizes; Bandcamp's size codes are undocumented.
+      // The largest image Harmony found: Discogs serves no sizes; Bandcamp's size codes are undocumented;
+      // Tidal's and Spotify's APIs list their sizes, and Harmony picks the largest.
       return { source: provider, full: art.url, sized: art.url } satisfies CoverOption;
   }
 }
