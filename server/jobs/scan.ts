@@ -20,6 +20,8 @@ export interface ScanJobDeps {
   logger: Logger;
   /** Called with new or changed candidates after a scan, to enqueue identification (§7 step 5). */
   onCandidatesTouched?: (ids: number[]) => void;
+  /** Called when a scan finished: brings the library list's cache up to date here, not in a page load (D75). */
+  afterScan?: () => void;
 }
 
 const COUNTS = [
@@ -63,6 +65,7 @@ export function registerScanJob(queue: JobQueue, deps: ScanJobDeps): void {
       result = await inbox();
     }
     if (result.candidatesTouched.length) deps.onCandidatesTouched?.(result.candidatesTouched);
+    deps.afterScan?.();
     return result;
   };
   queue.register(SCAN_JOB, (ctx) => run(ctx, true));

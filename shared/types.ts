@@ -169,6 +169,41 @@ export interface ReleaseChangesDto {
 export interface ReleaseList {
   total: number;
   items: ReleaseSummary[];
+  /** How many releases of the folder and search have each status, before the status filter (D75). */
+  counts: Record<"all" | ReleaseStatusFilter, number>;
+}
+
+/**
+ * The library list's status filter (D75):
+ * - ready: changes to write;
+ * - choices: values to choose first;
+ * - stale: the files changed since the changes were prepared;
+ * - complete: nothing left to change;
+ * - unidentified: not identified yet;
+ * - nomatch: MusicBrainz has nothing that fits.
+ */
+export type ReleaseStatusFilter = "ready" | "choices" | "stale" | "complete" | "unidentified" | "nomatch";
+export type ReleaseSort = "artist" | "album" | "folder" | "added" | "changes";
+
+/** GET /api/library/tree: one level of the folder tree (D75). */
+export interface FolderTreeDto {
+  root: "library" | "inbox";
+  /** Relative to the root; "" is the root itself. */
+  path: string;
+  /** Releases in it and below, and how many of those have changes ready or need a choice. */
+  releases: number;
+  withChanges: number;
+  /** Releases directly in this folder. */
+  here: number;
+  children: FolderNodeDto[];
+}
+
+export interface FolderNodeDto {
+  name: string;
+  path: string;
+  releases: number;
+  withChanges: number;
+  hasChildren: boolean;
 }
 
 export interface PictureInfo {

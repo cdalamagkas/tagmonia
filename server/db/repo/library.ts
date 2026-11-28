@@ -1,6 +1,13 @@
 /** Data access for library_file and candidate (ARCHITECTURE.md §6.1). */
 import { INBOX, isInboxPath } from "../../fs/safe_path.ts";
 import type { Db } from "../db.ts";
+import type {
+  FolderNodeDto,
+  FolderTreeDto,
+  ReleaseChangesDto,
+  ReleaseSort,
+  ReleaseStatusFilter,
+} from "../../../shared/types.ts";
 import type { CanonicalTags } from "../../tagio/mod.ts";
 import { inUnit } from "../../scanner/group.ts";
 
@@ -202,6 +209,10 @@ export interface ReleaseListQuery {
   q?: string;
   /** Only the inbox's albums, or only the library's (D57); both when absent. */
   in?: "inbox" | "library";
+  /** A folder and everything below it (D75), relative to `in`'s root ("" = all of it). */
+  folder?: string;
+  status?: ReleaseStatusFilter;
+  sort?: ReleaseSort;
   limit: number;
   offset: number;
 }
@@ -221,6 +232,8 @@ export interface ReleaseRow {
   updatedAt: number;
   /** A one-file release without an album tag (D62): the track's title, or its file name. */
   single: string | null;
+  /** The latest prepared changes, from the summary cache (D75). */
+  changes: ReleaseChangesDto | null;
 }
 
 interface ReleaseSqlRow {
@@ -236,6 +249,9 @@ interface ReleaseSqlRow {
   errors: number;
   covers: number;
   single: string | null;
+  changes_state: ReleaseChangesDto["state"] | null;
+  changes_count: number | null;
+  changes_choices: number | null;
 }
 
 const RELEASE_SELECT = `
@@ -246,8 +262,9 @@ const RELEASE_SELECT = `
          CASE WHEN c.hint_album IS NULL AND c.file_count = 1 THEN
            (SELECT coalesce(json_extract(f.current_tags, '$.title'), f.path) FROM library_file f
             WHERE f.candidate_id = c.id LIMIT 1)
-         END AS single
-  FROM candidate c`;
+         END AS single,
+         s.state AS changes_state, s.count AS changes_count, s.choices AS changes_choices
+  FROM candidate c LEFT JOIN release_summary s ON s.candidate_id = c.id`;
 
 function toRelease(r: ReleaseSqlRow): ReleaseRow {
   return {
@@ -269,6 +286,10 @@ function toRelease(r: ReleaseSqlRow): ReleaseRow {
       : r.single.includes("/")
       ? r.single.slice(r.single.lastIndexOf("/") + 1)
       : r.single,
+    // From the summary cache (D75): current only after refreshSummaries.
+    changes: r.changes_state
+      ? { state: r.changes_state, count: r.changes_count ?? 0, choices: r.changes_choices ?? 0 }
+      : null,
   };
 }
 
@@ -276,7 +297,56 @@ function likePattern(q: string): string {
   return `%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`;
 }
 
-export function listReleases(db: Db, query: ReleaseListQuery): { total: number; items: ReleaseRow[] } {
+/** The library list's status filter (D75): prepared changes first, then where identification stands. */
+export const STATUS_FILTER: Record<ReleaseStatusFilter, string> = {
+  ready: "s.state = 'ready'",
+  choices: "s.state = 'choices'",
+  stale: "s.state = 'stale'",
+  complete: "s.state IN ('none', 'written')",
+  unidentified: "s.state IS NULL AND c.status IN ('new', 'changed', 'identifying', 'error')",
+  nomatch: "s.state IS NULL AND c.status = 'no_match'",
+};
+
+const SORT: Record<ReleaseSort, string> = {
+  artist: "c.hint_artist IS NULL, c.hint_artist COLLATE NOCASE, c.hint_album COLLATE NOCASE, c.folder",
+  album: "c.hint_album IS NULL, c.hint_album COLLATE NOCASE, c.hint_artist COLLATE NOCASE, c.folder",
+  folder: "c.folder COLLATE NOCASE, c.hint_album COLLATE NOCASE",
+  added: "c.created_at DESC, c.id DESC",
+  changes:
+    "coalesce(s.count, 0) DESC, coalesce(s.choices, 0) DESC, c.hint_artist COLLATE NOCASE, c.hint_album COLLATE NOCASE",
+};
+
+/** A folder relative to its root, as stored (D58: the inbox's are under "@inbox"); "" is the root itself. */
+function storedFolder(root: "library" | "inbox", folder: string): string {
+  const f = folder.replace(/^\/+|\/+$/g, "");
+  if (root === "inbox") return f ? `${INBOX}/${f}` : INBOX;
+  return f;
+}
+
+/** The releases of a root, or of a folder and everything below it (D75). Null: no condition (everything). */
+export function scopeCondition(
+  root: "library" | "inbox" | undefined,
+  folder: string | undefined,
+): { sql: string; args: string[] } | null {
+  const f = (folder ?? "").replace(/^\/+|\/+$/g, "");
+  if (!root && !f) return null;
+  if ((root ?? "library") === "library" && !f) {
+    return { sql: `NOT (c.folder = '${INBOX}' OR c.folder LIKE '${INBOX}/%')`, args: [] };
+  }
+  const base = storedFolder(root ?? "library", f);
+  return { sql: "(c.folder = ? OR c.folder LIKE ? ESCAPE '\\')", args: [base, `${likeEscape(base)}/%`] };
+}
+
+function likeEscape(s: string): string {
+  return s.replace(/[\\%_]/g, (m) => "\\" + m);
+}
+
+export type StatusCounts = Record<"all" | ReleaseStatusFilter, number>;
+
+export function listReleases(
+  db: Db,
+  query: ReleaseListQuery,
+): { total: number; items: ReleaseRow[]; counts: StatusCounts } {
   const q = query.q?.trim();
   const conds: string[] = [];
   const args: string[] = [];
@@ -288,17 +358,69 @@ export function listReleases(db: Db, query: ReleaseListQuery): { total: number; 
     );
     args.push(likePattern(q), likePattern(q), likePattern(q), likePattern(q));
   }
-  // The inbox's albums have folders under "@inbox" (D58).
-  if (query.in) {
-    conds.push(`${query.in === "inbox" ? "" : "NOT "}(c.folder = '${INBOX}' OR c.folder LIKE '${INBOX}/%')`);
+  const scope = scopeCondition(query.in, query.folder);
+  if (scope) {
+    conds.push(scope.sql);
+    args.push(...scope.args);
   }
+  const from = "FROM candidate c LEFT JOIN release_summary s ON s.candidate_id = c.id";
+  // Counts per status for the folder and search, before the status filter: they label the filter's options.
+  const buckets = Object.entries(STATUS_FILTER).map(([k, sql]) => `sum(CASE WHEN ${sql} THEN 1 ELSE 0 END) AS ${k}`);
+  const counted = db.prepare(
+    `SELECT count(*) AS everything, ${buckets.join(", ")} ${from} ${
+      conds.length ? `WHERE ${conds.join(" AND ")}` : ""
+    }`,
+  ).get(...args) as Record<string, number | null>;
+  const counts = { all: counted.everything ?? 0 } as StatusCounts;
+  for (const k of Object.keys(STATUS_FILTER) as ReleaseStatusFilter[]) counts[k] = counted[k] ?? 0;
+  if (query.status) conds.push(STATUS_FILTER[query.status]);
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const total = (db.prepare(`SELECT count(*) n FROM candidate c ${where}`).get(...args) as { n: number }).n;
+  const total = (db.prepare(`SELECT count(*) n ${from} ${where}`).get(...args) as { n: number }).n;
   const rows = db.prepare(
-    `${RELEASE_SELECT} ${where}
-     ORDER BY c.hint_artist IS NULL, c.hint_artist COLLATE NOCASE, c.hint_album COLLATE NOCASE, c.folder LIMIT ? OFFSET ?`,
+    `${RELEASE_SELECT} ${where} ORDER BY ${SORT[query.sort ?? "artist"]} LIMIT ? OFFSET ?`,
   ).all(...args, query.limit, query.offset) as unknown as ReleaseSqlRow[];
-  return { total, items: rows.map(toRelease) };
+  return { total, items: rows.map(toRelease), counts };
+}
+
+/**
+ * One level of the folder tree (D75), from the releases the scan found, not the disk: the subfolders of `path`
+ * that hold releases, each with its counts, and the releases directly in `path`.
+ */
+export function folderTree(db: Db, root: "library" | "inbox", path: string): FolderTreeDto {
+  const base = path.replace(/^\/+|\/+$/g, "");
+  const scope = scopeCondition(root, base)!;
+  const rows = db.prepare(
+    `SELECT c.folder, s.state FROM candidate c LEFT JOIN release_summary s ON s.candidate_id = c.id WHERE ${scope.sql}`,
+  ).all(...scope.args) as { folder: string; state: string | null }[];
+  const prefix = storedFolder(root, base);
+  const children = new Map<string, FolderNodeDto>();
+  let here = 0, withChanges = 0;
+  for (const r of rows) {
+    const changes = r.state === "ready" || r.state === "choices" ? 1 : 0;
+    withChanges += changes;
+    const rest = r.folder === prefix ? "" : prefix ? r.folder.slice(prefix.length + 1) : r.folder;
+    if (!rest) {
+      here++;
+      continue;
+    }
+    const [name, ...deeper] = rest.split("/");
+    const node = children.get(name) ??
+      { name, path: base ? `${base}/${name}` : name, releases: 0, withChanges: 0, hasChildren: false };
+    node.releases++;
+    node.withChanges += changes;
+    if (deeper.length) node.hasChildren = true;
+    children.set(name, node);
+  }
+  return {
+    root,
+    path: base,
+    releases: rows.length,
+    withChanges,
+    here,
+    children: [...children.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true })
+    ),
+  };
 }
 
 export function getRelease(db: Db, id: number): { release: ReleaseRow; files: StoredFile[] } | undefined {

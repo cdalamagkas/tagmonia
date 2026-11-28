@@ -20,7 +20,7 @@ import { folderCoverPath, readFolderCover, removeFolderCover, writeFolderCover }
 import { coverWrites, getCover } from "../db/repo/covers.ts";
 import type { Picture } from "../tagio/mod.ts";
 import { backupPictures, type PictureRef, pictureShas, readBlob, restorePictures, storeBlob } from "./blobs.ts";
-import { applyRenames, destinationOf, planRenames, type RenamePlan, undoRenames } from "../files/rename.ts";
+import { applyRenames, destinationOf, planRenames, type RenamePlan, TakenNames, undoRenames } from "../files/rename.ts";
 
 export interface WriteDeps {
   db: Db;
@@ -48,7 +48,7 @@ export function renamePlanFor(
   proposal: { candidateId: number; fields: ReviewedRow[] },
   written = false,
   /** Every path in the library, when the caller plans many albums at once (the library list). */
-  taken?: string[],
+  taken?: string[] | TakenNames,
 ): RenamePlan | null {
   // An inbox album always moves into the library: that is what the inbox is for (D57).
   const inbox = inInbox(db, proposal.candidateId);

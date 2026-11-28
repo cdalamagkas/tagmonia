@@ -18,6 +18,7 @@ import { InboxWatcher } from "./inbox/watch.ts";
 import { createLogger } from "./log.ts";
 import { createMusicBrainzClient, createSubmissionClients } from "./providers/musicbrainz/mod.ts";
 import { registerFollowUpJob, registerSubmissionJobs } from "./jobs/submission.ts";
+import { refreshSummaries } from "./library/summary.ts";
 import type { SourceProvider } from "./providers/enrichment.ts";
 import { createAcoustIdSource, type FingerprintSource } from "./identify/acoustid_source.ts";
 import { registerProviderTestJob } from "./jobs/provider_test.ts";
@@ -52,6 +53,8 @@ async function main() {
     ignore: () => settings.scanner.ignore,
     logger,
     onCandidatesTouched: (ids) => enqueueIdentify(queue, ids),
+    // New, moved or removed files can change any release's count (D75): recompute now, in the background job.
+    afterScan: () => refreshSummaries(db, namingOf(settings)),
   });
   // Credentials (§14.3, D46): environment variables win; otherwise the encrypted store behind the providers page.
   const vault = await Vault.open({ secretKey: config.secretKey, configDir: config.configDir });

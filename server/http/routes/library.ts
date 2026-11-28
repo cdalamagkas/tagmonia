@@ -5,6 +5,7 @@ import type {
   CoverProposalDto,
   CurrentCoverDto,
   EditionDto,
+  FolderTreeDto,
   IdentificationDto,
   JobDto,
   LibraryFileDto,
@@ -14,7 +15,7 @@ import type {
   ScanJobDto,
 } from "../../../shared/types.ts";
 import type { Db } from "../../db/db.ts";
-import { getRelease, librarySummary, listReleases, type StoredFile } from "../../db/repo/library.ts";
+import { folderTree, getRelease, librarySummary, listReleases, type StoredFile } from "../../db/repo/library.ts";
 import { enqueueScan, INBOX_SCAN_JOB, SCAN_JOB } from "../../jobs/scan.ts";
 import { REFRESH_JOB } from "../../jobs/refresh.ts";
 import { identificationState, matchesFor, type StoredMatch } from "../../db/repo/matches.ts";
@@ -41,15 +42,8 @@ import { getSearchTerms, searchTermsSchema, setSearchTerms } from "../../db/repo
 import { mbidSchema } from "../../providers/musicbrainz/schema.ts";
 import { getEvidenceLink, removeEvidenceLink, setEvidenceLink } from "../../db/repo/evidence.ts";
 import { canonicalUrl, isYouTubeHost, parseYouTubeUrl } from "../../providers/youtube.ts";
-import type {
-  FolderListDto,
-  ProposalDto,
-  ProposalResponse,
-  ReleaseChangesDto,
-  RenameProposalDto,
-} from "../../../shared/types.ts";
-import { changesToWrite, openChoices } from "../../../shared/changes.ts";
-import { inInbox, renamePlanFor } from "../../write/apply.ts";
+import type { FolderListDto, ProposalDto, ProposalResponse } from "../../../shared/types.ts";
+import { refreshSummaries, releaseChanges, renameDto } from "../../library/summary.ts";
 import { destinationOf, recentDestinations, setDestination } from "../../files/rename.ts";
 import { validateDestination } from "../../../shared/naming.ts";
 import { INBOX, PathEscapeError, Roots } from "../../fs/safe_path.ts";
@@ -158,88 +152,21 @@ export async function listFolders(musicDir: string, path: string): Promise<{ fol
   return { folders: folders.slice(0, MAX_LISTED_FOLDERS), truncated: folders.length > MAX_LISTED_FOLDERS };
 }
 
-/** The new names a write of an open proposal would give (D57); null when renaming is off or nothing changes. */
-function renameDto(
-  db: Db,
-  naming: { template: string; renameLibrary: boolean } | undefined,
-  p: NonNullable<ReturnType<typeof latestProposal>>,
-  taken?: string[],
-): RenameProposalDto | null {
-  if (!["draft", "needs_review", "approved"].includes(p.state)) return null;
-  const plan = renamePlanFor(db, naming, p, false, taken);
-  if (!plan || plan.moves.length === 0) return null;
-  const folders = [...new Set(plan.moves.map((m) => m.to.split("/").slice(0, -1).join("/")))];
-  const inbox = inInbox(db, p.candidateId);
-  return {
-    // An inbox album always moves into the library: no choice to offer.
-    include: inbox || !p.renameSkip,
-    inbox,
-    folder: folders.length === 1 ? folders[0] : commonFolder(folders),
-    moves: plan.moves,
-    conflicts: plan.conflicts,
-  };
-}
-
-/**
- * The latest prepared changes of each release (D61), for the library list: counted with the Changes tab's own
- * rules (shared/changes.ts), the cover and the move included.
- */
-export function releaseChanges(
-  db: Db,
-  naming: { template: string; renameLibrary: boolean } | undefined,
-  ids: number[],
-): Map<number, ReleaseChangesDto | null> {
-  const out = new Map<number, ReleaseChangesDto | null>();
-  let taken: string[] | undefined;
-  for (const id of ids) {
-    const p = latestProposal(db, id);
-    if (!p || p.state === "discarded") {
-      out.set(id, null);
-      continue;
-    }
-    if (p.state === "written") {
-      out.set(id, { state: "written", count: 0, choices: 0 });
-      continue;
-    }
-    const hash = (db.prepare("SELECT content_hash FROM candidate WHERE id = ?").get(id) as { content_hash: string })
-      .content_hash;
-    const w = coverWrites(getCover(db, p.id));
-    // One list of the library's paths for every album's rename preview, not one per album.
-    if (naming?.renameLibrary || inInbox(db, id) || destinationOf(db, id) !== null) {
-      taken ??= (db.prepare("SELECT path FROM library_file").all() as { path: string }[]).map((r) => r.path);
-    }
-    const counted = {
-      fields: p.fields,
-      cover: { writes: w.embed || w.folder },
-      rename: renameDto(db, naming, p, taken),
-    };
-    const count = changesToWrite(counted);
-    const choices = openChoices(counted);
-    out.set(id, {
-      state: p.basedOnHash !== hash ? "stale" : choices > 0 ? "choices" : count > 0 ? "ready" : "none",
-      count,
-      choices,
-    });
-  }
-  return out;
-}
-
-function commonFolder(folders: string[]): string {
-  let common = folders[0].split("/");
-  for (const f of folders.slice(1)) {
-    const parts = f.split("/");
-    let i = 0;
-    while (i < common.length && common[i] === parts[i]) i++;
-    common = common.slice(0, i);
-  }
-  return common.join("/");
-}
-
 const listQuery = z.object({
   q: z.string().max(200).optional(),
+  /** `root` is the library list's name for it (D75); `in` stays accepted. */
   in: z.enum(["inbox", "library"]).optional(),
+  root: z.enum(["inbox", "library"]).optional(),
+  folder: z.string().max(4000).optional(),
+  status: z.enum(["ready", "choices", "stale", "complete", "unidentified", "nomatch"]).optional(),
+  sort: z.enum(["artist", "album", "folder", "added", "changes"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+const treeQuery = z.object({
+  root: z.enum(["inbox", "library"]).default("library"),
+  path: z.string().max(4000).default(""),
 });
 
 /** The proposal's cover for the review, with what the release's files carry now (D49). */
@@ -374,12 +301,20 @@ export function libraryRoutes(deps: LibraryRouteDeps) {
     .get("/releases", (c) => {
       const q = listQuery.safeParse(c.req.query());
       if (!q.success) return c.json({ error: "invalid query" }, 400);
-      const list = listReleases(db, q.data);
-      const changes = releaseChanges(db, deps.naming?.(), list.items.map((r) => r.id));
-      const body: ReleaseList = {
-        total: list.total,
-        items: list.items.map((r) => ({ ...r, changes: changes.get(r.id) ?? null })),
-      };
+      if (q.data.folder && !q.data.root && !q.data.in) return c.json({ error: "a folder needs a root" }, 400);
+      // Filtering and sorting by changes need every release's count, not only this page's (D75).
+      refreshSummaries(db, deps.naming?.());
+      const { root, in: legacy, ...rest } = q.data;
+      const body: ReleaseList = listReleases(db, { ...rest, in: root ?? legacy });
+      return c.json(body);
+    })
+    // One level of the folder tree (D75): built from the releases, not the disk.
+    .get("/tree", (c) => {
+      const q = treeQuery.safeParse({ root: c.req.query("root"), path: c.req.query("path") ?? "" });
+      if (!q.success) return c.json({ error: "invalid query" }, 400);
+      if (q.data.root === "inbox" && !deps.inbox) return c.json({ error: "no inbox is set up" }, 404);
+      refreshSummaries(db, deps.naming?.());
+      const body: FolderTreeDto = folderTree(db, q.data.root, q.data.path);
       return c.json(body);
     })
     // The cover a release has now, as a small JPEG; the ETag changes when the source file does (D50).
