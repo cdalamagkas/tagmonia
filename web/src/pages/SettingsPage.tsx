@@ -6,6 +6,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { CredentialFieldDto, ProviderDto, SettingsDto } from "../../../shared/types.ts";
 import { api } from "../api.ts";
+import { switchState } from "../providers.ts";
 import { when } from "../format.ts";
 import {
   activeTemplate,
@@ -73,6 +74,7 @@ function ProviderCard({ p, onChanged }: { p: ProviderDto; onChanged: () => Promi
       .map((f) => [f.key, values[f.key] === "" ? null : values[f.key]]),
   );
   const health = p.health;
+  const toggle = switchState(p);
 
   return (
     <section class="tm-card tm-provider">
@@ -83,12 +85,12 @@ function ProviderCard({ p, onChanged }: { p: ProviderDto; onChanged: () => Promi
           </h2>
           <p class="tm-muted tm-section-note">{p.help}</p>
         </div>
-        {p.enabled !== null && (
-          <label class="tm-check">
+        {toggle && (
+          <label class="tm-check" title={toggle.hint ?? undefined}>
             <input
               type="checkbox"
-              checked={p.enabled}
-              disabled={busy}
+              checked={toggle.checked}
+              disabled={busy || toggle.disabled}
               onChange={(e) => {
                 const enabled = e.currentTarget.checked;
                 act(async () => {
@@ -98,6 +100,7 @@ function ProviderCard({ p, onChanged }: { p: ProviderDto; onChanged: () => Promi
               }}
             />
             Use {p.name}
+            {toggle.hint && <span class="tm-muted tm-small-note">({toggle.hint.toLowerCase()})</span>}
           </label>
         )}
       </div>
