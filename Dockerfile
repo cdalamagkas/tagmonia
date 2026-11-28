@@ -27,6 +27,8 @@ COPY --from=build /app/shared ./shared
 COPY --from=build /app/server ./server
 COPY --from=build /app/web/dist ./web/dist
 COPY THIRD_PARTY_NOTICES.md ./
+# `docker exec -it tagmonia reset-password [username]` (D71).
+COPY --chmod=755 docker/reset-password /usr/local/bin/reset-password
 RUN mkdir -p /music /config && chown 1000:1000 /config && chmod -R a+rX /deno-dir /app
 USER 1000:1000
 EXPOSE 8080

@@ -1150,3 +1150,6 @@ a.tm-button.tm-sso:hover {
   text-align: center;
   margin: 4px 0;
 }
+.tm-password-form {
+  max-width: 420px;
+}

@@ -20,7 +20,14 @@ import {
 import type { LoginThrottle } from "../auth/ratelimit.ts";
 import { type ActiveSession, safeEqual, type SessionStore } from "../auth/sessions.ts";
 import type { Db } from "../db/db.ts";
-import { countUsers, createFirstAdmin, findOrCreateExternalUser, findUserByName } from "../db/repo/users.ts";
+import {
+  countUsers,
+  createFirstAdmin,
+  findLocalUser,
+  findOrCreateExternalUser,
+  findUserByName,
+  setPassword,
+} from "../db/repo/users.ts";
 import { OidcError, type OidcLogin } from "../auth/oidc.ts";
 import { type TrustedHeaderSettings, trustedUser } from "../auth/trusted_header.ts";
 import type { Logger } from "../log.ts";
@@ -69,6 +76,11 @@ const credentialsSchema = z.object({
   username: z.string().trim().min(1).max(64).regex(/^[^\s\p{Cc}]+$/u, "no spaces or control characters"),
   password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
 });
+
+const passwordChangeSchema = z.object({
+  current: z.string().min(1).max(MAX_PASSWORD_LENGTH),
+  next: z.string().min(MIN_PASSWORD_LENGTH, `at least ${MIN_PASSWORD_LENGTH} characters`).max(MAX_PASSWORD_LENGTH),
+}).strict();
 
 const setupSchema = credentialsSchema.extend({
   password: z.string().min(MIN_PASSWORD_LENGTH, `at least ${MIN_PASSWORD_LENGTH} characters`).max(
@@ -218,6 +230,33 @@ export function authRoutes(deps: AuthDeps) {
 
   // Behind requireSession + CSRF (mounted after them in app.ts).
   const signedIn = new Hono<AuthEnv>();
+  // Change your own password (D71): local accounts only; the current password first, throttled like login.
+  // Other sessions of the account end; this one stays.
+  signedIn.post("/password", async (c) => {
+    const s = c.get("session");
+    if (s.externalId !== null) {
+      return c.json({ error: "this account signs in through your identity provider or proxy, not a password" }, 409);
+    }
+    const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid request" }, 400);
+    const keys = [`password:${s.userId}`];
+    const wait = throttle.retryAfterMs(keys);
+    if (wait > 0) {
+      c.header("Retry-After", String(Math.ceil(wait / 1000)));
+      return c.json({ error: "too many failed attempts; try again later" }, 429);
+    }
+    const user = findLocalUser(db, s.username);
+    if (!user || !(await verifyPassword(parsed.data.current, user.passwordHash))) {
+      throttle.fail(keys);
+      logger.warn("password change refused: wrong current password", { user: s.username });
+      return c.json({ error: "the current password is not right" }, 403);
+    }
+    throttle.succeed(keys);
+    const ended = setPassword(db, s.userId, await hashPassword(parsed.data.next), s.idHash);
+    logger.info("password changed", { user: s.username, otherSessionsEnded: ended });
+    return c.body(null, 204);
+  });
+
   signedIn.post("/logout", (c) => {
     sessions.destroy(c.get("session").idHash);
     deleteCookie(c, SESSION_COOKIE, { path: "/", secure });

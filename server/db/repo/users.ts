@@ -56,6 +56,25 @@ export function findOrCreateExternalUser(db: Db, externalId: string, name: strin
   throw new Error("cannot find a free username");
 }
 
+/** A local (password) account by name; accounts from single sign-on or a proxy have no password. */
+export function findLocalUser(db: Db, username: string): UserWithHash | undefined {
+  const u = findUserByName(db, username);
+  if (!u) return undefined;
+  const r = db.prepare("SELECT external_id FROM app_user WHERE id = ?").get(u.id) as { external_id: string | null };
+  return r.external_id === null ? u : undefined;
+}
+
+/**
+ * Sets a local account's password (D71) and ends its sessions, all but `keepSession` (the one changing it in
+ * Settings stays signed in). Returns the number of sessions ended.
+ */
+export function setPassword(db: Db, userId: number, passwordHash: string, keepSession?: string): number {
+  db.prepare("UPDATE app_user SET password_hash = ? WHERE id = ? AND external_id IS NULL").run(passwordHash, userId);
+  return Number(
+    db.prepare("DELETE FROM session WHERE user_id = ? AND id_hash IS NOT ?").run(userId, keepSession ?? null).changes,
+  );
+}
+
 export interface SessionRow {
   userId: number;
   username: string;
