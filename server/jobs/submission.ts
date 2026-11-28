@@ -106,7 +106,7 @@ export function registerSubmissionJobs(queue: JobQueue, deps: SubmissionJobDeps)
       fail(s.id, `Could not prepare the submission: ${(e as Error).message}`.slice(0, 300));
       return null;
     }
-  });
+  }, { first: true });
 
   queue.register(SUBMISSION_VERIFY_JOB, async ({ job, signal }) => {
     const p = z.object({ submissionId: z.number().int().positive(), releaseMbid: mbidSchema }).safeParse(job.payload);
@@ -140,7 +140,7 @@ export function registerSubmissionJobs(queue: JobQueue, deps: SubmissionJobDeps)
     }, now());
     deps.onReturned(s.candidateId, rel.value.id, s.server);
     return { releaseMbid: rel.value.id };
-  });
+  }, { first: true });
 }
 
 /**
@@ -162,7 +162,7 @@ export function registerFollowUpJob(
     const status = followUpStatus(rel.value, s.isrcs, now());
     updateSubmission(deps.db, s.id, { followUpStatus: status }, now());
     return status;
-  });
+  }, { first: true });
 }
 
 export function followUpDedupeKey(submissionId: number): string {

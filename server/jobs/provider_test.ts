@@ -202,7 +202,7 @@ export function registerProviderTestJob(queue: JobQueue, deps: ProviderTestDeps)
        ON CONFLICT(provider) DO UPDATE SET ok = excluded.ok, message = excluded.message, checked_at = excluded.checked_at`,
     ).run(p.data.provider, result.ok ? 1 : 0, result.message, now());
     return result;
-  });
+  }, { first: true });
 }
 
 export function providerTestDedupeKey(id: string): string {

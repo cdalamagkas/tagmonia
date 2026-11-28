@@ -1,6 +1,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { JobQueue, PermanentJobError } from "../../server/jobs/queue.ts";
-import { registerWriteJobs, type WriteJobDeps } from "../../server/jobs/write.ts";
+import { registerWriteJobs } from "../../server/jobs/write.ts";
+import { registerProviderTestJob } from "../../server/jobs/provider_test.ts";
+import { registerFollowUpJob, registerSubmissionJobs } from "../../server/jobs/submission.ts";
 import { nullLogger } from "../../server/log.ts";
 import { memoryDb } from "../helpers/app.ts";
 
@@ -137,20 +139,24 @@ Deno.test("kinds registered first run before older queued jobs, oldest first amo
   db.close();
 });
 
-Deno.test("writes and undos the user started do not wait behind identification (D76)", async () => {
+Deno.test("jobs the user started and waits on do not wait behind identification (D76)", async () => {
   const { db, queue } = await setup();
-  const seen: (string | undefined)[] = [];
-  let w = 0, u = 0;
+  const kinds = ["write", "undo", "provider_test", "submission_check", "submission_verify", "submission_follow_ups"];
+  const ids: number[] = [];
+  let seen: (string | undefined)[] = [];
   queue.register("identify", () => {
-    seen.push(queue.get(w)?.state, queue.get(u)?.state);
+    seen = ids.map((id) => queue.get(id)?.state);
     return Promise.resolve(null);
   });
   // The payloads are invalid, so the handlers fail before touching their dependencies: only the order matters here.
-  registerWriteJobs(queue, { logger: nullLogger } as unknown as WriteJobDeps);
+  const deps = { logger: nullLogger, db } as never;
+  registerWriteJobs(queue, deps);
+  registerProviderTestJob(queue, deps);
+  registerSubmissionJobs(queue, deps);
+  registerFollowUpJob(queue, deps);
   queue.enqueue("identify", {});
-  w = queue.enqueue("write", {}).id;
-  u = queue.enqueue("undo", {}).id;
+  for (const k of kinds) ids.push(queue.enqueue(k, {}).id);
   await queue.drain();
-  assertEquals(seen, ["failed", "failed"], "both had run when the older identification started");
+  assertEquals(seen, kinds.map(() => "failed"), "all had run when the older identification started");
   db.close();
 });
