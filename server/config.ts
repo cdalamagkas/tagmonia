@@ -28,6 +28,17 @@ const envSchema = z.object({
   TAGMONIA_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   /** Directory of the built SPA; unset in dev, where Vite serves it. */
   TAGMONIA_WEB_DIR: z.string().min(1).optional(),
+  // Single sign-on with OpenID Connect (D69): all of issuer, client ID, secret and group, or none.
+  TAGMONIA_OIDC_ISSUER: z.url({ protocol: /^https$/ }).optional(),
+  TAGMONIA_OIDC_CLIENT_ID: z.string().min(1).max(500).optional(),
+  TAGMONIA_OIDC_CLIENT_SECRET: z.string().min(1).optional(),
+  TAGMONIA_OIDC_CLIENT_SECRET_FILE: z.string().min(1).optional(),
+  /** Only members of this group get in (D69). */
+  TAGMONIA_OIDC_GROUP: z.string().min(1).max(200).optional(),
+  TAGMONIA_OIDC_GROUPS_CLAIM: z.string().min(1).max(100).default("groups"),
+  TAGMONIA_OIDC_SCOPES: z.string().min(1).max(500).default("openid profile email groups"),
+  /** The sign-in button's label: "Sign in with <name>". */
+  TAGMONIA_OIDC_NAME: z.string().min(1).max(60).optional(),
 });
 
 export interface Config {
@@ -51,6 +62,17 @@ export interface Config {
   readOnly: boolean;
   logLevel: "debug" | "info" | "warn" | "error";
   webDir?: string;
+  /** Single sign-on (D69); the secret is never logged or returned: resolve it with `resolveOidcSecret`. */
+  oidc?: {
+    issuer: string;
+    clientId: string;
+    clientSecret?: string;
+    clientSecretFile?: string;
+    group: string;
+    groupsClaim: string;
+    scopes: string;
+    name: string;
+  };
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Deno.env.toObject()): Config {
@@ -69,6 +91,23 @@ export function loadConfig(env: Record<string, string | undefined> = Deno.env.to
   if ((e.TAGMONIA_JELLYFIN_KEY || e.TAGMONIA_JELLYFIN_KEY_FILE) && !e.TAGMONIA_JELLYFIN_URL) {
     throw new Error("TAGMONIA_JELLYFIN_URL is required with a Jellyfin key");
   }
+  const oidcSet = [
+    e.TAGMONIA_OIDC_ISSUER,
+    e.TAGMONIA_OIDC_CLIENT_ID,
+    e.TAGMONIA_OIDC_CLIENT_SECRET ?? e.TAGMONIA_OIDC_CLIENT_SECRET_FILE,
+    e.TAGMONIA_OIDC_GROUP,
+  ];
+  if (oidcSet.some(Boolean) && !oidcSet.every(Boolean)) {
+    throw new Error(
+      "Single sign-on needs all of TAGMONIA_OIDC_ISSUER, TAGMONIA_OIDC_CLIENT_ID, TAGMONIA_OIDC_CLIENT_SECRET (or _FILE) and TAGMONIA_OIDC_GROUP",
+    );
+  }
+  if (e.TAGMONIA_OIDC_CLIENT_SECRET && e.TAGMONIA_OIDC_CLIENT_SECRET_FILE) {
+    throw new Error("Set only one of TAGMONIA_OIDC_CLIENT_SECRET and TAGMONIA_OIDC_CLIENT_SECRET_FILE");
+  }
+  if (e.TAGMONIA_OIDC_ISSUER && !e.TAGMONIA_PUBLIC_URL) {
+    throw new Error("Single sign-on needs TAGMONIA_PUBLIC_URL: the identity provider sends the browser back to it");
+  }
   return {
     musicDir: e.TAGMONIA_MUSIC_DIR,
     inboxDir: e.TAGMONIA_INBOX_DIR,
@@ -86,6 +125,18 @@ export function loadConfig(env: Record<string, string | undefined> = Deno.env.to
     readOnly: e.TAGMONIA_READ_ONLY,
     logLevel: e.TAGMONIA_LOG_LEVEL,
     webDir: e.TAGMONIA_WEB_DIR,
+    oidc: e.TAGMONIA_OIDC_ISSUER
+      ? {
+        issuer: e.TAGMONIA_OIDC_ISSUER,
+        clientId: e.TAGMONIA_OIDC_CLIENT_ID!,
+        clientSecret: e.TAGMONIA_OIDC_CLIENT_SECRET,
+        clientSecretFile: e.TAGMONIA_OIDC_CLIENT_SECRET_FILE,
+        group: e.TAGMONIA_OIDC_GROUP!,
+        groupsClaim: e.TAGMONIA_OIDC_GROUPS_CLAIM,
+        scopes: e.TAGMONIA_OIDC_SCOPES,
+        name: e.TAGMONIA_OIDC_NAME ?? new URL(e.TAGMONIA_OIDC_ISSUER).hostname,
+      }
+      : undefined,
   };
 }
 
@@ -115,6 +166,11 @@ export function resolveAcoustidKey(config: Config): Promise<string | undefined> 
 /** The Jellyfin API key (§13, D44); read at startup like the AcoustID key. */
 export function resolveJellyfinKey(config: Config): Promise<string | undefined> {
   return resolveSecret(config.jellyfinKey, config.jellyfinKeyFile, "TAGMONIA_JELLYFIN_KEY");
+}
+
+/** The OIDC client secret (D69); read at startup. */
+export function resolveOidcSecret(config: Config): Promise<string | undefined> {
+  return resolveSecret(config.oidc?.clientSecret, config.oidc?.clientSecretFile, "TAGMONIA_OIDC_CLIENT_SECRET");
 }
 
 /**

@@ -34,6 +34,28 @@ export function createFirstAdmin(db: Db, username: string, passwordHash: string,
   return r && { id: r.id, username: r.username, isAdmin: true };
 }
 
+/**
+ * The user an identity provider signed in (D69), created on first sign-in. Matched by `externalId` (issuer and
+ * subject) only. The name is the provider's, made unique with "-2", "-3"… when a local user has it.
+ * External users have no password: "!" is not a hash, so the password form never lets them in.
+ */
+export function findOrCreateExternalUser(db: Db, externalId: string, name: string, now: number): User {
+  const found = db.prepare("SELECT id, username, is_admin FROM app_user WHERE external_id = ?").get(externalId) as
+    | { id: number; username: string; is_admin: number }
+    | undefined;
+  if (found) return { id: found.id, username: found.username, isAdmin: found.is_admin === 1 };
+  const base = name.trim().slice(0, 60) || "user";
+  for (let n = 1; n < 1000; n++) {
+    const username = n === 1 ? base : `${base}-${n}`;
+    const r = db.prepare(
+      `INSERT INTO app_user (username, password_hash, is_admin, created_at, external_id)
+       VALUES (?, '!', 1, ?, ?) ON CONFLICT DO NOTHING RETURNING id, username`,
+    ).get(username, now, externalId) as { id: number; username: string } | undefined;
+    if (r) return { id: r.id, username: r.username, isAdmin: true };
+  }
+  throw new Error("cannot find a free username");
+}
+
 export interface SessionRow {
   userId: number;
   username: string;

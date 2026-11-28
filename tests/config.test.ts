@@ -41,3 +41,32 @@ Deno.test("a Jellyfin key needs a Jellyfin URL; the key comes from a variable or
   assertEquals(await resolveJellyfinKey(c), SECRET);
   assertEquals(await resolveJellyfinKey(loadConfig({})), undefined);
 });
+
+Deno.test("single sign-on: all four settings or none, an https issuer, and the public URL (D69)", () => {
+  const base = { TAGMONIA_PUBLIC_URL: "https://tagmonia.example" };
+  const sso = {
+    TAGMONIA_OIDC_ISSUER: "https://auth.example/application/o/tagmonia/",
+    TAGMONIA_OIDC_CLIENT_ID: "tagmonia",
+    TAGMONIA_OIDC_CLIENT_SECRET: "s",
+    TAGMONIA_OIDC_GROUP: "tagmonia",
+  };
+  const c = loadConfig({ ...base, ...sso });
+  assertEquals(
+    [c.oidc?.issuer, c.oidc?.group, c.oidc?.groupsClaim, c.oidc?.name],
+    [sso.TAGMONIA_OIDC_ISSUER, "tagmonia", "groups", "auth.example"],
+  );
+  assertEquals(loadConfig(base).oidc, undefined);
+  assertThrows(() => loadConfig({ ...base, TAGMONIA_OIDC_ISSUER: sso.TAGMONIA_OIDC_ISSUER }), Error, "needs all of");
+  const { TAGMONIA_OIDC_GROUP: _g, ...noGroup } = sso;
+  assertThrows(() => loadConfig({ ...base, ...noGroup }), Error, "TAGMONIA_OIDC_GROUP");
+  assertThrows(() => loadConfig({ ...sso }), Error, "TAGMONIA_PUBLIC_URL");
+  assertThrows(() => loadConfig({ ...base, ...sso, TAGMONIA_OIDC_ISSUER: "http://auth.example/" }), Error);
+  const secretMessage = (() => {
+    try {
+      loadConfig({ ...base, ...sso, TAGMONIA_OIDC_ISSUER: "http://auth.example/" });
+    } catch (e) {
+      return (e as Error).message;
+    }
+  })();
+  assertEquals(secretMessage?.includes("s3cret") || secretMessage?.includes('"s"'), false, "no value echoed");
+});

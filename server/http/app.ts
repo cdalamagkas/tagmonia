@@ -3,6 +3,7 @@
  * security headers -> body limit -> /api/health -> Origin check -> public auth
  * routes -> session required -> CSRF -> everything else.
  */
+import type { OidcLogin } from "../auth/oidc.ts";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { CurrentCovers } from "../covers/current.ts";
@@ -49,6 +50,8 @@ export interface AppContext {
   tagio?: Pick<TagIO, "read">;
   /** Recognises provider release links for "not in MusicBrainz" proposals (§10.4, D51). */
   harmony?: Pick<HarmonyRegistry, "providerForUrl" | "isReleaseUrl">;
+  /** Single sign-on (D69), when configured. */
+  oidc?: { login: OidcLogin; name: string } | null;
 }
 
 export function createApp(ctx: AppContext): Hono<AuthEnv> {
@@ -84,6 +87,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
     logger: ctx.logger,
     publicUrl: config.publicUrl,
     sessionMaxMs: ctx.settings.auth.sessionMaxDays * 86_400_000,
+    oidc: ctx.oidc,
   });
   app.route("/api/auth", auth.public);
 

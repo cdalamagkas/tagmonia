@@ -1137,3 +1137,16 @@ table.tm-review {
   display: grid;
   gap: 6px;
 }
+/* Single sign-on (D69) */
+a.tm-button.tm-sso {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+a.tm-button.tm-sso:hover {
+  color: #fff;
+}
+.tm-or {
+  text-align: center;
+  margin: 4px 0;
+}

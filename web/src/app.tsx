@@ -40,7 +40,7 @@ export function App() {
       </main>
     );
   } else if (auth.setupRequired) body = <AuthPage mode="setup" onDone={setAuth} />;
-  else if (!auth.user) body = <AuthPage mode="login" onDone={setAuth} />;
+  else if (!auth.user) body = <AuthPage mode="login" sso={auth.sso} onDone={setAuth} />;
   else if (route.page === "library") body = <LibraryPage />;
   else if (route.page === "release") body = <ReleasePage id={route.id} />;
   else if (route.page === "settings") body = <SettingsPage />;
