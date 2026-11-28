@@ -864,15 +864,7 @@ td.tm-change-off .tm-change-new {
   font-size: 0.8rem;
 }
 .tm-step-done .tm-step-n,
-.tm-step-skipped @media (max-width: 600px) {
-  .tm-steps {
-    gap: 6px 14px;
-  }
-  .tm-step + .tm-step::before {
-    display: none;
-  }
-}
-.tm-step-n {
+.tm-step-skipped .tm-step-n {
   border-color: var(--tm-navy);
   color: var(--tm-navy);
 }
@@ -883,18 +875,18 @@ td.tm-change-off .tm-change-new {
   color: var(--tm-navy);
   font-weight: var(--tm-weight-label);
 }
-.tm-step-current @media (max-width: 600px) {
+.tm-step-current .tm-step-n {
+  background: var(--tm-navy);
+  border-color: var(--tm-navy);
+  color: var(--tm-paper);
+}
+@media (max-width: 600px) {
   .tm-steps {
     gap: 6px 14px;
   }
   .tm-step + .tm-step::before {
     display: none;
   }
-}
-.tm-step-n {
-  background: var(--tm-navy);
-  border-color: var(--tm-navy);
-  color: var(--tm-paper);
 }
 .tm-step-section {
   margin: 16px 0;
