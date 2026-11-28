@@ -1153,3 +1153,130 @@ a.tm-button.tm-sso:hover {
 .tm-password-form {
   max-width: 420px;
 }
+
+/* Library: folder tree beside the release list (D75) */
+main.tm-wide {
+  max-width: 1440px;
+}
+.tm-library {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.tm-library-tree {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 12px 8px;
+}
+.tm-library-list {
+  min-width: 0;
+}
+.tm-drawer-toggle {
+  display: none;
+  margin-bottom: 8px;
+}
+.tm-library-crumbs {
+  margin-bottom: 8px;
+}
+.tm-library-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.tm-library-controls .tm-search {
+  flex: 1 1 240px;
+  width: auto;
+  margin-bottom: 0;
+}
+.tm-inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--tm-slate);
+}
+.tm-inline-field select {
+  font: inherit;
+  color: var(--tm-navy);
+  padding: 4px 8px;
+  border: 1px solid var(--tm-rule);
+  border-radius: var(--tm-radius);
+  background: var(--tm-paper);
+}
+.tm-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tm-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 6px;
+  padding-right: 6px;
+}
+.tm-tree-row:hover {
+  background: var(--tm-mist);
+}
+.tm-tree-row.tm-on {
+  background: var(--tm-mist);
+  box-shadow: inset 3px 0 0 var(--tm-orange);
+}
+.tm-tree-root .tm-tree-name {
+  font-weight: var(--tm-weight-name);
+}
+.tm-tree-toggle {
+  flex: 0 0 22px;
+  width: 22px;
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  color: var(--tm-slate);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+.tm-tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 5px 4px;
+  font: inherit;
+  color: var(--tm-navy);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tm-tree-counts {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.8rem;
+}
+.tm-tree-counts .tm-badge {
+  margin-left: 0;
+}
+@media (max-width: 760px) {
+  .tm-library {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tm-library-tree {
+    display: none;
+    position: static;
+    max-height: none;
+  }
+  .tm-drawer-open .tm-library-tree {
+    display: block;
+  }
+  .tm-drawer-toggle {
+    display: inline-block;
+  }
+}

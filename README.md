@@ -68,8 +68,11 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   search MusicBrainz again; if nothing fits, use them as the tags to write.
 - **Untagged files:** each is a release of its own, named by its title or file name, except a folder of untagged
   files numbered like an album (`01 …`, `02 …`), which stays one release. Search finds files by name too.
-- **Library list at a glance:** next to each release's MusicBrainz status, how many changes are ready to write, how
-  many values need your choice, or that its files are already complete.
+- **Library by folder:** a folder tree (library and inbox) beside the release list, each folder with its album count
+  and how many have changes waiting. Pick a folder to see it and everything below it; filter by status (changes
+  ready, needs a choice, not identified, no match, complete…) and sort (artist, album, folder, recently added, most
+  changes). The view stays in the address, so Back from an album returns to it. Next to each release: its
+  MusicBrainz status and how many changes are ready to write.
 - **Naming templates** (Settings → Files): how written albums will be named. Choose a built-in template (Album
   (Year), Artist / Album (Year), Picard's default, Composer / Album (Year)) or create and save your own, each with a
   live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.

@@ -11,6 +11,7 @@ import {
   type DestinationRequest,
   type EvidenceResponse,
   type FolderListDto,
+  type FolderTreeDto,
   type HealthResponse,
   type HistoryResponse,
   type IdentificationDto,
@@ -84,16 +85,27 @@ export const api = {
   },
 
   summary: () => request<LibrarySummary>("GET", "/api/library/summary"),
-  releases: (q: string, offset: number, limit = 50, where?: "inbox" | "library") =>
+  /** A page of the library list (D75): a root and folder, a status, an order, a search. */
+  releases: (
+    v: { root: "library" | "inbox"; folder: string; status: string | null; sort: string; q: string },
+    offset: number,
+    limit = 50,
+  ) =>
     request<ReleaseList>(
       "GET",
       `/api/library/releases?${new URLSearchParams({
-        q,
+        root: v.root,
+        folder: v.folder,
+        sort: v.sort,
+        q: v.q,
         offset: String(offset),
         limit: String(limit),
-        ...(where ? { in: where } : {}),
+        ...(v.status ? { status: v.status } : {}),
       })}`,
     ),
+  /** One level of the folder tree (D75). */
+  tree: (root: "library" | "inbox", path: string) =>
+    request<FolderTreeDto>("GET", `/api/library/tree?${new URLSearchParams({ root, path })}`),
   release: (id: number) => request<ReleaseDetail>("GET", `/api/library/releases/${id}`),
   scan: () => request<ScanJobDto>("POST", "/api/library/scan"),
   identification: (id: number) => request<IdentificationDto>("GET", `/api/library/releases/${id}/identification`),

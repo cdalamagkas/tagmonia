@@ -1,6 +1,6 @@
 # Library and settings
 
-**Status:** accepted 2026-11-28 (D75), before the first release. Done: PR 1 (the library's server side).
+**Status:** accepted 2026-11-28 (D75), before the first release. Done: PR 1 (the library's server side), PR 2 (the library page).
 **Decided by the maintainer:** the library becomes a folder tree beside the release list (like Picard), with a status
 filter, sorting, bulk actions and the view in the URL; Settings becomes sections with a side menu, each with its own
 URL, and the settings that had no UI get one.
@@ -79,3 +79,29 @@ Sections at `/settings/<section>`, with a side menu (a select on a phone):
   - `GET /api/library/releases` gains `root`, `folder` (a folder and below; whole names only), `status`, `sort` and
     `counts`;
   - `GET /api/library/tree?root=&path=` is new.
+
+## PR 2 as built
+
+- **`LibraryPage`:**
+  - the tree (`web/src/components/FolderTree.tsx`) beside the list;
+  - on narrow screens, a "Folders: …" button opens the tree, and choosing a folder closes it;
+  - the old All / Library / Inbox filter is gone: the tree's two roots replace it.
+- **The tree:**
+  - the roots and the selected folder's ancestors open by themselves (so a bookmark shows where it is);
+  - other folders load when opened;
+  - every open level reloads after a scan.
+- **The list:**
+  - a breadcrumb;
+  - a search "in <folder>";
+  - Status, with the count beside each option;
+  - Sort;
+  - "9 of 10 releases in Bach".
+- **The view in the URL** (`web/src/library/view.ts`, pure and tested): replaced in place as it changes, so Back
+  from a release returns to it.
+- **Checked** in headless Chromium on 195 generated albums in nested folders, plus a 5-album inbox:
+  - the tree's counts and badges;
+  - Classical → Bach, then "Changes ready (9)" and "Most changes": 9 of 10;
+  - Back from a release gives the same view and selection;
+  - a deep link opens its ancestors;
+  - the inbox root;
+  - at 390 px, the drawer works and nothing scrolls sideways.
