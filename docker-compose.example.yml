@@ -4,6 +4,8 @@ services:
     build: .
     container_name: tagmonia
     restart: unless-stopped
+    #read_only: true # optional, with the tmpfs below
+    #tmpfs: [/tmp]
     ports:
       - "8080:8080"
     # All settings, with defaults or example values; see "Configuration" in README.md.
