@@ -215,6 +215,20 @@ setting only some of them stops Tagmonia at startup with a message naming the mi
 | `TAGMONIA_TRUSTED_GROUP`                | unset                         | Only members of this group get in. _Required for proxy sign-in_                                                                                                                                                                                                                                                                                         |
 | `TAGMONIA_TRUSTED_PROXIES`              | unset                         | The proxy's addresses or networks, comma separated; the headers count only from these. _Required for proxy sign-in_                                                                                                                                                                                                                                     |
 
+### Passwords
+
+Change your own password in **Settings → Account** (the current one first). If nobody can sign in, set a new one
+from the container; it asks twice and does not show what you type, then signs that account out everywhere:
+
+```sh
+docker exec -it tagmonia reset-password admin
+# or, in a script:
+printf '%s\n' "$NEW_PASSWORD" | docker exec -i tagmonia reset-password admin
+```
+
+`TAGMONIA_ADMIN_PASSWORD_FILE` only creates the first admin; changing it later does not reset a password. Accounts
+that sign in through your identity provider or proxy have no Tagmonia password.
+
 ### Signing in with your identity provider
 
 Besides the local admin account, Tagmonia can sign people in through an OpenID Connect provider (Authentik,

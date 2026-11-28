@@ -19,6 +19,7 @@ import {
   type LibrarySummary,
   type LockDto,
   type LockRequest,
+  type PasswordChange,
   type ProposalResponse,
   type ProposeRequest,
   type ProvidersResponse,
@@ -76,6 +77,7 @@ export const api = {
   session: async () => remember(await request<AuthState>("GET", "/api/auth/session")),
   setup: async (c: Credentials) => remember(await request<AuthState>("POST", "/api/auth/setup", c)),
   login: async (c: Credentials) => remember(await request<AuthState>("POST", "/api/auth/login", c)),
+  changePassword: (body: PasswordChange) => request<void>("POST", "/api/auth/password", body),
   logout: async () => {
     await request<void>("POST", "/api/auth/logout");
     csrfToken = null;

@@ -50,6 +50,12 @@ export interface AuthState {
   proxyRefused?: string;
 }
 
+/** POST /api/auth/password: change your own password (D71). */
+export interface PasswordChange {
+  current: string;
+  next: string;
+}
+
 export interface Credentials {
   username: string;
   password: string;
