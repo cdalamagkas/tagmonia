@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    # Every setting Tagmonia reads from the environment, with its default (or an example where there is none).
+    # Every setting you can give Tagmonia in the environment, with its default (or an example where there is none).
     # Commented lines are optional; uncomment and change what you need. Where a value can come from a file
     # (`…_FILE`, e.g. a Docker secret), set either the value or the file, not both.
     environment:
@@ -21,7 +21,6 @@ services:
       #- TAGMONIA_INBOX_DIR=/inbox # default unset: a folder for new music; written albums move into the library
       #- TAGMONIA_PORT=8080 # default 8080
       #- TAGMONIA_LOG_LEVEL=info # default info; or debug, warn, error
-      #- TAGMONIA_WEB_DIR=/app/web/dist # default in the image; only change it to serve another build of the web UI
 
       # --- Admin account and stored secrets -------------------------------------------------------------------
       # The first admin's password from a file (else you create the admin in the browser on first start).
