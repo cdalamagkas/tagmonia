@@ -72,7 +72,8 @@ providers with per-field provenance, writes Picard-compatible tags, and helps su
   and how many have changes waiting. Pick a folder to see it and everything below it; filter by status (changes
   ready, needs a choice, not identified, no match, complete…) and sort (artist, album, folder, recently added, most
   changes). The view stays in the address, so Back from an album returns to it. Next to each release: its
-  MusicBrainz status and how many changes are ready to write.
+  MusicBrainz status and how many changes are ready to write. Tick albums, or select everything in the view, to
+  identify them again or write the ready ones in one go; the others are listed with the reason.
 - **Naming templates** (Settings → Files): how written albums will be named. Choose a built-in template (Album
   (Year), Artist / Album (Year), Picard's default, Composer / Album (Year)) or create and save your own, each with a
   live example. The default is `{album} ({date:4})/{disc-}{tracknumber:02} {artist} - {title}`.

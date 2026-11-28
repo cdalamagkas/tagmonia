@@ -121,6 +121,28 @@ export interface LibrarySummary {
    * on its own (when the watcher saw new files settle, D60).
    */
   inbox: { releases: number; lastScan: ScanJobDto | null } | null;
+  /** Identifications and writes queued or running (bulk actions, D75): the page polls while any remain. */
+  jobs: { identify: number; write: number };
+}
+
+/** POST /api/library/bulk (D75): releases by id, or every release a view shows. */
+export interface BulkRequest {
+  action: "identify" | "write";
+  ids?: number[];
+  view?: {
+    root: "library" | "inbox";
+    folder: string;
+    status: ReleaseStatusFilter | null;
+    sort: ReleaseSort;
+    q: string;
+  };
+}
+
+export interface BulkResponse {
+  queued: number;
+  /** Releases left alone, and why (at most 100 listed). */
+  skipped: { id: number; name: string; reason: string }[];
+  skippedTotal: number;
 }
 
 export interface MusicServerStatus {

@@ -4,7 +4,7 @@
  * returns to it.
  */
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import type { LibrarySummary, ReleaseList, ReleaseSummary } from "../../../shared/types.ts";
+import type { BulkResponse, LibrarySummary, ReleaseList, ReleaseSummary } from "../../../shared/types.ts";
 import { api } from "../api.ts";
 import { folderLabel } from "../format.ts";
 import { inboxScanActive, MusicServerStatus, scanActive, ScanStatus } from "../components/ScanStatus.tsx";
@@ -30,6 +30,12 @@ export function LibraryPage() {
   /** Bumped when the library changed (a scan finished), so the tree loads again. */
   const [changed, setChanged] = useState(0);
   const wasActive = useRef(false);
+  /** Bulk actions (D75): the ticked releases, or everything the view shows. */
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [allInView, setAllInView] = useState(false);
+  const [confirmWrite, setConfirmWrite] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ action: "identify" | "write"; res: BulkResponse } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async (v: LibraryView, offset: number) => {
     try {
@@ -70,6 +76,10 @@ export function LibraryPage() {
     const target = `/${viewSearch(view)}`;
     if (location.pathname + location.search !== target) history.replaceState(null, "", target);
     load(view, 0);
+    // A selection belongs to the view it was made in.
+    setSelected(new Set());
+    setAllInView(false);
+    setConfirmWrite(false);
   }, [view]);
 
   // Typing searches after a pause.
@@ -83,7 +93,8 @@ export function LibraryPage() {
   // albums by itself (D60), and the list should show them without a reload.
   const lastInboxScan = useRef<number | null | undefined>(undefined);
   useEffect(() => {
-    const active = scanActive(summary) || inboxScanActive(summary);
+    const active = scanActive(summary) || inboxScanActive(summary) ||
+      !!(summary && summary.jobs.identify + summary.jobs.write > 0);
     const inboxScan = summary?.inbox?.lastScan?.finishedAt ?? null;
     const inboxChanged = lastInboxScan.current !== undefined && inboxScan !== lastInboxScan.current;
     if (summary) lastInboxScan.current = inboxScan;
@@ -111,6 +122,26 @@ export function LibraryPage() {
     await refreshSummary();
   };
 
+  const runBulk = async (action: "identify" | "write") => {
+    setBulkBusy(true);
+    setConfirmWrite(false);
+    try {
+      const res = await api.bulk(
+        allInView
+          ? { action, view: { root: view.root, folder: view.folder, status: view.status, sort: view.sort, q: view.q } }
+          : { action, ids: [...selected] },
+      );
+      setBulkResult({ action, res });
+      setSelected(new Set());
+      setAllInView(false);
+      await refreshSummary();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const select = (root: LibraryView["root"], folder: string) => {
     setView((v) => ({ ...v, root, folder }));
     setDrawer(false);
@@ -123,6 +154,9 @@ export function LibraryPage() {
   const counts = list?.counts;
   const items = list?.items ?? [];
   const total = list?.total ?? 0;
+  const loadedAll = items.length > 0 && items.every((r) => selected.has(r.id));
+  const chosen = allInView ? total : selected.size;
+  const jobs = summary?.jobs;
 
   return (
     <main class="tm-wide">
@@ -153,6 +187,14 @@ export function LibraryPage() {
             </p>
           )}
           {summary && <MusicServerStatus summary={summary} />}
+          {jobs && jobs.identify + jobs.write > 0 && (
+            <p class="tm-muted tm-small-note" role="status">
+              {[
+                jobs.identify ? `Identifying ${jobs.identify} release${jobs.identify === 1 ? "" : "s"}…` : "",
+                jobs.write ? `Writing ${jobs.write} release${jobs.write === 1 ? "" : "s"}…` : "",
+              ].filter(Boolean).join(" · ")}
+            </p>
+          )}
         </div>
         <div class="tm-actions">
           {active
@@ -227,6 +269,98 @@ export function LibraryPage() {
             </label>
           </div>
 
+          {bulkResult && (
+            <div class="tm-bulk-result" role="status">
+              <p>
+                {bulkResult.res.queued
+                  ? `${bulkResult.action === "write" ? "Writing" : "Identifying"} ${bulkResult.res.queued} release${
+                    bulkResult.res.queued === 1 ? "" : "s"
+                  }; each shows its progress and History on its page.`
+                  : "Nothing was queued."}{" "}
+                <button type="button" class="tm-linklike tm-small-link" onClick={() => setBulkResult(null)}>
+                  dismiss
+                </button>
+              </p>
+              {bulkResult.res.skippedTotal > 0 && (
+                <details class="tm-fold">
+                  <summary>
+                    {bulkResult.res.skippedTotal} left alone
+                  </summary>
+                  <ul class="tm-plain-list">
+                    {bulkResult.res.skipped.map((s) => (
+                      <li key={s.id}>
+                        <a href={`/releases/${s.id}`} onClick={onLinkClick}>{s.name}</a>:{" "}
+                        <span class="tm-muted">{s.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+
+          {chosen > 0 && (
+            <div class="tm-bulk-bar">
+              <span>
+                <strong>{chosen}</strong> selected{allInView ? " (everything in this view)" : ""}
+              </span>
+              <button
+                type="button"
+                class="tm-button tm-secondary tm-small"
+                disabled={bulkBusy}
+                onClick={() => runBulk("identify")}
+              >
+                Identify again
+              </button>
+              <button
+                type="button"
+                class="tm-button tm-small"
+                disabled={bulkBusy || !!summary?.readOnly}
+                title={summary?.readOnly ? "Read-only mode: nothing is written" : undefined}
+                onClick={() => setConfirmWrite(true)}
+              >
+                Write ready changes
+              </button>
+              <button
+                type="button"
+                class="tm-linklike tm-small-link"
+                onClick={() => {
+                  setSelected(new Set());
+                  setAllInView(false);
+                }}
+              >
+                Clear
+              </button>
+              {confirmWrite && (
+                <div class="tm-bulk-confirm" role="alertdialog" aria-label="Write ready changes">
+                  <p>
+                    Write the ready changes of up to <strong>{chosen}</strong>{" "}
+                    release{chosen === 1 ? "" : "s"}? Only releases whose changes are ready are written (none that need
+                    a choice or whose files changed); each is verified and can be undone from its own History.
+                  </p>
+                  <button type="button" class="tm-button tm-small" disabled={bulkBusy} onClick={() => runBulk("write")}>
+                    Write
+                  </button>{" "}
+                  <button
+                    type="button"
+                    class="tm-button tm-secondary tm-small"
+                    onClick={() => setConfirmWrite(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {loadedAll && !allInView && total > items.length && (
+            <p class="tm-small-note">
+              All {items.length} shown are selected.{" "}
+              <button type="button" class="tm-linklike tm-small-link" onClick={() => setAllInView(true)}>
+                Select all {total} in this view
+              </button>
+            </p>
+          )}
+
           {list && items.length === 0
             ? (
               <p class="tm-muted">
@@ -242,6 +376,17 @@ export function LibraryPage() {
                 <table class="tm-table">
                   <thead>
                     <tr>
+                      <th class="tm-col-check">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all shown"
+                          checked={allInView || loadedAll}
+                          onChange={(e) => {
+                            setAllInView(false);
+                            setSelected(e.currentTarget.checked ? new Set(items.map((r) => r.id)) : new Set());
+                          }}
+                        />
+                      </th>
                       <th class="tm-col-cover">
                         <span class="tm-sr">Cover</span>
                       </th>
@@ -256,7 +401,21 @@ export function LibraryPage() {
                   </thead>
                   <tbody>
                     {items.map((r) => (
-                      <tr key={r.id}>
+                      <tr key={r.id} class={allInView || selected.has(r.id) ? "tm-row-selected" : ""}>
+                        <td class="tm-col-check">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${r.album ?? r.single ?? "release"}`}
+                            checked={allInView || selected.has(r.id)}
+                            onChange={(e) => {
+                              const next = new Set(allInView ? items.map((x) => x.id) : selected);
+                              if (e.currentTarget.checked) next.add(r.id);
+                              else next.delete(r.id);
+                              setAllInView(false);
+                              setSelected(next);
+                            }}
+                          />
+                        </td>
                         <td class="tm-col-cover">
                           <a href={`/releases/${r.id}`} onClick={onLinkClick} tabIndex={-1} aria-hidden="true">
                             <CoverImage releaseId={r.id} size="thumb" px={48} alt="" />
