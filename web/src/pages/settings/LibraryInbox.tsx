@@ -6,7 +6,7 @@ import { Note, type NoteValue } from "./Note.tsx";
 
 export function LibraryInboxSection() {
   /** Undefined while loading, null when no inbox is configured. */
-  const [inbox, setInbox] = useState<{ releases: number } | null | undefined>(undefined);
+  const [inbox, setInbox] = useState<object | null | undefined>(undefined);
   /** How often the inbox is also looked at (D60), as saved; null while loading. */
   const [poll, setPoll] = useState<number | null>(null);
   const [note, setNote] = useState<NoteValue>(null);
@@ -38,21 +38,19 @@ export function LibraryInboxSection() {
       <h2>Inbox</h2>
       {inbox === null && (
         <p class="tm-muted tm-section-note">
-          None. Set <code>TAGMONIA_INBOX_DIR</code>{" "}
-          to a folder for new music (mounted outside the library); its albums are prepared for you and move into the
-          library when you write them.
+          No inbox is set up. Set <code>TAGMONIA_INBOX_DIR</code>{" "}
+          to a folder for new music; albums there move into the library when you write them.
         </p>
       )}
       {inbox && (
         <>
           <p class="tm-section-note">
-            {inbox.releases === 1 ? "1 album waits" : `${inbox.releases} albums wait`}{" "}
-            there. Albums in the inbox always move into the library when you write them, named by the template in{" "}
+            Albums in the inbox move into the library when you write them, named by the template in{" "}
             <a href="/settings/files" onClick={onLinkClick}>Files &amp; naming</a>.
           </p>
           <p class="tm-muted tm-small-note">
-            New albums are scanned by themselves once they have finished copying (nothing changed for 30 seconds).
-            Network shares and WSL's /mnt/c do not report changes, so the inbox is also checked on a timer.
+            New albums are picked up once they finish copying. Some network shares do not report changes, so the inbox
+            is also checked on a timer.
           </p>
           <label class="tm-inline-field">
             Check every
@@ -65,7 +63,7 @@ export function LibraryInboxSection() {
               value={poll ?? ""}
               onChange={(e) => savePoll(e.currentTarget.value)}
             />
-            minutes <span class="tm-small-note">(0: only when changes are reported)</span>
+            minutes <span class="tm-small-note">(0 turns the timer off)</span>
           </label>
         </>
       )}
