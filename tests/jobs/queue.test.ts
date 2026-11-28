@@ -1,5 +1,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { JobQueue, PermanentJobError } from "../../server/jobs/queue.ts";
+import { registerWriteJobs } from "../../server/jobs/write.ts";
+import { registerProviderTestJob } from "../../server/jobs/provider_test.ts";
+import { registerFollowUpJob, registerSubmissionJobs } from "../../server/jobs/submission.ts";
 import { nullLogger } from "../../server/log.ts";
 import { memoryDb } from "../helpers/app.ts";
 
@@ -111,5 +114,49 @@ Deno.test("an unknown job kind fails instead of blocking the queue", async () =>
   const j = queue.enqueue("mystery", {});
   await queue.drain();
   assertEquals(queue.get(j.id)!.state, "failed");
+  db.close();
+});
+
+Deno.test("kinds registered first run before older queued jobs, oldest first among them (D76)", async () => {
+  const { db, queue, advance } = await setup();
+  const ran: string[] = [];
+  const record = ({ job }: { job: { kind: string; payload: unknown } }) => {
+    ran.push(`${job.kind}${(job.payload as { n: number }).n}`);
+    return Promise.resolve(null);
+  };
+  queue.register("identify", record);
+  queue.register("write", record, { first: true });
+  queue.register("undo", record, { first: true });
+  for (let n = 1; n <= 3; n++) queue.enqueue("identify", { n });
+  queue.enqueue("write", { n: 1 });
+  queue.enqueue("undo", { n: 1 });
+  queue.enqueue("write", { n: 2 }, { runAfter: 1_000_000 + 60_000 });
+  await queue.drain();
+  assertEquals(ran, ["write1", "undo1", "identify1", "identify2", "identify3"], "a later write waits for its time");
+  advance(60_000);
+  await queue.drain();
+  assertEquals(ran.at(-1), "write2");
+  db.close();
+});
+
+Deno.test("jobs the user started and waits on do not wait behind identification (D76)", async () => {
+  const { db, queue } = await setup();
+  const kinds = ["write", "undo", "provider_test", "submission_check", "submission_verify", "submission_follow_ups"];
+  const ids: number[] = [];
+  let seen: (string | undefined)[] = [];
+  queue.register("identify", () => {
+    seen = ids.map((id) => queue.get(id)?.state);
+    return Promise.resolve(null);
+  });
+  // The payloads are invalid, so the handlers fail before touching their dependencies: only the order matters here.
+  const deps = { logger: nullLogger, db } as never;
+  registerWriteJobs(queue, deps);
+  registerProviderTestJob(queue, deps);
+  registerSubmissionJobs(queue, deps);
+  registerFollowUpJob(queue, deps);
+  queue.enqueue("identify", {});
+  for (const k of kinds) ids.push(queue.enqueue(k, {}).id);
+  await queue.drain();
+  assertEquals(seen, kinds.map(() => "failed"), "all had run when the older identification started");
   db.close();
 });

@@ -100,6 +100,8 @@ export class JobQueue {
   #db: Db;
   #opts: Required<JobQueueOptions>;
   #handlers = new Map<string, JobHandler>();
+  /** Kinds claimed before every other queued job (D76). */
+  #first = new Set<string>();
   #running = false;
   #loop?: Promise<void>;
   #wake?: () => void;
@@ -111,8 +113,15 @@ export class JobQueue {
     this.#opts = { pollMs: 1000, retryBaseMs: 5000, now: Date.now, ...opts };
   }
 
-  register(kind: string, handler: JobHandler): void {
+  /**
+   * `first`: queued jobs of this kind run before any other queued job, oldest first among them. For short work the
+   * user started and is waiting on (a write, an undo), which would otherwise wait behind a long backlog of
+   * background identification. A job already running is never interrupted.
+   */
+  register(kind: string, handler: JobHandler, opts: { first?: boolean } = {}): void {
     this.#handlers.set(kind, handler);
+    if (opts.first) this.#first.add(kind);
+    else this.#first.delete(kind);
   }
 
   /** Enqueues a job, or returns the live job with the same dedupe key. */
@@ -225,9 +234,10 @@ export class JobQueue {
     const now = this.#opts.now();
     return this.#db.prepare(
       `UPDATE job SET state = 'running', attempts = attempts + 1, started_at = ?, error = NULL
-       WHERE id = (SELECT id FROM job WHERE state = 'queued' AND run_after <= ? ORDER BY run_after, id LIMIT 1)
+       WHERE id = (SELECT id FROM job WHERE state = 'queued' AND run_after <= ?
+                   ORDER BY kind IN (SELECT value FROM json_each(?)) DESC, run_after, id LIMIT 1)
        RETURNING *`,
-    ).get(now, now) as JobRow | undefined;
+    ).get(now, now, JSON.stringify([...this.#first])) as JobRow | undefined;
   }
 
   async #runOne(): Promise<boolean> {
