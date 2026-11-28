@@ -1,0 +1,67 @@
+name: Release
+
+# A version tag (v1.2.3) publishes ghcr.io/<owner>/tagmonia for amd64 and arm64, as :1.2.3, :1.2, :1 and :latest,
+# with an SBOM and provenance attached (D73). Nothing else publishes.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The same checks as CI, as a gate: a release that would not start, or has a fixable critical
+      # vulnerability, is not published.
+      - name: Build (amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: tagmonia:release-amd64
+      - name: Build (arm64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          tags: tagmonia:release-arm64
+      - name: Check (amd64)
+        run: scripts/ci/check_image.sh tagmonia:release-amd64 linux/amd64
+      - name: Check (arm64)
+        run: scripts/ci/check_image.sh tagmonia:release-arm64 linux/arm64
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tagmonia
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # An SPDX SBOM and build provenance, attached to the image as attestations.
+          sbom: true
+          provenance: mode=max
