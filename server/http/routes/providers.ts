@@ -9,6 +9,7 @@ import { CredentialError, type CredentialStore, providerDef, PROVIDERS } from ".
 import { type Settings, SettingsError, updateSettings } from "../../settings.ts";
 import type { AuthEnv } from "../auth.ts";
 import { toJobDto } from "./library.ts";
+import { bumpGeneration } from "../../library/summary.ts";
 
 export interface ProviderRouteDeps {
   db: Db;
@@ -78,7 +79,10 @@ export function providerRoutes(deps: ProviderRouteDeps) {
         return c.json({ error: "invalid settings" }, 400);
       }
       try {
+        const naming = JSON.stringify(settings.files);
         const restartRequired = await updateSettings(deps.configDir, settings, patch);
+        // Renaming counts as a change: every release's count may differ now (D75).
+        if (JSON.stringify(settings.files) !== naming) bumpGeneration(deps.db);
         const body: SettingsUpdateResponse = { settings, restartRequired };
         return c.json(body);
       } catch (e) {

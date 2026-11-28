@@ -50,16 +50,28 @@ const key = (p: string) => p.normalize("NFC").toLowerCase();
  * nothing is ever overwritten. Names compare without case: Windows and SMB shares ignore it.
  * With a `destination` (D59), the album goes under that folder, named by the template's album part.
  */
+/**
+ * Every other path's comparison key, built once when many albums are planned together (the library list, D75):
+ * normalising the whole library's paths per album would cost seconds.
+ */
+export class TakenNames {
+  readonly keys: Set<string>;
+  constructor(paths: Iterable<string>) {
+    this.keys = new Set([...paths].map(key));
+  }
+}
+
 export function planRenames(
   template: string,
   files: RenameFile[],
-  taken: Iterable<string>,
+  taken: Iterable<string> | TakenNames,
   destination: string | null = null,
 ): RenamePlan {
   const render = (tags: Record<string, unknown>, ext: string) =>
     destination === null ? renderPath(template, tags, ext) : renderUnder(destination, template, tags, ext);
   const mine = new Set(files.map((f) => key(f.path)));
-  const others = new Set([...taken].map(key).filter((p) => !mine.has(p)));
+  const all = taken instanceof TakenNames ? taken.keys : new TakenNames(taken).keys;
+  const others = { has: (k: string) => all.has(k) && !mine.has(k) };
   const used = new Set<string>();
   const moves: PlannedMove[] = [];
   const conflicts: string[] = [];
