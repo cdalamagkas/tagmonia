@@ -2,16 +2,21 @@
 # Production image (ARCHITECTURE.md §15.1). It starts as root only to hand /config to PUID:PGID and then runs
 # Tagmonia as that user, without capabilities (D72); or as the user Docker's `user:` sets.
 # The Deno image is written out (no build arg) so Dependabot can update it, together with docker/dev.Dockerfile.
-# The build stage runs on the builder's own platform: the web build and the server's dependencies (JavaScript and
-# WebAssembly only) are the same for every target, so an arm64 image needs no emulated Vite build (D73).
-FROM --platform=$BUILDPLATFORM denoland/deno:debian-2.9.8 AS build
+# The web build runs on the builder's own platform: its output is the same for every target, so an arm64 image
+# needs no emulated Vite build (D73).
+FROM --platform=$BUILDPLATFORM denoland/deno:debian-2.9.8 AS web
 WORKDIR /app
 COPY . .
-# The web build's tools (Vite, Babel, esbuild's native binary) get their own cache, which stays here: only the
-# server's dependencies, in /deno-dir, go into the image.
-RUN DENO_DIR=/web-deno-dir deno task web:install \
- && DENO_DIR=/web-deno-dir deno run -A npm:vite@7.3.7 build web \
- && DENO_DIR=/deno-dir deno cache --frozen --node-modules-dir=none server/main.ts
+RUN deno task web:install && deno run -A npm:vite@7.3.7 build web
+
+# The server's dependencies are cached for the target platform: Deno installs every npm package of the lock file
+# for the platform it runs on (esbuild's native binary among them), and --cached-only then finds them (D73).
+FROM denoland/deno:debian-2.9.8 AS build
+WORKDIR /app
+ENV DENO_DIR=/deno-dir
+COPY . .
+COPY --from=web /app/web/dist ./web/dist
+RUN deno cache --frozen --node-modules-dir=none server/main.ts
 
 FROM denoland/deno:debian-2.9.8
 # python3-mutagen: TagIO sidecar (D7). libchromaprint-tools: fpcalc (§8). python3-pil: cover thumbnails (D50).
