@@ -18,10 +18,17 @@ services:
       #- TAGMONIA_JELLYFIN_LIBRARY=Music
       # Optional: an inbox for new music; written albums move from it into the library (needs write access to both).
       #- TAGMONIA_INBOX_DIR=/inbox
+      # Optional: sign in through your identity provider (Authentik, Keycloak, Authelia…); members of one group only.
+      #- TAGMONIA_OIDC_ISSUER=https://auth.home.example/application/o/tagmonia/
+      #- TAGMONIA_OIDC_CLIENT_ID=tagmonia
+      #- TAGMONIA_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_secret
+      #- TAGMONIA_OIDC_GROUP=tagmonia
+      #- TAGMONIA_OIDC_NAME=Authentik
       - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
     #secrets:
     #  - acoustid_key
     #  - jellyfin_key
+    #  - oidc_secret
     volumes:
       - /mnt/c/Users/Public/Music:/music:ro
       - tagmonia-config:/config
@@ -33,3 +40,5 @@ volumes:
 #    file: ./acoustid_key.txt
 #  jellyfin_key:
 #    file: ./jellyfin_key.txt
+#  oidc_secret:
+#    file: ./oidc_secret.txt

@@ -44,6 +44,7 @@ export async function makeTestApp(
     envCredentials?: EnvCredentials;
     tagio?: AppContext["tagio"];
     harmony?: AppContext["harmony"];
+    oidc?: AppContext["oidc"];
   } = {},
 ): Promise<TestApp> {
   const musicDir = await Deno.makeTempDir({ prefix: "tagmonia-music-" });
@@ -67,6 +68,7 @@ export async function makeTestApp(
     creds: new CredentialStore(db, await Vault.open({ configDir }), opts.envCredentials ?? {}),
     tagio: opts.tagio,
     harmony: opts.harmony,
+    oidc: opts.oidc,
   };
   const app = createApp(ctx);
   return {

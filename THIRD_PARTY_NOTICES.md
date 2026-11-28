@@ -48,6 +48,7 @@ Self-hosted in `web/public/fonts/`; the license text ships alongside as `web/pub
 | Hono                                                 | MIT                                     | HTTP framework                                                       |
 | Zod                                                  | MIT                                     | Runtime schema validation                                            |
 | hash-wasm                                            | MIT                                     | Argon2id password hashing (D20)                                      |
+| oauth4webapi                                         | MIT                                     | Single sign-on with OpenID Connect (D69)                             |
 | Deno standard library (`@std/path`)                  | MIT                                     | Glob matching for scanner ignore patterns                            |
 | Preact                                               | MIT                                     | Web UI (bundled into `web/dist`)                                     |
 | mutagen (Debian `python3-mutagen`)                   | GPL-2.0-or-later                        | Tag reading/writing via the TagIO sidecar (Tagmonia is GPL-3.0, D17) |

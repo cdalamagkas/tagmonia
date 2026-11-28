@@ -795,7 +795,7 @@ Tagmonia has **read-write access to the user's entire music library** and stores
 - The UI's auth probe `GET /api/auth/session` is public alongside login and setup; it returns only whether setup is required, and the user and CSRF token of the caller's own session (D23).
 - Login rate limiting per IP and per account, with exponential delay.
 - **Sessions:** random 256-bit IDs; the database stores only their SHA-256. Cookie `HttpOnly`, `SameSite=Lax`, `Secure` when `TAGMONIA_PUBLIC_URL` is https. Idle timeout (default 7 days) and absolute lifetime (default 30 days) set in `settings.json` → `auth`.
-- **Optional OIDC** (Authorization Code + PKCE) for users who run an identity provider, with a configurable group/role claim for admin access.
+- **Optional OIDC** (Authorization Code + PKCE) for users who run an identity provider, with a configurable group/role claim for admin access. *As built (D69):* configured from the environment only (`TAGMONIA_OIDC_*`); `oauth4webapi` does discovery, PKCE (S256), state, nonce and ID-token claim checks; the pending sign-in is kept in memory for ten minutes, bound to the browser by an HttpOnly cookie; only members of `TAGMONIA_OIDC_GROUP` (from the ID token's groups claim, else user info; Keycloak's `/group` paths match) get in. Accounts are matched by issuer and subject (`app_user.external_id`), never by name; a name taken locally gets "-2". They have no password. `GET /api/auth/oidc/start` and `/callback` are public, as part of signing in. The local password form stays as the fallback, and first-run setup still creates the local admin first. Signing out ends the Tagmonia session only.
 - **Optional trusted-header mode** for users behind an authenticating reverse proxy: disabled by default, only accepted from configured proxy IPs.
 
 ### 14.2 Request security
@@ -854,6 +854,11 @@ Tagmonia has **read-write access to the user's entire music library** and stores
 | `TAGMONIA_SECRET_KEY` | generated | Encryption key for stored credentials |
 | `TAGMONIA_ACOUSTID_KEY` | unset | AcoustID application key; without it, fingerprint identification is off (D37) |
 | `TAGMONIA_ACOUSTID_KEY_FILE` | unset | The same key read from a file (a Docker secret); set only one of the two |
+| `TAGMONIA_OIDC_ISSUER` | unset | Single sign-on (D69): the OpenID provider's issuer URL (https). With it, also `_CLIENT_ID`, `_CLIENT_SECRET` (or `_CLIENT_SECRET_FILE`), `_GROUP`, and `TAGMONIA_PUBLIC_URL` |
+| `TAGMONIA_OIDC_GROUP` | unset | Only members of this group get in |
+| `TAGMONIA_OIDC_GROUPS_CLAIM` | `groups` | The claim holding the user's groups (ID token, else user info) |
+| `TAGMONIA_OIDC_SCOPES` | `openid profile email groups` | Requested scopes |
+| `TAGMONIA_OIDC_NAME` | the issuer's host | The sign-in button's label |
 | `TAGMONIA_READ_ONLY` | `false` | Never write to the library |
 | `TAGMONIA_LOG_LEVEL` | `info` | |
 | `PUID` / `PGID` | `1000` | Run-as user |
@@ -958,7 +963,9 @@ The maintainer chose the test server for the "Done when"; submitting to musicbra
 - Bandcamp, Beatport, Tidal, Spotify toggles; YouTube evidence provider (§9.5).
 
   Status: the YouTube provider is done, as evidence (D55) and as a source (D64). Tidal and Spotify are done (D67). Beatport is deferred: Harmony can no longer read Beatport's pages (D54). Bandcamp was done in Phase 5 (D51).
-- ~~Inbox/watch folder; rename/move templates~~ — done (design: [proposals/inbox-and-renaming.md](proposals/inbox-and-renaming.md), D57–D60). OIDC and trusted-header auth.
+- ~~Inbox/watch folder; rename/move templates~~ — done (design: [proposals/inbox-and-renaming.md](proposals/inbox-and-renaming.md), D57–D60).
+- OIDC and trusted-header auth. Status: OIDC is done (D69); trusted-header next.
+- Dropped by the maintainer (2026-11-28): a Settings → Locks page, locks that survive renames outside Tagmonia, and recognising a proposed cover as the same artwork as the current one.
 - Docker image hardening, SBOM, multi-arch release.
 
 ### Release page restructure (done, outside the phases)
@@ -1039,6 +1046,7 @@ Accepted and built 2026-11-25, after Phase 5 part 2, in four PRs (the Changes ta
 | D66 | 2026-11-27 | **The release page's Changes tab is "Tags"** (revises D53's tab names): it shows every tag of the release (all fields with "Show all fields"), not only changes. When changes are prepared, the tab carries the library's Changes badge (D61): the count to write, or "N to choose". Its Files section moves to the Files tab as **Location** (renaming, the move into the library, the chosen folder); the Tags tab keeps a one-line pointer when the write also moves the files. Old `?tab=changes` links open Tags | Keeping "Changes (N)": the tab is where every tag is inspected, and the count reads better as the same badge as the library |
 | D67 | 2026-11-27 | **Tidal and Spotify** through Harmony's providers (official APIs, client credentials from the user's own developer app, stored encrypted; Harmony reads them at module load, so a restart applies them). Registered only when both values are set, and switched on by default once they are; without them they are left out of "Also found on" rather than listed as "not set up". Looked up like Deezer and iTunes (the release's MusicBrainz link, else its barcode), and usable as the source of a release MusicBrainz lacks (§10.4). Precedence: release date and ISRC after Deezer and iTunes, never a conflict; covers after Deezer (Tidal) and last (Spotify, 640 px). Their image CDNs join the cover host allowlist. The providers page tests them by asking for a client-credentials token. On the providers page, the switch of a provider that needs credentials (Discogs, Tidal, Spotify) is shown off and locked until they are saved, so it never looks on while the provider is unused. No new canonical ID tags (`spotify_album_id`, `tidal_album_id`): that would need TagIO mappings and conformance cases first | Off by default even with credentials: setting them is already the opt-in. Listing them as "not set up" everywhere: noise for the many who never will |
 | D68 | 2026-11-28 | **A pasted album link first looks for the release on MusicBrainz:** every provider link (Deezer, iTunes, Tidal, Spotify, Discogs, Bandcamp, YouTube) is checked with the submission's duplicate check. Certain (one release linked to that page, or one with the same barcode and track count): the tags come from MusicBrainz, and the link fills gaps. Otherwise the likely releases are offered, strongest first, the title-only ones folded; the tags come from the link as before. Also: internal references (decision numbers) are kept out of user-facing text | Always switching: a title match alone can be another edition. Always asking: an exact link or barcode match needs no question. Searching only when submitting (as before): a poorly tagged release on MusicBrainz looked missing until the submission's check |
+| D69 | 2026-11-28 | **Single sign-on with OpenID Connect:** configured from the environment only, so nobody signed in can change who may sign in; only members of one group (`TAGMONIA_OIDC_GROUP`) get in; the local password login stays as the fallback, and setup still creates the local admin first. Authorization code flow with PKCE, state and nonce through `oauth4webapi` (MIT, no dependencies, Web Crypto only), pinned at 3.8.8. Accounts are matched by issuer and subject, never by name, so an identity-provider account called "admin" cannot become the local admin. Requires an https issuer and `TAGMONIA_PUBLIC_URL`. Also dropped from the roadmap, by the maintainer: the Locks page, rename-proof locks and same-artwork cover detection | Anyone the provider signs in (access limited only in the provider). Settings-page configuration (a signed-in user could widen access). Hand-written OAuth (more code to get wrong). Linking provider accounts to local ones by name (account takeover) |
 
 ---
 

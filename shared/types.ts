@@ -39,6 +39,8 @@ export interface AuthState {
   user: { username: string; isAdmin: boolean } | null;
   /** Send as the X-CSRF-Token header on every state-changing request. Null when signed out. */
   csrfToken: string | null;
+  /** Single sign-on is configured (D69): the sign-in page offers "Sign in with <name>". */
+  sso: { name: string } | null;
 }
 
 export interface Credentials {

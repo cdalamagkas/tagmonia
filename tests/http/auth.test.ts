@@ -41,7 +41,7 @@ Deno.test("every /api route except health and the public auth routes requires a 
 Deno.test("first-run setup creates the admin once, signs in, and sets a hardened cookie", () =>
   withApp(async (t) => {
     let state: AuthState = await (await t.request("/api/auth/session")).json();
-    assertEquals(state, { setupRequired: true, user: null, csrfToken: null });
+    assertEquals(state, { setupRequired: true, user: null, csrfToken: null, sso: null });
 
     assertEquals((await t.request("/api/auth/setup", json({ username: "admin", password: "short" }))).status, 400);
 

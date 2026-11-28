@@ -14,6 +14,7 @@
     "npm:@preact/preset-vite@2.10.6": "2.10.6_@babel+core@7.29.13_vite@7.3.7_preact@10.29.8",
     "npm:hash-wasm@4.12.0": "4.12.0",
     "npm:hono@4.13.17": "4.13.17",
+    "npm:oauth4webapi@3.8.8": "3.8.8",
     "npm:preact@10.29.8": "10.29.8",
     "npm:taglib-wasm@2.4.1": "2.4.1",
     "npm:vite@7.3.7": "7.3.7",
@@ -758,6 +759,9 @@
         "boolbase"
       ]
     },
+    "oauth4webapi@3.8.8": {
+      "integrity": "sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng=="
+    },
     "picocolors@1.1.1": {
       "integrity": "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="
     },
@@ -1051,6 +1055,7 @@
       "npm:@preact/preset-vite@2.10.6",
       "npm:hash-wasm@4.12.0",
       "npm:hono@4.13.17",
+      "npm:oauth4webapi@3.8.8",
       "npm:preact@10.29.8",
       "npm:taglib-wasm@2.4.1",
       "npm:vite@7.3.7",

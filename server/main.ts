@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { bootstrapAdmin } from "./auth/bootstrap.ts";
 import { LoginThrottle } from "./auth/ratelimit.ts";
 import { SessionStore } from "./auth/sessions.ts";
-import { checkInbox, loadConfig, resolveAcoustidKey, resolveJellyfinKey } from "./config.ts";
+import { checkInbox, loadConfig, resolveAcoustidKey, resolveJellyfinKey, resolveOidcSecret } from "./config.ts";
+import { OidcLogin } from "./auth/oidc.ts";
 import { JellyfinClient } from "./integrations/jellyfin.ts";
 import { enqueueRefresh, folderOfBatch, registerRefreshJob } from "./jobs/refresh.ts";
 import { openMigratedDb } from "./db/db.ts";
@@ -220,7 +221,24 @@ async function main() {
   });
   const purge = setInterval(() => sessions.purgeExpired(), 3_600_000);
 
+  // Single sign-on (D69): configured from the environment only.
+  const oidc = config.oidc
+    ? {
+      name: config.oidc.name,
+      login: new OidcLogin({
+        issuer: config.oidc.issuer,
+        clientId: config.oidc.clientId,
+        clientSecret: (await resolveOidcSecret(config))!,
+        group: config.oidc.group,
+        groupsClaim: config.oidc.groupsClaim,
+        scopes: config.oidc.scopes,
+        redirectUri: new URL("/api/auth/oidc/callback", config.publicUrl).href,
+      }),
+    }
+    : null;
+  if (oidc) logger.info("single sign-on on", { provider: config.oidc!.issuer, group: config.oidc!.group });
   const app = createApp({
+    oidc,
     config,
     settings,
     db,

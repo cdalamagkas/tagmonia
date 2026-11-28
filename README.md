@@ -179,6 +179,27 @@ docker run -p 8080:8080 -v /path/to/music:/music -v /path/to/inbox:/inbox -e TAG
   -v tagmonia-config:/config tagmonia
 ```
 
+### Signing in with your identity provider
+
+Besides the local admin account, Tagmonia can sign people in through an OpenID Connect provider (Authentik,
+Keycloak, Authelia, …). Only members of one group get in; the local password form stays as the fallback.
+
+1. Create an OAuth2/OpenID client in the provider: confidential, authorization code flow, redirect URI
+   `<TAGMONIA_PUBLIC_URL>/api/auth/oidc/callback`, and make sure its tokens carry a `groups` claim.
+2. Create a group (e.g. `tagmonia`) and add the people who may use Tagmonia.
+3. Set, next to `TAGMONIA_PUBLIC_URL`:
+
+```sh
+TAGMONIA_OIDC_ISSUER=https://auth.example.com/application/o/tagmonia/
+TAGMONIA_OIDC_CLIENT_ID=tagmonia
+TAGMONIA_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_secret   # or TAGMONIA_OIDC_CLIENT_SECRET
+TAGMONIA_OIDC_GROUP=tagmonia
+TAGMONIA_OIDC_NAME=Authentik                                 # the button reads "Sign in with Authentik"
+```
+
+The provider must be reachable over https. Each person gets their own Tagmonia account, matched by the provider's
+user ID, never by name.
+
 See `docker-compose.example.yml`. Configuration variables are listed in
 [ARCHITECTURE.md §15.2](docs/ARCHITECTURE.md#152-configuration).
 
@@ -192,6 +213,7 @@ Every dependency is pinned (`deno.json`, `deno.lock`, the Harmony submodule comm
 | `hono`                                  | HTTP framework (§4)                                                                               |
 | `zod`                                   | Schema validation of all external input: env, HTTP bodies, sidecar output (CLAUDE.md conventions) |
 | `hash-wasm`                             | Argon2id password hashing, pure WebAssembly (D20)                                                 |
+| `oauth4webapi`                          | OpenID Connect sign-in: discovery, PKCE, state and nonce checks, ID-token validation (D69)        |
 | `@std/path`                             | Glob matching for the scanner's ignore patterns                                                   |
 | `node:sqlite` (built into Deno)         | Database (D19); not a separate dependency                                                         |
 | `preact`, `vite`, `@preact/preset-vite` | Web UI and its build (§4)                                                                         |

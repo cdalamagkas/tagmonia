@@ -18,6 +18,7 @@
     "@std/path": "jsr:@std/path@1.1.6",
     "hash-wasm": "npm:hash-wasm@4.12.0",
     "hono": "npm:hono@4.13.17",
+    "oauth4webapi": "npm:oauth4webapi@3.8.8",
     "hono/": "npm:/hono@4.13.17/",
     "zod": "npm:zod@4.6.7",
     "taglib-wasm": "npm:taglib-wasm@2.4.1",

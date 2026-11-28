@@ -20,7 +20,8 @@ import {
 import type { LoginThrottle } from "../auth/ratelimit.ts";
 import { type ActiveSession, safeEqual, type SessionStore } from "../auth/sessions.ts";
 import type { Db } from "../db/db.ts";
-import { countUsers, createFirstAdmin, findUserByName } from "../db/repo/users.ts";
+import { countUsers, createFirstAdmin, findOrCreateExternalUser, findUserByName } from "../db/repo/users.ts";
+import { OidcError, type OidcLogin } from "../auth/oidc.ts";
 import type { Logger } from "../log.ts";
 
 export const SESSION_COOKIE = "tagmonia_session";
@@ -30,7 +31,13 @@ export const PUBLIC_API: ReadonlySet<string> = new Set([
   "GET /api/auth/session",
   "POST /api/auth/login",
   "POST /api/auth/setup",
+  // Single sign-on (D69): the way to the identity provider and back, part of signing in.
+  "GET /api/auth/oidc/start",
+  "GET /api/auth/oidc/callback",
 ]);
+
+/** Holds the key of a pending single sign-on between the start and the callback (D69). */
+export const OIDC_COOKIE = "tagmonia_oidc";
 
 export type AuthEnv = { Variables: { session: ActiveSession } };
 
@@ -42,6 +49,8 @@ export interface AuthDeps {
   /** From TAGMONIA_PUBLIC_URL: decides the cookie's Secure flag and the allowed Origin. */
   publicUrl?: string;
   sessionMaxMs: number;
+  /** Single sign-on (D69), when configured; `name` labels the button. */
+  oidc?: { login: OidcLogin; name: string } | null;
 }
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -107,6 +116,7 @@ export function authRoutes(deps: AuthDeps) {
       setupRequired: countUsers(db) === 0,
       user: s ? { username: s.username, isAdmin: s.isAdmin } : null,
       csrfToken: s?.csrfToken ?? null,
+      sso: deps.oidc ? { name: deps.oidc.name } : null,
     };
     c.header("Cache-Control", "no-store");
     return c.json(body);
@@ -121,7 +131,12 @@ export function authRoutes(deps: AuthDeps) {
     if (!user) return c.json({ error: "setup is already complete" }, 409);
     logger.info("first admin created", { user: user.username });
     const csrfToken = await startSession(c, user.id);
-    const body: AuthState = { setupRequired: false, user: { username: user.username, isAdmin: true }, csrfToken };
+    const body: AuthState = {
+      setupRequired: false,
+      user: { username: user.username, isAdmin: true },
+      csrfToken,
+      sso: deps.oidc ? { name: deps.oidc.name } : null,
+    };
     return c.json(body, 201);
   });
 
@@ -149,8 +164,43 @@ export function authRoutes(deps: AuthDeps) {
       setupRequired: false,
       user: { username: user.username, isAdmin: user.isAdmin },
       csrfToken,
+      sso: deps.oidc ? { name: deps.oidc.name } : null,
     };
     return c.json(body);
+  });
+
+  // Single sign-on (D69). Both are top-level browser navigations (GET), so no CSRF token: state, nonce and
+  // PKCE, bound to this browser by the cookie, protect the round trip instead.
+  app.get("/oidc/start", async (c) => {
+    if (!deps.oidc) return c.json({ error: "single sign-on is not configured" }, 404);
+    try {
+      const { key, url } = await deps.oidc.login.start();
+      setCookie(c, OIDC_COOKIE, key, { httpOnly: true, sameSite: "Lax", secure, path: "/api/auth/oidc", maxAge: 600 });
+      return c.redirect(url.href, 302);
+    } catch (e) {
+      logger.warn("single sign-on could not start", { error: (e as Error).message });
+      return c.redirect("/?signin_error=provider", 302);
+    }
+  });
+
+  app.get("/oidc/callback", async (c) => {
+    if (!deps.oidc) return c.json({ error: "single sign-on is not configured" }, 404);
+    const key = getCookie(c, OIDC_COOKIE);
+    deleteCookie(c, OIDC_COOKIE, { path: "/api/auth/oidc", secure });
+    // The address the provider sent the browser to, whatever the proxy in between forwarded.
+    const here = new URL(c.req.url);
+    const callback = new URL(`/api/auth/oidc/callback${here.search}`, deps.publicUrl ?? here.origin);
+    try {
+      const id = await deps.oidc.login.finish(key, callback);
+      const user = findOrCreateExternalUser(db, id.externalId, id.name, Date.now());
+      logger.info("login", { user: user.username, via: "single sign-on" });
+      await startSession(c, user.id);
+      return c.redirect("/", 302);
+    } catch (e) {
+      const code = e instanceof OidcError ? e.code : "provider";
+      logger.warn("single sign-on refused", { reason: code, error: (e as Error).message });
+      return c.redirect(`/?signin_error=${code}`, 302);
+    }
   });
 
   // Behind requireSession + CSRF (mounted after them in app.ts).
