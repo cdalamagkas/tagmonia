@@ -45,6 +45,8 @@ export async function makeTestApp(
     tagio?: AppContext["tagio"];
     harmony?: AppContext["harmony"];
     oidc?: AppContext["oidc"];
+    /** The connection's peer address (D70); in-process requests have none. */
+    peer?: AppContext["peer"];
   } = {},
 ): Promise<TestApp> {
   const musicDir = await Deno.makeTempDir({ prefix: "tagmonia-music-" });
@@ -69,6 +71,7 @@ export async function makeTestApp(
     tagio: opts.tagio,
     harmony: opts.harmony,
     oidc: opts.oidc,
+    peer: opts.peer,
   };
   const app = createApp(ctx);
   return {

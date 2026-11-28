@@ -63,6 +63,8 @@ export interface SessionRow {
   csrfToken: string;
   lastSeenAt: number;
   expiresAt: number;
+  /** How the user signs in: null = a local password; "oidc:…" single sign-on; "header:…" a trusted proxy. */
+  externalId: string | null;
 }
 
 export function insertSession(
@@ -76,7 +78,7 @@ export function insertSession(
 
 export function findSession(db: Db, idHash: string): SessionRow | undefined {
   const r = db.prepare(
-    `SELECT s.user_id, u.username, u.is_admin, s.csrf_token, s.last_seen_at, s.expires_at
+    `SELECT s.user_id, u.username, u.is_admin, s.csrf_token, s.last_seen_at, s.expires_at, u.external_id
      FROM session s JOIN app_user u ON u.id = s.user_id WHERE s.id_hash = ?`,
   ).get(idHash) as
     | {
@@ -86,6 +88,7 @@ export function findSession(db: Db, idHash: string): SessionRow | undefined {
       csrf_token: string;
       last_seen_at: number;
       expires_at: number;
+      external_id: string | null;
     }
     | undefined;
   return r && {
@@ -95,6 +98,7 @@ export function findSession(db: Db, idHash: string): SessionRow | undefined {
     csrfToken: r.csrf_token,
     lastSeenAt: r.last_seen_at,
     expiresAt: r.expires_at,
+    externalId: r.external_id,
   };
 }
 

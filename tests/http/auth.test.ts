@@ -55,7 +55,7 @@ Deno.test("first-run setup creates the admin once, signs in, and sets a hardened
 
     state = await (await t.request("/api/auth/session", { cookie: cookieFrom(res) })).json();
     assertEquals(state.setupRequired, false);
-    assertEquals(state.user, { username: "admin", isAdmin: true });
+    assertEquals(state.user, { username: "admin", isAdmin: true, signedInBy: "password" });
     assert(state.csrfToken && state.csrfToken.length >= 43);
 
     const again = await t.request("/api/auth/setup", json({ username: "mallory", password: PASSWORD }));
