@@ -70,3 +70,21 @@ Deno.test("single sign-on: all four settings or none, an https issuer, and the p
   })();
   assertEquals(secretMessage?.includes("s3cret") || secretMessage?.includes('"s"'), false, "no value echoed");
 });
+
+Deno.test("sign-in by a proxy: header, proxies and group together, the proxies parsed at startup (D70)", () => {
+  const all = {
+    TAGMONIA_TRUSTED_HEADER: "Remote-User",
+    TAGMONIA_TRUSTED_PROXIES: "172.18.0.0/16, 10.0.0.5",
+    TAGMONIA_TRUSTED_GROUP: "tagmonia",
+  };
+  const c = loadConfig(all);
+  assertEquals([c.trustedHeader?.userHeader, c.trustedHeader?.groupsHeader, c.trustedHeader?.proxies.length], [
+    "Remote-User",
+    "Remote-Groups",
+    2,
+  ]);
+  assertEquals(loadConfig({}).trustedHeader, undefined);
+  assertThrows(() => loadConfig({ TAGMONIA_TRUSTED_HEADER: "Remote-User" }), Error, "needs all of");
+  assertThrows(() => loadConfig({ ...all, TAGMONIA_TRUSTED_PROXIES: "everyone" }), Error, "TAGMONIA_TRUSTED_PROXIES");
+  assertThrows(() => loadConfig({ ...all, TAGMONIA_TRUSTED_HEADER: "Remote User" }), Error);
+});

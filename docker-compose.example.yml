@@ -24,6 +24,10 @@ services:
       #- TAGMONIA_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_secret
       #- TAGMONIA_OIDC_GROUP=tagmonia
       #- TAGMONIA_OIDC_NAME=Authentik
+      # Optional: or let your reverse proxy sign people in (Authelia, Authentik outpost, oauth2-proxy).
+      #- TAGMONIA_TRUSTED_HEADER=Remote-User
+      #- TAGMONIA_TRUSTED_GROUP=tagmonia
+      #- TAGMONIA_TRUSTED_PROXIES=172.18.0.0/16
       - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
     #secrets:
     #  - acoustid_key

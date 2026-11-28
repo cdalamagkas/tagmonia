@@ -2,6 +2,7 @@
  * Process configuration from environment variables (ARCHITECTURE.md §15.2),
  * validated at startup. UI-managed settings (/config/settings.json) arrive in Phase 1.
  */
+import { parseProxies, type TrustedHeaderSettings } from "./auth/trusted_header.ts";
 import { z } from "zod";
 
 const bool = z.enum(["true", "false", "1", "0"]).transform((v) => v === "true" || v === "1");
@@ -39,6 +40,11 @@ const envSchema = z.object({
   TAGMONIA_OIDC_SCOPES: z.string().min(1).max(500).default("openid profile email groups"),
   /** The sign-in button's label: "Sign in with <name>". */
   TAGMONIA_OIDC_NAME: z.string().min(1).max(60).optional(),
+  // Sign-in by a trusted reverse proxy (D70): the user header, the proxies' addresses, the group, or none.
+  TAGMONIA_TRUSTED_HEADER: z.string().regex(/^[A-Za-z0-9-]{1,64}$/).optional(),
+  TAGMONIA_TRUSTED_GROUPS_HEADER: z.string().regex(/^[A-Za-z0-9-]{1,64}$/).default("Remote-Groups"),
+  TAGMONIA_TRUSTED_PROXIES: z.string().min(1).max(2000).optional(),
+  TAGMONIA_TRUSTED_GROUP: z.string().min(1).max(200).optional(),
 });
 
 export interface Config {
@@ -73,6 +79,8 @@ export interface Config {
     scopes: string;
     name: string;
   };
+  /** Sign-in by a trusted reverse proxy (D70). */
+  trustedHeader?: TrustedHeaderSettings;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = Deno.env.toObject()): Config {
@@ -104,6 +112,28 @@ export function loadConfig(env: Record<string, string | undefined> = Deno.env.to
   }
   if (e.TAGMONIA_OIDC_CLIENT_SECRET && e.TAGMONIA_OIDC_CLIENT_SECRET_FILE) {
     throw new Error("Set only one of TAGMONIA_OIDC_CLIENT_SECRET and TAGMONIA_OIDC_CLIENT_SECRET_FILE");
+  }
+  const trustedSet = [e.TAGMONIA_TRUSTED_HEADER, e.TAGMONIA_TRUSTED_PROXIES, e.TAGMONIA_TRUSTED_GROUP];
+  if (trustedSet.some(Boolean) && !trustedSet.every(Boolean)) {
+    throw new Error(
+      "Sign-in by a proxy needs all of TAGMONIA_TRUSTED_HEADER, TAGMONIA_TRUSTED_PROXIES and TAGMONIA_TRUSTED_GROUP",
+    );
+  }
+  let trustedHeader: TrustedHeaderSettings | undefined;
+  if (e.TAGMONIA_TRUSTED_HEADER) {
+    let proxies;
+    try {
+      proxies = parseProxies(e.TAGMONIA_TRUSTED_PROXIES!);
+    } catch (err) {
+      throw new Error(`TAGMONIA_TRUSTED_PROXIES: ${(err as Error).message}`);
+    }
+    if (proxies.length === 0) throw new Error("TAGMONIA_TRUSTED_PROXIES is empty");
+    trustedHeader = {
+      userHeader: e.TAGMONIA_TRUSTED_HEADER,
+      groupsHeader: e.TAGMONIA_TRUSTED_GROUPS_HEADER,
+      group: e.TAGMONIA_TRUSTED_GROUP!,
+      proxies,
+    };
   }
   if (e.TAGMONIA_OIDC_ISSUER && !e.TAGMONIA_PUBLIC_URL) {
     throw new Error("Single sign-on needs TAGMONIA_PUBLIC_URL: the identity provider sends the browser back to it");
@@ -137,6 +167,7 @@ export function loadConfig(env: Record<string, string | undefined> = Deno.env.to
         name: e.TAGMONIA_OIDC_NAME ?? new URL(e.TAGMONIA_OIDC_ISSUER).hostname,
       }
       : undefined,
+    trustedHeader,
   };
 }
 

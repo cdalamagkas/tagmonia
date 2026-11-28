@@ -36,11 +36,18 @@ export interface ApiError {
 export interface AuthState {
   /** No user exists yet: the UI shows first-run setup. */
   setupRequired: boolean;
-  user: { username: string; isAdmin: boolean } | null;
+  user: {
+    username: string;
+    isAdmin: boolean;
+    /** How this session was signed in; with "proxy" signing out happens at the proxy, not here (D70). */
+    signedInBy: "password" | "sso" | "proxy";
+  } | null;
   /** Send as the X-CSRF-Token header on every state-changing request. Null when signed out. */
   csrfToken: string | null;
   /** Single sign-on is configured (D69): the sign-in page offers "Sign in with <name>". */
   sso: { name: string } | null;
+  /** The trusted proxy signed someone in who is not in the required group (D70): their name, for the message. */
+  proxyRefused?: string;
 }
 
 export interface Credentials {

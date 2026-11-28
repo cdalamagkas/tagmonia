@@ -40,8 +40,9 @@ export function App() {
       </main>
     );
   } else if (auth.setupRequired) body = <AuthPage mode="setup" onDone={setAuth} />;
-  else if (!auth.user) body = <AuthPage mode="login" sso={auth.sso} onDone={setAuth} />;
-  else if (route.page === "library") body = <LibraryPage />;
+  else if (!auth.user) {
+    body = <AuthPage mode="login" sso={auth.sso} proxyRefused={auth.proxyRefused} onDone={setAuth} />;
+  } else if (route.page === "library") body = <LibraryPage />;
   else if (route.page === "release") body = <ReleasePage id={route.id} />;
   else if (route.page === "settings") body = <SettingsPage />;
   else if (route.page === "mbCallback") body = <MbCallbackPage submission={route.submission} />;
@@ -63,7 +64,10 @@ export function App() {
           <nav class="tm-nav">
             <a href="/settings" onClick={onLinkClick} class="tm-nav-link">Settings</a>
             <span>{auth.user.username}</span>
-            <button type="button" class="tm-button tm-on-navy" onClick={logout}>Sign out</button>
+            {/* Signed in by the proxy (D70): signing out happens there; here it would sign straight back in. */}
+            {auth.user.signedInBy !== "proxy" && (
+              <button type="button" class="tm-button tm-on-navy" onClick={logout}>Sign out</button>
+            )}
           </nav>
         )}
       </header>

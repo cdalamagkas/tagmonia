@@ -200,6 +200,22 @@ TAGMONIA_OIDC_NAME=Authentik                                 # the button reads 
 The provider must be reachable over https. Each person gets their own Tagmonia account, matched by the provider's
 user ID, never by name.
 
+### Signing in through your reverse proxy
+
+If a reverse proxy already signs people in (Authelia, an Authentik outpost, oauth2-proxy), Tagmonia can take the user
+from its headers. They are believed only from the proxy's own address, and only members of one group get in; the
+local password form stays as the fallback.
+
+```sh
+TAGMONIA_TRUSTED_HEADER=Remote-User
+TAGMONIA_TRUSTED_GROUPS_HEADER=Remote-Groups   # the default
+TAGMONIA_TRUSTED_GROUP=tagmonia
+TAGMONIA_TRUSTED_PROXIES=172.18.0.0/16         # the proxy's address or its Docker network
+```
+
+Make sure Tagmonia is reachable only through the proxy, and that the proxy sets these headers itself rather than
+passing on what the browser sent. Signing out happens at the proxy.
+
 See `docker-compose.example.yml`. Configuration variables are listed in
 [ARCHITECTURE.md §15.2](docs/ARCHITECTURE.md#152-configuration).
 

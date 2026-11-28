@@ -3,6 +3,7 @@
  * security headers -> body limit -> /api/health -> Origin check -> public auth
  * routes -> session required -> CSRF -> everything else.
  */
+import type { Context } from "hono";
 import type { OidcLogin } from "../auth/oidc.ts";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -18,7 +19,7 @@ import type { Db } from "../db/db.ts";
 import type { JobQueue } from "../jobs/queue.ts";
 import type { Logger } from "../log.ts";
 import { namingOf, type Settings } from "../settings.ts";
-import { type AuthEnv, authRoutes, originGuard, requireCsrf, requireSession } from "./auth.ts";
+import { type AuthEnv, authRoutes, originGuard, requireCsrf, requireSession, trustedHeaderSession } from "./auth.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { jobRoutes, libraryRoutes } from "./routes/library.ts";
 import { writeRoutes } from "./routes/writes.ts";
@@ -52,6 +53,8 @@ export interface AppContext {
   harmony?: Pick<HarmonyRegistry, "providerForUrl" | "isReleaseUrl">;
   /** Single sign-on (D69), when configured. */
   oidc?: { login: OidcLogin; name: string } | null;
+  /** The connection's peer address (tests only; in-process requests have none). */
+  peer?: (c: Context) => string;
 }
 
 export function createApp(ctx: AppContext): Hono<AuthEnv> {
@@ -80,7 +83,7 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
   app.route("/api/health", healthRoutes(config, db));
 
   app.use("/api/*", originGuard(config.publicUrl));
-  const auth = authRoutes({
+  const authDeps = {
     db,
     sessions,
     throttle: ctx.throttle,
@@ -88,7 +91,12 @@ export function createApp(ctx: AppContext): Hono<AuthEnv> {
     publicUrl: config.publicUrl,
     sessionMaxMs: ctx.settings.auth.sessionMaxDays * 86_400_000,
     oidc: ctx.oidc,
-  });
+    trusted: config.trustedHeader ?? null,
+    peer: ctx.peer,
+  };
+  // A trusted proxy's user gets a session before anything asks for one (D70).
+  app.use("/api/*", trustedHeaderSession(authDeps));
+  const auth = authRoutes(authDeps);
   app.route("/api/auth", auth.public);
 
   // Everything below requires a signed-in session (CLAUDE.md safety rule 8).

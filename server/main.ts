@@ -237,6 +237,12 @@ async function main() {
     }
     : null;
   if (oidc) logger.info("single sign-on on", { provider: config.oidc!.issuer, group: config.oidc!.group });
+  if (config.trustedHeader) {
+    logger.info("sign-in by a trusted proxy on", {
+      header: config.trustedHeader.userHeader,
+      group: config.trustedHeader.group,
+    });
+  }
   const app = createApp({
     oidc,
     config,

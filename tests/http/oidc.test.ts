@@ -50,7 +50,7 @@ Deno.test("signed in through the provider: a session, the provider's name, the s
     assert(start.headers.get("set-cookie")!.includes("HttpOnly"), "the pending sign-in's cookie");
     assertEquals([back.status, back.headers.get("location")], [302, "/"]);
     const s = await session(t, sessionCookie(back));
-    assertEquals(s.user, { username: "alice", isAdmin: true });
+    assertEquals(s.user, { username: "alice", isAdmin: true, signedInBy: "sso" });
     // The same subject again: the same account, not a new one.
     const again = await roundTrip(t, idp);
     assertEquals((await session(t, sessionCookie(again.back))).user?.username, "alice");

@@ -26,12 +26,23 @@ function signinError(): string | null {
  * local admin first, so there is a way in when the identity provider is down.
  */
 export function AuthPage(
-  { mode, sso, onDone }: { mode: "setup" | "login"; sso?: { name: string } | null; onDone: (s: AuthState) => void },
+  { mode, sso, proxyRefused, onDone }: {
+    mode: "setup" | "login";
+    sso?: { name: string } | null;
+    /** The trusted proxy signed in someone outside the group (D70). */
+    proxyRefused?: string;
+    onDone: (s: AuthState) => void;
+  },
 ) {
   const [username, setUsername] = useState(mode === "setup" ? "admin" : "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(signinError);
+  const [error, setError] = useState<string | null>(() =>
+    signinError() ??
+      (proxyRefused
+        ? `You are signed in to the proxy as ${proxyRefused}, but that account is not in the group allowed to use Tagmonia. Sign in with a Tagmonia password, or ask whoever runs the proxy.`
+        : null)
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: Event) => {

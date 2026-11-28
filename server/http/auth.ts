@@ -22,6 +22,7 @@ import { type ActiveSession, safeEqual, type SessionStore } from "../auth/sessio
 import type { Db } from "../db/db.ts";
 import { countUsers, createFirstAdmin, findOrCreateExternalUser, findUserByName } from "../db/repo/users.ts";
 import { OidcError, type OidcLogin } from "../auth/oidc.ts";
+import { type TrustedHeaderSettings, trustedUser } from "../auth/trusted_header.ts";
 import type { Logger } from "../log.ts";
 
 export const SESSION_COOKIE = "tagmonia_session";
@@ -39,7 +40,7 @@ export const PUBLIC_API: ReadonlySet<string> = new Set([
 /** Holds the key of a pending single sign-on between the start and the callback (D69). */
 export const OIDC_COOKIE = "tagmonia_oidc";
 
-export type AuthEnv = { Variables: { session: ActiveSession } };
+export type AuthEnv = { Variables: { session: ActiveSession; proxyRefused?: string } };
 
 export interface AuthDeps {
   db: Db;
@@ -51,6 +52,15 @@ export interface AuthDeps {
   sessionMaxMs: number;
   /** Single sign-on (D69), when configured; `name` labels the button. */
   oidc?: { login: OidcLogin; name: string } | null;
+  /** Sign-in by a trusted reverse proxy (D70), when configured. */
+  trusted?: TrustedHeaderSettings | null;
+  /** The connection's peer address; tests set it, since in-process requests have none. */
+  peer?: (c: Context) => string;
+}
+
+/** How a user signs in, from their account's external ID. */
+export function signedInBy(externalId: string | null): "password" | "sso" | "proxy" {
+  return !externalId ? "password" : externalId.startsWith("header:") ? "proxy" : "sso";
 }
 
 const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -111,12 +121,15 @@ export function authRoutes(deps: AuthDeps) {
   const app = new Hono<AuthEnv>();
 
   app.get("/session", async (c) => {
-    const s = await sessions.get(getCookie(c, SESSION_COOKIE));
+    // A trusted proxy's session is already set by trustedHeaderSession.
+    const s = c.get("session") ?? await sessions.get(getCookie(c, SESSION_COOKIE));
+    const refused = c.get("proxyRefused");
     const body: AuthState = {
       setupRequired: countUsers(db) === 0,
-      user: s ? { username: s.username, isAdmin: s.isAdmin } : null,
+      user: s ? { username: s.username, isAdmin: s.isAdmin, signedInBy: signedInBy(s.externalId) } : null,
       csrfToken: s?.csrfToken ?? null,
       sso: deps.oidc ? { name: deps.oidc.name } : null,
+      ...(refused && !s ? { proxyRefused: refused } : {}),
     };
     c.header("Cache-Control", "no-store");
     return c.json(body);
@@ -133,7 +146,7 @@ export function authRoutes(deps: AuthDeps) {
     const csrfToken = await startSession(c, user.id);
     const body: AuthState = {
       setupRequired: false,
-      user: { username: user.username, isAdmin: true },
+      user: { username: user.username, isAdmin: true, signedInBy: "password" },
       csrfToken,
       sso: deps.oidc ? { name: deps.oidc.name } : null,
     };
@@ -162,7 +175,7 @@ export function authRoutes(deps: AuthDeps) {
     const csrfToken = await startSession(c, user.id);
     const body: AuthState = {
       setupRequired: false,
-      user: { username: user.username, isAdmin: user.isAdmin },
+      user: { username: user.username, isAdmin: user.isAdmin, signedInBy: "password" },
       csrfToken,
       sso: deps.oidc ? { name: deps.oidc.name } : null,
     };
@@ -224,8 +237,46 @@ export function originGuard(publicUrl?: string): MiddlewareHandler {
   };
 }
 
+/**
+ * Sign-in by a trusted reverse proxy (D70). A request from one of the proxies, naming a member of the group,
+ * gets a session for that person: the cookie's, when it is theirs, else a new one (a different person's is
+ * ended). A non-member gets none, and the sign-in page says why. Requests not from a proxy are untouched.
+ */
+export function trustedHeaderSession(deps: AuthDeps): MiddlewareHandler<AuthEnv> {
+  const secure = deps.publicUrl?.startsWith("https:") ?? false;
+  return async (c, next) => {
+    if (!deps.trusted) return await next();
+    const who = trustedUser(deps.trusted, (deps.peer ?? clientIp)(c), (n) => c.req.header(n));
+    if (who === "refused") {
+      c.set("proxyRefused", c.req.header(deps.trusted.userHeader)!.trim());
+      return await next();
+    }
+    if (!who) return await next();
+    const externalId = `header:${who.name.toLowerCase()}`;
+    const current = await deps.sessions.get(getCookie(c, SESSION_COOKIE));
+    if (current?.externalId === externalId) {
+      c.set("session", current);
+      return await next();
+    }
+    if (current) deps.sessions.destroy(current.idHash);
+    const user = findOrCreateExternalUser(deps.db, externalId, who.name, Date.now());
+    const created = await deps.sessions.create(user.id);
+    setCookie(c, SESSION_COOKIE, created.id, {
+      httpOnly: true,
+      sameSite: "Lax",
+      secure,
+      path: "/",
+      maxAge: Math.floor(deps.sessionMaxMs / 1000),
+    });
+    c.set("session", (await deps.sessions.get(created.id))!);
+    deps.logger.info("login", { user: user.username, via: "proxy" });
+    await next();
+  };
+}
+
 export function requireSession(sessions: SessionStore): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
+    if (c.get("session")) return await next();
     const s = await sessions.get(getCookie(c, SESSION_COOKIE));
     if (!s) return c.json({ error: "authentication required" }, 401);
     c.set("session", s);
