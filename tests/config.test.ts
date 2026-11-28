@@ -88,3 +88,12 @@ Deno.test("sign-in by a proxy: header, proxies and group together, the proxies p
   assertThrows(() => loadConfig({ ...all, TAGMONIA_TRUSTED_PROXIES: "everyone" }), Error, "TAGMONIA_TRUSTED_PROXIES");
   assertThrows(() => loadConfig({ ...all, TAGMONIA_TRUSTED_HEADER: "Remote User" }), Error);
 });
+
+Deno.test("docker-compose.example.yml lists every variable the server reads", async () => {
+  const config = await Deno.readTextFile(new URL("../server/config.ts", import.meta.url));
+  const example = await Deno.readTextFile(new URL("../docker-compose.example.yml", import.meta.url));
+  const read = [...new Set(config.match(/TAGMONIA_[A-Z_]+/g) ?? [])].filter((v) => !v.endsWith("_"));
+  const listed = new Set(example.match(/TAGMONIA_[A-Z_]+(?==)/g) ?? []);
+  assertEquals(read.filter((v) => !listed.has(v)), [], "missing from the example");
+  assertEquals([...listed].filter((v) => !read.includes(v)), [], "in the example but not read");
+});

@@ -6,40 +6,80 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    # Every setting Tagmonia reads from the environment, with its default (or an example where there is none).
+    # Commented lines are optional; uncomment and change what you need. Where a value can come from a file
+    # (`…_FILE`, e.g. a Docker secret), set either the value or the file, not both.
     environment:
-      - PUID=1000 # honoured from Phase 6; the image currently runs as 1000:1000
+      # --- Basics ---------------------------------------------------------------------------------------------
+      - PUID=1000 # run-as user; the image currently always runs as 1000:1000
       - PGID=1000
+      # Tagmonia's address as your browser reaches it: secure cookies, and where MusicBrainz and your identity
+      # provider send you back to. Needed for single sign-on.
       - TAGMONIA_PUBLIC_URL=https://tagmonia.home.example
-      # Optional: fingerprint identification. Get a free application key at https://acoustid.org/new-application
+      #- TAGMONIA_MUSIC_DIR=/music # default /music: the library inside the container (see volumes)
+      #- TAGMONIA_CONFIG_DIR=/config # default /config: database, settings, caches and keys
+      #- TAGMONIA_INBOX_DIR=/inbox # default unset: a folder for new music; written albums move into the library
+      #- TAGMONIA_PORT=8080 # default 8080
+      #- TAGMONIA_LOG_LEVEL=info # default info; or debug, warn, error
+      #- TAGMONIA_WEB_DIR=/app/web/dist # default in the image; only change it to serve another build of the web UI
+
+      # --- Admin account and stored secrets -------------------------------------------------------------------
+      # The first admin's password from a file (else you create the admin in the browser on first start).
+      #- TAGMONIA_ADMIN_PASSWORD_FILE=/run/secrets/admin_password
+      # Encrypts the provider credentials saved in the app; at least 32 characters. Default: a random key
+      # generated into /config/secret.key on first start.
+      #- TAGMONIA_SECRET_KEY=change-me-to-a-long-random-string-of-32-or-more-characters
+
+      # --- Fingerprint identification (AcoustID) ---------------------------------------------------------------
+      # A free application key from https://acoustid.org/new-application. Default unset: fingerprinting is off
+      # (unless you save a key on the providers page).
+      #- TAGMONIA_ACOUSTID_KEY=your-acoustid-application-key
       #- TAGMONIA_ACOUSTID_KEY_FILE=/run/secrets/acoustid_key
-      # Optional: tell Jellyfin to re-read the albums Tagmonia wrote (an API key from Dashboard -> API Keys).
+
+      # --- Jellyfin: re-read the albums Tagmonia wrote -----------------------------------------------------------
+      # An API key from Jellyfin's Dashboard -> API Keys. Default unset (or as saved on the providers page).
       #- TAGMONIA_JELLYFIN_URL=https://jellyfin.home.example
+      #- TAGMONIA_JELLYFIN_KEY=your-jellyfin-api-key
       #- TAGMONIA_JELLYFIN_KEY_FILE=/run/secrets/jellyfin_key
-      #- TAGMONIA_JELLYFIN_LIBRARY=Music
-      # Optional: an inbox for new music; written albums move from it into the library (needs write access to both).
-      #- TAGMONIA_INBOX_DIR=/inbox
-      # Optional: sign in through your identity provider (Authentik, Keycloak, Authelia…); members of one group only.
+      #- TAGMONIA_JELLYFIN_LIBRARY=Music # default unset: every library
+
+      # --- Single sign-on with your identity provider (Authentik, Keycloak, Authelia…) --------------------------
+      # Issuer, client ID, secret and group all together, or none. Only members of the group get in; the password
+      # form stays as the fallback. The client's redirect URI: <TAGMONIA_PUBLIC_URL>/api/auth/oidc/callback
       #- TAGMONIA_OIDC_ISSUER=https://auth.home.example/application/o/tagmonia/
       #- TAGMONIA_OIDC_CLIENT_ID=tagmonia
+      #- TAGMONIA_OIDC_CLIENT_SECRET=your-client-secret
       #- TAGMONIA_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc_secret
       #- TAGMONIA_OIDC_GROUP=tagmonia
-      #- TAGMONIA_OIDC_NAME=Authentik
-      # Optional: or let your reverse proxy sign people in (Authelia, Authentik outpost, oauth2-proxy).
+      #- TAGMONIA_OIDC_GROUPS_CLAIM=groups # default groups
+      #- TAGMONIA_OIDC_SCOPES=openid profile email groups # default
+      #- TAGMONIA_OIDC_NAME=Authentik # default: the issuer's host name; the button reads "Sign in with …"
+
+      # --- Sign-in by your reverse proxy (Authelia, Authentik outpost, oauth2-proxy) ----------------------------
+      # Header, proxies and group all together, or none. The headers count only from the listed proxy addresses,
+      # so make Tagmonia reachable only through the proxy.
       #- TAGMONIA_TRUSTED_HEADER=Remote-User
+      #- TAGMONIA_TRUSTED_GROUPS_HEADER=Remote-Groups # default Remote-Groups
       #- TAGMONIA_TRUSTED_GROUP=tagmonia
-      #- TAGMONIA_TRUSTED_PROXIES=172.18.0.0/16
-      - TAGMONIA_READ_ONLY=true # recommended for a first try on an existing library
+      #- TAGMONIA_TRUSTED_PROXIES=172.18.0.0/16 # the proxy's address(es) or network(s), comma separated
+
+      # --- First run ------------------------------------------------------------------------------------------
+      # Default false. true never writes to the library: recommended for a first try on an existing library.
+      - TAGMONIA_READ_ONLY=true
     #secrets:
+    #  - admin_password
     #  - acoustid_key
     #  - jellyfin_key
     #  - oidc_secret
     volumes:
-      - /mnt/c/Users/Public/Music:/music:ro
+      - /path/to/music:/music:ro # drop :ro once you let Tagmonia write
       - tagmonia-config:/config
       #- /path/to/inbox:/inbox
 volumes:
   tagmonia-config:
 #secrets:
+#  admin_password:
+#    file: ./admin_password.txt
 #  acoustid_key:
 #    file: ./acoustid_key.txt
 #  jellyfin_key:
